@@ -15,3 +15,7 @@ next-env.d.ts
 .vercel/
 playwright-report/
 test-results/
+
+# Real trainee/supervisor data (names, personal e-mail addresses) — never
+# committed. Point TRAINEE_REGISTER_PATH at a local copy for import scripts.
+packages/db/data/

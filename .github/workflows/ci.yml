@@ -53,11 +53,12 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
 
-  # Wired up ahead of the schema landing (PLAN.md 0.2/0.3) so the pipeline
-  # shape is right from day one; the pgTAP suite itself does not exist until
-  # the schema does. Do not let this job go green on nothing once tables
-  # land — it must run packages/db's pgTAP suite against the postgres
-  # service below, not just exit 0.
+  # Every assertion in packages/db/pgtap/phase0.sql was first proven by
+  # hand against a live Postgres 16 container (see MEMORY.md for that
+  # session); this job is what re-proves it on every PR. Note: this exact
+  # CI job — the apt-get-pgtap-into-the-service-container step in
+  # particular — has not itself been run in a real GitHub Actions
+  # environment yet. Watch the first run closely.
   pgtap:
     runs-on: ubuntu-latest
     services:
@@ -65,6 +66,7 @@ jobs:
         image: postgres:16
         env:
           POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
         ports:
           - 5432:5432
         options: >-
@@ -72,9 +74,22 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+    env:
+      PGPASSWORD: postgres
+      PGHOST: localhost
+      PGUSER: postgres
+      PGDATABASE: postgres
     steps:
       - uses: actions/checkout@v4
-      - name: pgTAP suite (placeholder — no schema yet)
+      - name: Install pgTAP into the postgres service container
+        run: docker exec ${{ job.services.postgres.id }} sh -c "apt-get update && apt-get install -y postgresql-16-pgtap"
+      - name: Apply schema, RLS/functions, and the local auth stub
         run: |
-          echo "No migrations or pgTAP suite committed yet (see MEMORY.md)."
-          echo "This job intentionally has nothing to run until PLAN.md 0.2/0.3 land."
+          psql -v ON_ERROR_STOP=1 -f packages/db/scripts/local-auth-stub.sql
+          for f in packages/db/migrations/*.sql; do
+            echo "applying $f"
+            psql -v ON_ERROR_STOP=1 -f "$f"
+          done
+          psql -v ON_ERROR_STOP=1 -c "create extension if not exists pgtap;"
+      - name: Run pgTAP suite
+        run: psql -v ON_ERROR_STOP=1 -f packages/db/pgtap/phase0.sql

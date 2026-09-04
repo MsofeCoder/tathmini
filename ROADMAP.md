@@ -16,13 +16,13 @@ and why systems like this fail their first audit. Build it anyway.
 
 - [x] Repo, pnpm workspace, TypeScript strict, ESLint + Prettier, CI
 - [~] Next.js 15 App Router scaffold, Tailwind v4, Radix primitives — app scaffolded and building; Radix not yet added, no screen needs it yet
-- [ ] Supabase project in `af-south-1`; local dev via Supabase CLI — needs the College's/maintainer's Supabase account, not something an agent can provision
-- [ ] Drizzle schema — all 11 tables (see `CONTEXT.md` and `PLAN.md`) — blocked on the route-table and TP Practical numbering questions in `MEMORY.md`
-- [ ] RLS policies on every table, default deny — blocked on the schema above
-- [ ] Seed the three instruments with **verbatim** criteria from `reference/forms/` — blocked on the TP Practical numbering questions
-- [~] Zod schemas for a valid assessment, shared client/server — the generic points/IPT criterion-mark schemas and the completeness gate are built (`packages/shared/src/schemas.ts`); the concrete per-instrument schema is blocked with the schema above
-- [~] Grading functions — total, %, grade, GPA, Class of Award, verdict — TypeScript reference implementation done and tested (`packages/shared/src/grading.ts`); the Postgres generated columns still need writing and must agree with it
-- [~] pgTAP suite wired into CI — CI job scaffolded and running; no pgTAP suite exists yet because there is no schema
+- [ ] Supabase project in `af-south-1`; local dev via Supabase CLI — needs the College's/maintainer's Supabase account, not something an agent can provision; schema below is written and verified against a local Postgres 16 but not yet applied anywhere real
+- [~] Drizzle schema — 13 tables (11 from `CONTEXT.md`/`PLAN.md` plus `routes` and `assessment_mark_items`; see `MEMORY.md` for why) — written, typechecked, and proven against a throwaway local Postgres 16; not yet applied to a real Supabase project
+- [~] RLS policies on every table, default deny — written in `packages/db/migrations/0001_rls_and_functions.sql`, proven locally (15/15 smoke assertions); not yet applied to a real Supabase project
+- [~] Seed the three instruments with **verbatim** criteria from `reference/forms/` — TP Theory and IPT seeded and arithmetic-verified (`packages/db/src/seed/criteria.ts`); TP Practical still blocked on the numbering questions in `MEMORY.md`
+- [~] Zod schemas for a valid assessment, shared client/server — the generic points/IPT criterion-mark schemas and the completeness gate are built (`packages/shared/src/schemas.ts`); the concrete per-instrument schema is blocked on TP Practical
+- [x] Grading functions — total, %, grade, GPA, Class of Award, verdict — TypeScript reference implementation (`packages/shared/src/grading.ts`) and the matching Postgres functions/triggers (`veta_pct`/`veta_grade`/`veta_gpa`/`veta_class_of_award`, `recompute_result()`) both written and verified to agree
+- [~] pgTAP suite wired into CI — `packages/db/pgtap/phase0.sql` (15 assertions) written and dry-run verified locally; the CI job now actually applies migrations and runs it, but that exact CI job has not yet executed in real GitHub Actions — watch the first run
 - [ ] Sentry, environment secrets, branch protection on `main` — needs Sentry account and a GitHub remote with admin access, both the user's to provide
 
 **Exit gate:** pgTAP proves in CI that a Coordinator token cannot write a mark,
