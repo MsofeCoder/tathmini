@@ -47,6 +47,777 @@ the diff. This file is for knowledge that would otherwise be lost.
 
 ---
 
+## 2026-09-04 · feature · Trainee profile (pre-loaded particulars) built and verified live
+
+**Kind:** feature
+**Phase:** 1
+**Commit / PR:** (pending — see below)
+
+**What changed**
+`/trainee/[id]` (previously a placeholder) now renders the real
+"pre-loaded particulars" screen — a read-only port of the prototype's
+`showProfile` (`reference/Tathmini.dc.html` lines 323–398): back link
+to `/home`, "You are about to assess" eyebrow, trainee name, a track
+chip/label row, a particulars card, and (new, using data the route
+list already reads) a "Record locked" banner once `results.locked_at`
+is set. Two new pure functions in `apps/web/src/lib/trainees.ts`:
+`traineeParticulars()` (the row list, track-dependent) and
+`trackPointsLabel()` (e.g. "TP · Theory 50 + Practical 50" / "IPT · 70
+pts", summed live from `instruments.max_total` by instrument `code`,
+never hardcoded).
+
+**Why this way**
+`showProfile` is bigger than what `ROADMAP.md`'s line names — it also
+has a tap-to-notify-the-trainee panel (SMS/WhatsApp/e-mail via device
+apps), a draft-in-progress banner, a "Start assessment" button, and a
+"Request cross-route reassignment" flow. None of those were built:
+notify needs a real send path (Phase 2, Beem/Brevo); the draft banner
+needs Dexie/local persistence (later, unbuilt Phase 1 line); "Start
+assessment" needs the marking-flow UI (the *next* unchecked Phase 1
+line after this one — a button to nowhere if built now); reassignment
+is Phase 3 Super Admin work. Scoped to exactly what the ROADMAP line
+names, per `AGENTS.md`'s established pattern in this session of not
+building ahead of what's asked.
+
+The particulars list itself is a real, schema-driven departure from
+`particularsFor()`, not a styling one: the prototype shows
+`programme`/`ntaLevel`/`group`/`class`/`lessonTime` and (IPT)
+`iptNo`/`industry`/`site`/`department`/`industrialSupervisor`/`weeks`/
+`academicYear` — none of which exist in the real `trainees` table
+(`packages/db/src/schema.ts`), because neither real September 2026
+roster (TP or IPT) ever had those columns. Showing them would mean
+inventing values, so the card only surfaces what's actually imported:
+Registration No, Occupation, Course (+ mode of study when set),
+VTC/Industry-Firm (`institution`, label switches on track), Region/
+District, Email (TP) or Phone (IPT) — whichever the
+`trainees_track_contact_check` CHECK constraint guarantees exists —
+and "Assessed by" (the signed-in supervisor's own name + slot, from
+their own `assignments` row for this trainee, not the prototype's
+tap-to-notify button).
+
+**Watch out for**
+Postgres `numeric` columns (`instruments.max_total`) come back from
+PostgREST/`supabase-js` as **strings**, not numbers — this codebase
+had no prior precedent for reading a numeric column (the route list
+only reads text/timestamp/uuid columns). Coerced with `Number(...)`
+before use in `trackPointsLabel()`'s arithmetic; worth remembering for
+any future query that touches a `numeric` column (`assessment_marks.
+total`, `results.pct`/`gpa`, etc. will hit the same thing once the
+marking flow is built).
+
+The live IPT test trainees (migration `0011`) have `course = 'Test
+Trade'` (same value as `occupation`) — not a bug in this page, just
+what that migration's synthetic seed happened to insert; confirmed by
+reading `0011`'s SQL directly rather than assuming a rendering bug.
+
+This page now also enforces the `must_change_password` redirect
+(previously it didn't — a direct link to `/trainee/[id]` bypassed the
+gate `/home` enforces), for consistency with every other authenticated
+page.
+
+**Verified by**
+`pnpm lint && pnpm test && pnpm typecheck` clean across all workspaces
+(94 total Vitest cases: 27 shared + 47 db + 20 web, +7 new in
+`apps/web` for `traineeParticulars()`/`trackPointsLabel()`); `pnpm
+format:check` clean repo-wide. Full
+browser flow against the real dev server, signed in as
+`test.supervisor`: TP trainee (TEST TRAINEE 1) shows track chip "TP ·
+Theory 50 + Practical 50", registration no `TEST-0001`, course `CAVT`
+(no mode-of-study suffix, correctly), VTC `Test VTC`, region/district
+`—`, email `test.trainee1@example.test`, "Assessed by Test Supervisor
+(Assessor 1 of 2)", no locked banner. IPT trainee (TEST TRAINEE 4)
+shows track chip "IPT · 70 pts", registration no `—`, Industry / Firm
+`Test Company`, phone `0700000004`. Back link returns to `/home`. A
+garbage id still renders "Not found" / "Back to route list", unchanged
+from the placeholder's existing behaviour.
+
+---
+
+## 2026-09-04 · feature · Route list built and verified live: supervisor's real post-login landing screen
+
+**Kind:** feature
+**Phase:** 1
+**Commit / PR:** (pending — see below)
+
+**What changed**
+`/home` now branches on `profile.role`: a `supervisor` gets a real route
+list (`apps/web/src/app/home/route-list.tsx`), ported from the
+prototype's `showList` screen (`reference/Tathmini.dc.html` lines
+130–221) — header, tracker box (`N of M assessed`, %, progress bar),
+3-way stat tiles (Assessed/In Progress/Not Started), a free-text search
+box (name/occupation/institution/track/status), and the trainee card
+list (avatar initials, track chip, status badge), each card linking to
+a new placeholder `/trainee/[id]` page. `coordinator`/`super_admin`
+still get the pre-existing generic placeholder, unchanged.
+
+Status per trainee is derived (new, pure function in `apps/web/src/lib/
+trainees.ts`, `deriveStatus`) from four RLS-scoped Supabase reads in
+`/home/page.tsx`: `locked` once `results.locked_at` is set (already
+computed server-side by `recompute_result()`); else `partial` once the
+signed-in supervisor's own submitted `assessment_marks` count meets
+their track's required-instrument count (read from `instruments`, not
+hardcoded — TP: 2, IPT: 1 today); else `pending`. Migration `0011`
+added one small synthetic `TEST ROUTE` (5 trainees, mixed TP/IPT)
+assigned to the existing `test.supervisor` dev account, since it had
+zero real trainees and I hold no real supervisor's password.
+
+**Why this way**
+`ROADMAP.md` said "status filters," but the prototype's `statusFilters`
+pill row only exists on the coordinator's Phase 3 per-route drill-down
+(`coShowRoute`) — the supervisor's actual `showList` screen has a
+search box and nothing else. Built against the prototype's real
+supervisor screen (the behavioural spec per `AGENTS.md`), not
+`ROADMAP.md`'s shorthand for it. Two other deliberate departures from a
+literal port, both because the real system differs from the
+prototype's simplified fake one: the route summary line drops "stored
+on this device" (Dexie/offline cache is unbuilt, separate `ROADMAP.md`
+line — that line would be a lie today); and the 3-way tile split's
+`inProgress` is hardcoded to `0` (it's driven by local draft state in
+the prototype, which also doesn't exist yet) rather than reimplemented
+against something that isn't real yet.
+
+No marking-flow UI exists yet either (the very next unchecked
+`ROADMAP.md` Phase 1 line) — so every real trainee correctly shows
+`pending` today. That's expected, not a bug; `deriveStatus`'s
+`locked`/`partial` branches are proven by unit tests
+(`apps/web/src/lib/trainees.test.ts`) rather than left unverified until
+marking exists.
+
+**Watch out for**
+Two environment gotchas hit during browser verification, neither an
+app bug:
+- A stale/zombie `next dev` process was still bound to port 3000 even
+  after stopping its background task; the fresh dev server silently
+  bound to port 3001 instead (`⚠ Port 3000 is in use, trying 3001
+  instead.`). First sign-in attempt against `localhost:3000/login` hit
+  the old process and silently did nothing. Always check the dev
+  server's own log for the port it actually bound to, don't assume the
+  default.
+- A screenshot taken 2s after clicking Sign in timed out
+  (`Page.captureScreenshot` timed out after 30000ms) — page had in fact
+  already navigated; a retried, un-batched screenshot succeeded. Not a
+  real hang, just a slow CDP round-trip during navigation.
+
+The prototype's 3-way tile arithmetic (`notStarted = total - done -
+inProgress`) means a `partial` trainee currently falls under "Not
+started" in the tile count even though its own card badge would
+correctly read "Awaiting 2nd assessor" — this is the prototype's own
+existing behaviour, carried over deliberately, not a bug introduced
+here. Revisit once `inProgress` is wired to real draft state.
+
+**Verified by**
+`pnpm lint && pnpm test && pnpm typecheck` clean across all workspaces
+(87 total Vitest cases, +10 new for `trainees.ts`); `pnpm format:check`
+clean repo-wide. Migration `0011` applied to `azlwxriyhdshfhklonrx`,
+confirmed live: `TEST ROUTE` + 5 trainees (3 TP, 2 IPT) + 5 `a1`-slot
+assignments to `test.supervisor`. Full browser flow against the real
+dev server, signed in as `test.supervisor`: `/home` renders the route
+list (not the old placeholder); header shows "MY ROUTE" / "TEST ROUTE"
+/ "5 trainees · 2 centers"; tracker shows "0 of 5 trainees assessed" /
+"0%" / "5 still to assess"; stat tiles read exactly `0` Assessed /
+`0` In Progress / `5` Not Started; all 5 cards (confirmed via
+`get_page_text`: Trainees 1–5) show "○ Not yet assessed" with correct
+TP/IPT track chip colours; search for a name term ("trainee 5") narrows
+to "1 of 5 shown" with the match highlighted; search for an occupation
+term ("trade") narrows to "2 of 5 shown" (the two IPT trainees); tapping
+a card navigates to `/trainee/<uuid>` and shows that trainee's real name
+("TEST TRAINEE 4"), confirming the RLS-scoped id lookup works correctly.
+
+---
+
+## 2026-09-04 · migration · Phase 0 migrations 0000–0004 applied to the real Supabase project; pgTAP 18/18 verified live
+
+**Kind:** migration
+**Phase:** 0
+**Commit / PR:** (pending — see below)
+
+**What changed**
+Applied `packages/db/migrations/0000_perfect_venom.sql` through
+`0003_trainees_track_contact_check.sql` to the College's real Supabase
+project (`azlwxriyhdshfhklonrx`, af-south-1) via the Supabase MCP
+server's `apply_migration`, in order, after explicit user confirmation
+this is the College's intended project, not a scratch one. Added a new
+migration, `0004_fix_chain_audit_log_digest_schema.sql`, to fix a real
+bug `chain_audit_log()`'s unqualified `digest(...)` call hit the first
+time anything touched a real Supabase database. `packages/db/pgtap/
+phase0.sql` (18 assertions, not the 15 recorded when it was first
+written — see "Watch out for") was then re-run live and passed 18/18,
+wrapped in the file's own `begin;...rollback;`, so nothing persisted.
+
+**Why this way**
+`ROADMAP.md` had explicitly deferred this ("no Supabase project exists
+yet ... needs the College's/maintainer's account") — this was the first
+time Phase 0's schema/RLS/functions touched a real database; everything
+before this had only run against a throwaway local Postgres container.
+`0001_rls_and_functions.sql` was left untouched rather than hand-edited
+in place: once a migration is applied to a real project its file becomes
+historical record, so the fix is a new migration (`0004`), the same
+pattern `0002`/`0003` already used. The fix itself uses `set search_path
+= public, extensions` on `chain_audit_log()` rather than hardcoding
+`extensions.digest(...)`, so it resolves correctly both on Supabase
+(pgcrypto lives in `extensions` there) and on the local Docker container
+(pgcrypto installs into `public`, and `extensions` doesn't even exist
+locally) — a nonexistent schema in `search_path` is not an error in
+Postgres, so one function body now works unmodified in both places.
+
+**Watch out for**
+`ROADMAP.md` and this file's `0002`/`0003` entry below both say "15
+assertions" / "15/15" — accurate when written; the suite grew to 18
+(`select plan(18)`) when the three TP/IPT contact-channel assertions
+were added alongside `0002`/`0003`, and the docs were never updated to
+match. `ROADMAP.md` has been corrected; use 18 as the real count.
+
+`chain_audit_log()` was the only place in `0001` calling a pgcrypto
+function unqualified from inside a nested `SECURITY DEFINER SET
+search_path = public` call — worth checking for the same pattern if more
+pgcrypto calls get added later (`gen_random_uuid()` is safe regardless,
+since it's also built into `pg_catalog` on Postgres 13+).
+
+The Supabase MCP server's `apply_migration` tool was denied once by the
+local permission classifier on the first attempt at `0001` — a
+client-side block that fired before any DB call, not a Supabase error;
+retrying the identical call after the user's approval succeeded cleanly.
+
+Tables existed with RLS *not yet enabled* for the few minutes between
+applying `0000` and `0001` — no data existed yet so nothing was exposed,
+but the same sequencing against a project that already holds data would
+need more care (single transaction, or a maintenance window).
+
+The Supabase `execute_sql` tool returns only the *last* statement's
+result set from a multi-statement script — running `phase0.sql` as-is
+only surfaced assertion 18. Had to insert each assertion's output into a
+temp table and `SELECT` it back as the final statement to see the full
+`1..18` tally; worth remembering for any future ad hoc multi-statement
+run against Supabase via this path.
+
+**Verified by**
+`packages/db/pgtap/phase0.sql` run live against `azlwxriyhdshfhklonrx`:
+`1..18` plan line, 18 `ok` lines, 0 `not ok`. Confirmed no residual rows
+afterward (`select count(*) from users/trainees/audit_log/results` all
+`0`).
+
+---
+
+## 2026-09-04 · migration · TP Theory and IPT criteria seeded into the real Supabase project
+
+**Kind:** migration
+**Phase:** 0
+**Commit / PR:** (pending — see below)
+
+**What changed**
+Inserted the `instruments`/`criteria` rows for `tp_theory` (41 items, 10
+sections, max 50) and `ipt` (14 items, 6 sections, max 70) into
+`azlwxriyhdshfhklonrx`, straight from `packages/db/src/seed/
+criteria.ts`'s `TP_THEORY_CRITERIA`/`IPT_CRITERIA` arrays (`order_index`
+assigned from each array's position, matching document order). TP
+Practical remains unseeded — still blocked on the same numbering defects
+recorded below.
+
+**Why this way**
+No seed-runner script existed yet (`import-trainees.ts` explicitly only
+validates, doesn't write; there was no equivalent for criteria). Rather
+than build a new script's plumbing (DATABASE_URL, drizzle client) for a
+one-time reference-data load I don't have credentials for anyway, the
+insert went straight through the Supabase MCP `execute_sql`, wrapped in
+one transaction so `validate_instrument_maxima()` (0001's statement-level
+trigger) checked both instruments' section sums atomically before
+either committed.
+
+**Watch out for**
+This was a direct data load, not a tracked migration file — the
+`instruments`/`criteria` rows exist live but there's no corresponding
+`packages/db/migrations/000N_*.sql` to replay them on a fresh database
+or in the local Docker workflow. If TP Practical's numbering gets
+resolved and prompts building a real seed script, it should probably
+seed TP Theory and IPT too, so all three go through the same reproducible
+path instead of leaving this one as a live-only exception.
+
+**Verified by**
+Queried `azlwxriyhdshfhklonrx` directly after insert: `tp_theory` — 41
+criteria rows, `order_index` 1..41 with no duplicates, distinct section
+maxima summing to 50 (matches `instruments.max_total`); `ipt` — 14 rows,
+`order_index` 1..14, section maxima summing to 70. Both match the
+existing `packages/db/src/seed/criteria.test.ts` vitest assertions
+exactly (41/10 and 14/6 respectively).
+
+---
+
+## 2026-09-04 · migration · Criteria seed turned into a tracked, idempotent migration (0005)
+
+**Kind:** migration
+**Phase:** 0
+**Commit / PR:** (pending — see below)
+
+**What changed**
+The prior entry's live seed of TP Theory/IPT criteria was a one-off
+`execute_sql` data load with no corresponding migration file — flagged
+there as a gap. Closed it: `packages/db/migrations/
+0005_seed_tp_theory_ipt_criteria.sql` now holds the same insert, guarded
+with `where not exists (...)` on both the `instruments` and `criteria`
+inserts so it's a no-op on a database that already has the rows.
+
+**Why this way**
+The guard exists specifically so applying this migration to
+`azlwxriyhdshfhklonrx` — which already had the data from the prior ad hoc
+load — wouldn't create a second `tp_theory`/`ipt` instrument (nothing
+uniquely constrains `instruments.code`, so a naive re-insert would have
+silently duplicated both instruments and broken `recompute_result()`'s
+`where i.code = 'tp_theory'` lookups). Same file now also replays
+correctly on an empty database (local Docker, CI, or a future fresh
+project), since `NOT EXISTS` is trivially true there.
+
+**Watch out for**
+`instruments.code` has no unique constraint at the schema level — this
+migration's `NOT EXISTS` guard is the only thing preventing a duplicate
+`tp_theory`/`ipt` row if it or a similar seed is ever run outside this
+exact migration path. Worth a real unique constraint if more seed
+migrations get added later.
+
+**Verified by**
+Applied `0005` to `azlwxriyhdshfhklonrx` via `apply_migration`, then
+queried: exactly 2 rows in `instruments` total (one `tp_theory`, one
+`ipt`), criteria counts unchanged at 41/14 — confirms the guard actually
+skipped the re-insert rather than erroring past it.
+
+---
+
+## 2026-09-04 · migration · TP roster imported live: 17 new accounts, 9 routes, 364 trainees, 728 assignments
+
+**Kind:** migration
+**Phase:** 0/1
+**Commit / PR:** (pending — see below)
+
+**What changed**
+User ran `create:accounts` again (covers both rosters now) — 13 existing
+accounts correctly skipped, 17 new ones created. Built
+`packages/db/src/scripts/generate-tp-import-sql.ts` (+ tests) rather than
+hand-transcribing the migration like the IPT one: 364 rows was judged too
+large to safely hand-copy (the 118-row IPT migration already needed a
+mid-session correction from a manual mislabeling). The generator produces
+the exact SQL from the parsed, validated roster data. Applied as
+`packages/db/migrations/0008_import_tp_roster_data.sql`.
+
+While generating it, running the real parser (fixed earlier this session
+— see the "IPT roster parser" entry below for the hyperlink-cell bug)
+surfaced a defect worse than IPT's: **the first apply attempt failed
+outright**, `23505` on `trainees_registration_number_unique`. Rafael and
+Raphael Pato Mohele (TP Route 2) share `MVTTC/CAVT/2025/0128`, and
+unlike IPT's phone-sharing duplicates (no equivalent constraint exists
+there), `registration_number` has a hard database-level UNIQUE
+constraint — the "for now, import as-is" policy from the IPT roster
+literally cannot apply here; the database will not allow it. Confirmed
+the failed attempt rolled back completely (0 rows written) before
+asking the user how to resolve it.
+
+User's decision: keep both trainee rows (different institutions/e-mails
+suggest possibly different people), first occurrence keeps the real
+registration number, later occurrence(s) get `null` rather than an
+invented number. Implemented as `dedupeRegistrationNumbers()` in
+`generate-tp-import-sql.ts` — a general rule (first-occurrence-wins,
+not a one-off hand-edit), covered by its own tests, applied automatically
+by the generator rather than patched into the SQL by hand.
+
+**Why this way**
+Same reasoning as the IPT account-creation script: the generator needs
+no secrets (only reads the local roster file), so I can run it myself,
+review the output, and apply it through the same Supabase MCP path as
+every migration so far — nothing about roster-to-SQL transcription was
+trusted to manual copying this time.
+
+**Watch out for**
+`trainees.registration_number`'s UNIQUE constraint is a real, sharp edge
+for any *future* roster import too — a repeat of this exact failure mode
+should be expected if the College ever sends a roster with its own
+internal duplicate. `dedupeRegistrationNumbers()` in
+`generate-tp-import-sql.ts` is written generically (keyed only on
+`registrationNumber`, not this specific pair) so it already handles that
+case if it recurs, but it's IPT/TP-parser-specific — a future third
+roster format would need the same treatment applied deliberately, not
+assumed.
+
+The user again pasted the full `create:accounts` output including the
+one-time password table into chat (second time — see the IPT entry
+below for the first). Same guidance repeated: treat those 17 as exposed,
+reset before real use.
+
+**Verified by**
+`pnpm --filter @tathmini/db test` — 47/47 (37 existing + 10 new), `lint`
+and `typecheck` clean. Queried `azlwxriyhdshfhklonrx` after applying
+`0008`: 30 total accounts (13 + 17), 9 `TP ROUTE *` routes, 364 TP
+trainees, 728 assignments. Confirmed Route 6 resolves to
+`denis.michael`/`adam.msofe.supervisor` (not a second Adam Msofe
+account), and Rafael/Raphael Pato Mohele are both present — Rafael with
+the real registration number, Raphael's `null`, exactly as decided.
+
+---
+
+## 2026-09-04 · feature · IPT roster parser built; roster still not clean enough to import
+
+**Kind:** feature
+**Phase:** 0 (prep for Phase 1's real data, not on the ROADMAP checklist itself)
+**Commit / PR:** (pending — see below)
+
+**What changed**
+User pointed at what they called an "updated" IPT assessment document
+(`IPT ASSESSMENT SEPTEMBER  2026.xls`, same filename as the one referenced
+in the "IPT notices are SMS-only" entry below) and asked to make changes
+accordingly. Read it (legacy binary `.xls` — `xlrd` in Python first to
+inspect, then `xlsx`/SheetJS added as a new `packages/db` dependency for
+the actual TypeScript parser, since `ExcelJS` doesn't read `.xls`). It is
+**not** a criteria/rubric document — 4 of its 5 sheets are unrelated
+College payroll/logistics budgets for a different process (semester
+module exam invigilation/marking/moderation allowances). Only sheet 1,
+`SETTING AND MODERATION JAN 2026` (misleadingly named), holds the actual
+IPT route/assessor/trainee roster.
+
+Built `packages/db/src/scripts/import-ipt-roster.ts` (+ test), a sibling
+to `import-trainees.ts` for the TP roster — not a shared parser, the two
+source shapes differ too much (no registration number or e-mail column
+here; route/assessor header is one free-text cell per route, not two
+separate columns; format itself is inconsistent — "ROUT"/"ROUTE",
+"NO. 1"/"NO 3."). Parses and validates only; writes nothing to any
+database.
+
+**Why this way**
+The prior entry below already flagged this exact file's two open
+questions (no registration number; specific duplicate trainees) and said
+explicitly not to treat the schema change there as "the IPT roster is now
+importable." I checked this "updated" copy against both — **neither is
+resolved**. Given AGENTS.md's stop-and-ask rules (any DB migration;
+anything touching auth/roles — creating the 10 assessor accounts would be
+both) and that this exact data was already flagged once, building the
+parser/validator (safe, testable, no live effect) and re-surfacing the
+same questions is the right increment, not writing to
+`azlwxriyhdshfhklonrx` on the strength of "the file changed."
+
+**Watch out for**
+Running the parser against the real file (`IPT_ROSTER_PATH=...`) found:
+**118 trainees, 5 routes, 10 assessors**, and 4 `duplicate_phone` issues —
+the same substantive problems as before, precisely reproduced:
+- Same trainee entered under two routes (same name, same phone): "Adeni
+  Mwanitu" (Route 2 and Route 4), "Heri Ayubu" (Route 2 and Route 4).
+- Two different trainees sharing one phone number each: Philomena Kuzenza
+  (Route 1) / Hemedi Hemedi (Route 5); Joshua Izack (Route 1) / Alex Nziku
+  (Route 3) — two different people's results would currently reach the
+  same number.
+
+New wrinkle, not previously noted: one of the 10 IPT assessors is **"Aron
+Franco"** (Route 2) — the same name already seeded as a `super_admin`
+account in the prototype's fake `ACCOUNTS` array (maintainer role). Not
+resolved here; whoever builds real account creation needs to know if
+that's the same person wearing two hats or a name collision, since
+`users.role` is one enum column, not a set.
+
+Also fixed, while here: `import.meta.url === \`file://${process.argv[1]}\``
+(the CLI-entry-point guard both this script and `import-trainees.ts` use)
+never matches on Windows — `import.meta.url` is `file:///C:/...`,
+`process.argv[1]` is `C:\...`, naive string concatenation never produces
+a match, so `main()` silently never ran via `pnpm run import:*` on this
+platform. Fixed both with `pathToFileURL(process.argv[1]).href`, which
+normalizes correctly cross-platform. This is how the "118 trainees..."
+output above was actually obtained — before the fix, the script produced
+zero output and exit code 0, which would have looked like nothing was
+wrong.
+
+**Verified by**
+`pnpm --filter @tathmini/db test` — 23/23 (18 existing + 5 new), `lint`
+and `typecheck` clean. Ran the real CLI against the real file (see
+"Watch out for" above) — output matches what hand-checking the extracted
+sheet data predicted, once one manual mislabeling on my part (calling two
+of the duplicate rows "Route 2" instead of the correct "Route 1", from
+misreading which route-header block they fell under) was corrected by
+trusting the code's own boundary-tracking over my own eyeballing.
+
+---
+
+## 2026-09-04 · decision · TP Practical numbering defects resolved; criteria seeded (all three instruments now complete)
+
+**Kind:** decision
+**Phase:** 0
+**Commit / PR:** (pending — see below)
+
+**What changed**
+User supplied a corrected source document, `Fomu ya Assessment
+TP_Practical Final.docx` (outside the repo, under `resources/form-
+samples/`), superseding the earlier scanned `.txt`. Extracted its tables
+(docx is a zip of XML; `word/document.xml`'s `<w:tbl>`/`<w:tr>`/`<w:tc>`/
+`<w:t>` structure parsed directly — no docx library available, wrote a
+one-off Node script instead). Of the two defects flagged earlier: the
+missing section-5 number is fixed in the new source ("PERSONALITY
+ATRIBUTIES" [sic] is now explicitly "5"); the section-2 duplicate "vii."
+is **not** fixed in the source — still literally there — but the user
+confirmed (this session) that the second "vii." ("Practical performance
+intergraded with knowledge thought oral questioning") should be treated
+as "viii.".
+
+Added `TP_PRACTICAL_CRITERIA`/`TP_PRACTICAL_MAX_TOTAL` to `packages/db/
+src/seed/criteria.ts` (34 items, 5 sections, max 50), matching tests in
+`criteria.test.ts` (including one asserting section 2's item codes run
+`i`..`x` with no duplicates). `reference/forms/TP Practical form.txt`
+rewritten to match the corrected `.docx` — including the still-present
+"vii."/"vii." duplicate, transcribed exactly as the source has it, with
+a note at the bottom of the file recording both the fix and the
+non-fix and pointing here. Seeded live via a new idempotent migration,
+`packages/db/migrations/0006_seed_tp_practical_criteria.sql` (same
+`NOT EXISTS` guard pattern as `0005`).
+
+**Why this way**
+The `vii.`/`viii.` correction is applied only in `criteria.ts`'s
+`itemCode` (a code/key, not the verbatim wording) and in the seed
+migration — never in `reference/forms/TP Practical form.txt`, which
+stays a literal transcription of what the actual source document says.
+This keeps the "verbatim from reference/forms/" rule meaningful: the
+reference file is provably faithful to the source, and the one place we
+deviate from it is called out explicitly, with the user's approval
+recorded, rather than silently baked into the "verbatim" file itself.
+
+**Watch out for**
+Two more things noticed in the corrected `.docx`, not raised as
+blockers because they don't affect item structure or arithmetic:
+section 4 item i's label has an unclosed parenthesis in the source
+("...appropriateness" with no closing ")") — transcribed verbatim,
+unclosed, same as everything else here; and section 3 item iii says
+"knowledge **though** oral questioning" while section 2 item viii says
+"knowledge **thought** oral questioning" — two different words in two
+similar-sounding items, both transcribed exactly as each one
+individually reads, not harmonized to match each other.
+
+**Verified by**
+`pnpm --filter @tathmini/db test` — 18/18 (up from 15/15; the 3 new
+tests are TP Practical's `checkInstrument` trio), `lint`, `typecheck`
+all clean. Applied `0006` to `azlwxriyhdshfhklonrx`; queried live: all
+three instruments now present — `tp_theory` 41 items/50, `tp_practical`
+34 items/50, `ipt` 14 items/70 — each instrument's distinct section
+maxima summing to its `max_total`.
+
+---
+
+## 2026-09-04 · feature · Phase 1 auth built and verified live: sign-in, forced password change, session cookies
+
+**Kind:** feature
+**Phase:** 1
+**Commit / PR:** (pending — see below)
+
+**What changed**
+`apps/web` went from a bare `create-next-app` scaffold to a working
+auth flow against the real Supabase project: `@supabase/ssr` +
+`@supabase/supabase-js` added; `lib/supabase/{client,server}.ts`;
+`lib/auth.ts` (`usernameToEmail`, the exact prototype error copy);
+`middleware.ts` (session refresh + redirect-to-`/login` gate);
+`/login` (copy/palette from `reference/Tathmini.dc.html` lines 92–128);
+`/change-password` (new — no prototype precedent); `/home` (one
+generic authenticated placeholder, deliberately not role-specific —
+real route list / coordinator dashboard is separate `ROADMAP.md` work).
+Migration `0009` added `users.must_change_password` (default `true`,
+backfilled to all 30 already-live accounts) and
+`clear_own_password_change_flag()`, a `SECURITY DEFINER` RPC in the
+same style as `current_app_role()`/`is_coordinator()` (0001) — existing
+`users` RLS gives no role an `UPDATE` grant on their own row, so this
+is the narrow, Postgres-side way a signed-in user clears their own
+flag, per AGENTS.md rule 1.
+
+**Why this way**
+Verification needed a real login I could actually test with — I hold
+none of the 30 real accounts' passwords (by design, never recorded).
+Added one synthetic `test.supervisor` dev account
+(`packages/db/src/data/dev-accounts.ts`, folded into `create-accounts.ts`'s
+`ALL_ACCOUNTS`) instead of testing against a real person's credentials.
+
+**Watch out for**
+`create-accounts.ts` only ever created the Auth identity
+(`auth.users`) — it explicitly does not touch the `users` table by
+design (see its own docstring). I forgot this applies to *every* new
+account added there, including `test.supervisor`, and initially left it
+unlinked — caught only because `must_change_password` came back `NULL`
+(no row) when I went to verify. Fixed with migration `0010`, same
+`NOT EXISTS`-guarded linking pattern as `0007`/`0008`. **Any future
+addition to `ipt-accounts.ts`/`tp-accounts.ts`/`dev-accounts.ts` needs
+its own linking migration too** — `create-accounts.ts` alone is never
+sufficient.
+
+Separately, a real browser-automation mistake during verification, not
+an app bug: after the first (deliberately wrong-password) submit added
+an error banner, the page layout shifted and the viewport itself
+resized between screenshots — a second click reusing the first
+screenshot's button coordinates missed the button entirely. The dev
+server's request log (only one `POST /login` where I expected two) is
+what caught it — a raw Supabase Auth REST call with the same
+credentials succeeded immediately, proving the credentials and the
+server action were both fine and the miss was purely a stale-coordinate
+click. Re-verified using `find` + element refs instead of remembered
+pixel coordinates; worth defaulting to that over coordinates whenever a
+page's layout can shift between screenshots (an error banner appearing,
+a pending/loading state, etc.).
+
+**Verified by**
+`pnpm --filter @tathmini/db test`/`lint`/`typecheck` and
+`pnpm --filter @tathmini/web test`/`lint`/`typecheck` all clean;
+`pnpm format:check` clean repo-wide. Live migration `0009` confirmed:
+column exists, all 30 existing rows `must_change_password = true`,
+function is `SECURITY DEFINER`. Full browser flow driven end-to-end
+against the real dev server: wrong password → exact prototype error
+copy; correct password (first login) → `/change-password`; new
+password saved → `/home`, `must_change_password` confirmed `false` live;
+session cookie survives a hard refresh; sign out → `/login`; sign back
+in with the new password → straight to `/home`, no forced change.
+
+---
+
+## 2026-09-04 · migration · IPT roster imported live: 13 users, 5 routes, 118 trainees, 236 assignments
+
+**Kind:** migration
+**Phase:** 0/1
+**Commit / PR:** (pending — see below)
+
+**What changed**
+User ran `create-accounts.ts` themselves against `azlwxriyhdshfhklonrx`
+with their own `SUPABASE_SERVICE_ROLE_KEY` (after one setup hiccup — see
+"Watch out for") — all 13 real Auth accounts created successfully.
+Applied `packages/db/migrations/0007_import_ipt_roster_data.sql`: links
+those 13 Auth accounts into `users`, creates the 5 `routes`, imports the
+118 `trainees` from the September 2026 IPT roster, and creates the 236
+`assignments` (each trainee × both their route's assessors). Trainees
+went in **as-is** — the known duplicates (Adeni Mwanitu, Heri Ayubu on
+two routes each; Philomena Kuzenza/Hemedi Hemedi and Joshua Izack/Alex
+Nziku sharing one phone number each) are all present, untouched, per the
+user's explicit "for now" instruction. Nothing deduplicated or merged.
+
+**Why this way**
+Two data-mapping calls made without a matching source column (verbatim
+roster only has SN/NAME/SEX/TRADE/REGIONAL/DISTRICT/COMPANY/PHONE NO):
+`trainees.course` (`NOT NULL`) set to `'TC-TVTE'` for every row — the
+short code CONTEXT.md's glossary already uses for "the teacher-education
+programme trainees are enrolled in," matching the TP roster's short-code
+style (`'CAVT'`) rather than the workbook's full descriptive header
+text. The roster's `SEX` column has no home in `trainees` (no such
+column) and was not imported. Both flagged to the user, not silently
+decided as permanent.
+
+**Watch out for**
+Setting the environment variables for `create-accounts.ts` failed once:
+the user initially set `NEXT_PUBLIC_SUPABASE_URL` to the **REST API**
+URL (`https://azlwxriyhdshfhklonrx.supabase.co/rest/v1/`) instead of the
+plain project URL — every account creation call failed identically with
+"Invalid path specified in request URL" (a Kong gateway error from the
+Admin Auth API receiving a doubly-nested path). Diagnosed by asking the
+user to echo the env var back (safe — it's not a secret) rather than
+guessing. Worth a note in `create-accounts.ts` or its own doc comment if
+this trips someone else up again.
+
+Separately: the user pasted the **full** script output back into chat,
+including the one-time password table, despite being asked for just the
+`Results:` status lines. Those 13 passwords are now in this conversation
+transcript and should be treated as exposed — flagged directly to the
+user; recommended resetting each via the Supabase dashboard before
+actually handing accounts to the real people, rather than trusting the
+originally generated ones.
+
+**Verified by**
+Queried `azlwxriyhdshfhklonrx` directly: exactly 13 users (matching
+`ipt-accounts.ts`), 5 routes, 118 trainees, 236 assignments. Confirmed
+Route 2's `supervisor_a1_id` resolves to `aron.franco.supervisor`, not
+his `aron.franco` super_admin account. Confirmed all 4 known
+duplicate-phone pairs present as separate rows on their original
+distinct routes, unchanged — the import faithfully reproduced the
+source's real defects rather than silently cleaning them.
+
+---
+
+## 2026-09-04 · decision · Real account creation designed: synthetic-email identity, dual accounts for dual-role people
+
+**Kind:** decision
+**Phase:** 0/1 (account creation is prep work; the underlying auth
+identity scheme decided here belongs to Phase 1)
+**Commit / PR:** (pending — see below)
+
+**What changed**
+User confirmed Aron Franco (IPT Route 2 assessor) and Adam Msofe
+(confirmed via `TEACHING PRACTICE TRAINEES SEPTEMBER 2026.xlsx`: TP
+Route 6, paired with Denis Michael) are each dual-role — supervisor and
+super_admin — and want two separate accounts per person, not one account
+with two roles (`users.role` is a single enum column, can't hold both).
+
+Building the account-creation script surfaced a real, previously
+undecided architecture question: Supabase Auth needs an email (or phone)
+per account, but Tathmini's whole design (CONTEXT.md, the prototype) is
+**username** (`firstname.lastname`) + password login, and none of the 10
+real IPT assessors have an e-mail on file (only trainees do, and only on
+the *TP* roster — a different document). User decided: **synthetic
+internal e-mail per account**, `firstname.lastname@tathmini.internal`,
+used only as Supabase Auth's required identifier, never a real inbox —
+`account()` in `packages/db/src/data/ipt-accounts.ts`.
+
+Built:
+- `packages/db/src/data/ipt-accounts.ts` — the 13 real accounts this
+  round covers (see below for why 13, not 14). No passwords, ever.
+- `packages/db/src/scripts/create-accounts.ts` (+ test) — calls the
+  Supabase Auth Admin API (`@supabase/supabase-js`, new dependency,
+  server-only) per account, generates a random 16-char password per
+  account, prints a one-time `username | password` table to stdout only,
+  skips (doesn't error) an account whose synthetic e-mail is already
+  registered.
+- `ROADMAP.md` Phase 3's "Route management" line now explicitly calls
+  out manual trainee-to-route (re)assignment — the user's answer to the
+  known duplicate-trainee defects (see the "IPT notices are SMS-only"
+  entry below) is to accept the roster as-is for now and add a Super
+  Admin tool to fix cases like it by hand. Checked: the DB/RLS layer
+  already supports this with no changes (`trainees_admin_write` grants
+  `super_admin` `UPDATE` on `trainees`, never `REVOKE`d) — only the UI is
+  missing, and there's no admin app shell yet to hang one on, so this is
+  recorded as a Phase 3 requirement rather than built now.
+
+**Why this way**
+No Supabase service-role key or MCP tool exists to create real Auth
+accounts from this session (`.env.example` didn't have the key; the
+Supabase MCP server's tools are all Postgres/project-management, none of
+them Auth Admin API) — confirmed before proposing anything, per AGENTS.md
+"anything touching auth" being a stop-and-ask item regardless. User chose
+to run `create-accounts.ts` themselves with their own key rather than
+hand it to an agent — the script is written so that's a clean split: it
+only touches Auth (the part that needs the key), not `packages/db`'s own
+`users`/`routes`/`trainees`/`assignments` tables (a separate step, once
+these accounts exist, that I run myself via the Supabase MCP the same way
+the criteria seed migrations were applied).
+
+The `.supervisor` username suffix is applied to **both** dual-role
+people's second account uniformly (`adam.msofe.supervisor`,
+`aron.franco.supervisor`), not just where the bare username would
+collide with an existing one — a predictable rule a future Super Admin
+tool can reapply, rather than an ad hoc fix per person.
+
+**Watch out for**
+**Arithmetic correction, mid-session:** first said "14 accounts" (2
+super_admin + 12 supervisor) in the plan; actually 13. The 10 IPT
+route-assessor slots (2 per route × 5 routes) already *include*
+`aron.franco.supervisor` as the Route 2 slot — it is not an 11th account
+on top of those 10. Only Adam Msofe's supervisor account is genuinely
+outside the 10 (he's on the TP roster, not IPT). `create-accounts.test.ts`
+caught this via `toHaveLength(14)` actually failing against 13 real
+entries — the data file itself was always correct; only the prose/test
+expectation were wrong. Worth remembering when reasoning about roster
+counts generally: "N routes × 2 assessors" and "count of distinct
+people" are not the same number the moment anyone is dual-role.
+
+This round of account creation deliberately does **not** cover: the
+other 16 TP-roster supervisors (routes 1,2,3,4,5,7,8,9), any TP trainee
+import, or a Coordinator account (no real name confirmed for that role
+anywhere yet). Only what was actually asked about.
+
+No forced-password-change-on-first-use flow exists yet (`ROADMAP.md`
+Phase 1, confirmed absent from the prototype too — see the Phase 1 auth
+research below). The one-time printed password from `create-accounts.ts`
+is a stand-in until that's built, not a replacement for it.
+
+**Verified by**
+`pnpm --filter @tathmini/db test` — 32/32 (23 existing + 9 new), `lint`
+and `typecheck` clean. `create-accounts.ts` itself not yet run against
+the real project — that's the user's step, with their own
+`SUPABASE_SERVICE_ROLE_KEY`; the `users`/`routes`/`trainees`/
+`assignments` import (migration `0007`, per the approved plan) follows
+once they confirm it succeeded.
+
+---
+
 ## 2026-09-04 · decision · IPT notices are SMS-only, never e-mail; trainees.email/phone made track-dependent
 
 **Kind:** decision
