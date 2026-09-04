@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import { AssessmentActions, type AssessmentAction } from '@/components/assessment-actions';
 import { createClient } from '@/lib/supabase/server';
 import { traineeParticulars, trackChipStyle, trackPointsLabel } from '@/lib/trainees';
 
@@ -93,9 +94,10 @@ export default async function TraineeProfilePage({ params }: { params: Promise<{
   const submittedByInstrument = new Set(
     (ownMarksRes.data ?? []).filter((m) => m.submitted_at).map((m) => m.instrument_id),
   );
-  const trackInstruments = (instrumentsRes.data ?? [])
+  const trackInstruments: AssessmentAction[] = (instrumentsRes.data ?? [])
     .filter((i) => i.track === track)
     .map((i) => ({
+      instrumentId: i.id,
       code: i.code,
       label: i.label,
       submitted: submittedByInstrument.has(i.id),
@@ -154,31 +156,7 @@ export default async function TraineeProfilePage({ params }: { params: Promise<{
           </div>
         ) : null}
 
-        {canAssess ? (
-          <div className="mt-5 flex flex-col gap-2.5">
-            {trackInstruments.map((instrument) =>
-              instrument.submitted ? (
-                <div
-                  key={instrument.code}
-                  className="flex min-h-[52px] items-center justify-between rounded-xl border border-[#dae3e0] bg-[#f1f3f4] px-4"
-                >
-                  <span className="text-[15px] font-semibold text-[#3c4c58]">
-                    {instrument.label}
-                  </span>
-                  <span className="text-[13px] font-bold text-[#1c6650]">Submitted ✓</span>
-                </div>
-              ) : (
-                <a
-                  key={instrument.code}
-                  href={`/trainee/${id}/mark/${instrument.code}`}
-                  className="focus:outline-accent flex min-h-[52px] items-center justify-center rounded-xl bg-[#12665b] text-[15px] font-bold text-white focus:outline focus:outline-[3px] focus:outline-offset-2"
-                >
-                  Start {instrument.label}
-                </a>
-              ),
-            )}
-          </div>
-        ) : null}
+        {canAssess ? <AssessmentActions traineeId={id} actions={trackInstruments} /> : null}
       </div>
     </main>
   );

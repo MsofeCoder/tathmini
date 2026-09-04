@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { MarkingForm } from '@/components/marking-form';
 import type { OfflineBundle, OfflineInstrument, OfflineTrainee } from '@/lib/db';
+import { draftKey } from '@/lib/drafts';
 import { loadOfflineBundle } from '@/lib/offline-cache';
 import { listQueued } from '@/lib/outbox';
 import { initials, trackChipStyle } from '@/lib/trainees';
@@ -22,15 +23,17 @@ import { initials, trackChipStyle } from '@/lib/trainees';
  */
 export default function OfflinePage() {
   const [bundle, setBundle] = useState<OfflineBundle | null | undefined>(undefined);
-  const [queuedCount, setQueuedCount] = useState(0);
+  const [queuedKeys, setQueuedKeys] = useState<Set<string>>(new Set());
   const [traineeId, setTraineeId] = useState<string | null>(null);
   const [instrumentId, setInstrumentId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
   useEffect(() => {
     void loadOfflineBundle().then((found) => setBundle(found ?? null));
-    void listQueued().then((queued) => setQueuedCount(queued.length));
+    void listQueued().then((queued) => setQueuedKeys(new Set(queued.map((r) => r.key))));
   }, []);
+
+  const queuedCount = queuedKeys.size;
 
   const trainee = bundle?.trainees.find((t) => t.id === traineeId) ?? null;
   const instrument = bundle?.instruments.find((i) => i.id === instrumentId) ?? null;
@@ -81,6 +84,7 @@ export default function OfflinePage() {
       <InstrumentPicker
         trainee={trainee}
         instruments={bundle.instruments.filter((i) => i.track === trainee.track)}
+        queuedKeys={queuedKeys}
         onPick={setInstrumentId}
         onBack={() => setTraineeId(null)}
       />
@@ -155,11 +159,13 @@ export default function OfflinePage() {
 function InstrumentPicker({
   trainee,
   instruments,
+  queuedKeys,
   onPick,
   onBack,
 }: {
   trainee: OfflineTrainee;
   instruments: OfflineInstrument[];
+  queuedKeys: Set<string>;
   onPick: (id: string) => void;
   onBack: () => void;
 }) {
@@ -183,16 +189,37 @@ function InstrumentPicker({
       </div>
 
       <div className="flex flex-col gap-2.5 p-4">
-        {instruments.map((instrument) =>
-          trainee.submittedInstrumentIds.includes(instrument.id) ? (
-            <div
-              key={instrument.id}
-              className="flex min-h-[52px] items-center justify-between rounded-xl border border-[#dae3e0] bg-[#f1f3f4] px-4"
-            >
-              <span className="text-[15px] font-semibold text-[#3c4c58]">{instrument.label}</span>
-              <span className="text-[13px] font-bold text-[#1c6650]">Submitted ✓</span>
-            </div>
-          ) : (
+        {instruments.map((instrument) => {
+          if (trainee.submittedInstrumentIds.includes(instrument.id)) {
+            return (
+              <div
+                key={instrument.id}
+                className="flex min-h-[52px] items-center justify-between rounded-xl border border-[#dae3e0] bg-[#f1f3f4] px-4"
+              >
+                <span className="text-[15px] font-semibold text-[#3c4c58]">{instrument.label}</span>
+                <span className="text-[13px] font-bold text-[#1c6650]">Submitted ✓</span>
+              </div>
+            );
+          }
+          if (queuedKeys.has(draftKey(trainee.id, instrument.id))) {
+            return (
+              <div
+                key={instrument.id}
+                className="rounded-xl border border-[#f0dcb4] bg-[#fffaf0] px-4 py-3"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-[15px] font-semibold text-[#3c4c58]">
+                    {instrument.label}
+                  </span>
+                  <span className="text-[13px] font-bold text-[#6b4400]">Waiting to send</span>
+                </div>
+                <p className="mt-1 text-[12.5px] leading-relaxed text-[#6b4400]">
+                  Already marked and saved on this phone. Do not mark it again.
+                </p>
+              </div>
+            );
+          }
+          return (
             <button
               key={instrument.id}
               type="button"
@@ -201,8 +228,8 @@ function InstrumentPicker({
             >
               Start {instrument.label}
             </button>
-          ),
-        )}
+          );
+        })}
         <p className="mt-1 text-[12.5px] leading-relaxed text-[#5f6f7c]">
           Marks you complete here are stored on this phone and send themselves as soon as there is a
           connection.
