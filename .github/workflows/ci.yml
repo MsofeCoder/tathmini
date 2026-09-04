@@ -55,10 +55,10 @@ jobs:
 
   # Every assertion in packages/db/pgtap/phase0.sql was first proven by
   # hand against a live Postgres 16 container (see MEMORY.md for that
-  # session); this job is what re-proves it on every PR. Note: this exact
-  # CI job — the apt-get-pgtap-into-the-service-container step in
-  # particular — has not itself been run in a real GitHub Actions
-  # environment yet. Watch the first run closely.
+  # session); this job is what re-proves it on every PR. The apt-get
+  # pgtap install step and the "psql doesn't propagate TAP failures"
+  # gotcha below were both found by running this job for real in CI —
+  # see MEMORY.md for the two bugs that surfaced and how they were fixed.
   pgtap:
     runs-on: ubuntu-latest
     services:
@@ -92,4 +92,15 @@ jobs:
           done
           psql -v ON_ERROR_STOP=1 -c "create extension if not exists pgtap;"
       - name: Run pgTAP suite
-        run: psql -v ON_ERROR_STOP=1 -f packages/db/pgtap/phase0.sql
+        # psql exits 0 regardless of how many pgTAP assertions failed —
+        # throws_ok/is/etc. never raise, they just print "not ok" text.
+        # Found this the hard way: this job reported "pass" while pgTAP
+        # itself said "failed 9 tests of 15" (see MEMORY.md). Fail the
+        # step explicitly if any assertion line reads "not ok".
+        run: |
+          set -o pipefail
+          psql -v ON_ERROR_STOP=1 -f packages/db/pgtap/phase0.sql | tee /tmp/pgtap-output.txt
+          if grep -q '^not ok' /tmp/pgtap-output.txt; then
+            echo "::error::pgTAP reported one or more failing assertions"
+            exit 1
+          fi

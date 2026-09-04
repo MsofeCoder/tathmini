@@ -47,6 +47,61 @@ the diff. This file is for knowledge that would otherwise be lost.
 
 ---
 
+## 2026-09-04 · bugfix · pgTAP suite's throws_ok calls were checking the wrong thing; CI wasn't failing on assertion failures
+
+**Kind:** bugfix
+**Phase:** 0
+**Commit / PR:** [#2](https://github.com/MsofeCoder/tathmini/pull/2)
+
+**What changed**
+Two bugs, both found by finally running the pgTAP job in real GitHub
+Actions (the previous entry below only had this dry-run against stub
+pgTAP functions, since the real extension isn't installable offline).
+The job reported "pass" while its own log said "Looks like you failed 9
+tests of 15" — the CI job wasn't failing the build, and 9 of the 15
+`throws_ok(sql, errcode, description)` calls were failing for real.
+
+Fixed `packages/db/pgtap/phase0.sql` — every `throws_ok` now uses the
+4-arg form `throws_ok(sql, errcode, null, description)`. Fixed
+`.github/workflows/ci.yml`'s pgtap job to `tee` the suite's output and
+`grep` it for `^not ok`, failing the step explicitly if found.
+
+**Why this way**
+The installed pgTAP's 3-arg `throws_ok` is `(sql, errcode, errmsg)` —
+the third argument is matched against the raised error's *message text*,
+not used as a free-text test label. Every one of the 9 failing
+assertions had the exactly correct SQLSTATE (confirmed in the job log's
+`caught:`/`wanted:` diagnostic — both showed the same code) but failed
+because my description text didn't literally match the database's real
+error message. Passing `null` for `errmsg` skips that comparison and
+checks only the SQLSTATE, which is what every one of these assertions
+actually needs to verify.
+
+Separately: pgTAP's assertion functions (`throws_ok`, `is`, etc.) never
+raise an uncaught SQL exception on failure — they catch internally and
+return a text summary. `psql -f suite.sql` therefore exits 0 regardless
+of how many assertions failed; only `finish()`'s printed tally reflects
+the truth. A CI job that just runs `psql -f ...` and trusts its exit
+code will report "pass" on a suite that is silently, completely broken.
+This is not specific to this project's suite — it is true of *any*
+pgTAP suite run this way, so the `tee`-and-`grep` pattern (or `pg_prove`,
+which does parse TAP output honestly) is required, not optional.
+
+**Watch out for**
+If a future `throws_ok` call is added without the explicit `null` in the
+3rd position, it will silently fail exactly like this — the type
+signature doesn't distinguish "errmsg" from "description" for a human
+skimming the call, only position does. Consider a project convention
+(or a lint/grep check) requiring 4-arg `throws_ok` everywhere.
+
+**Verified by**
+Real GitHub Actions run on PR #2 (`gh pr checks 2`), before and after:
+before, `pgtap` job showed "pass" with the log containing "failed 9
+tests of 15"; after, re-verify that the job both shows "pass" *and* the
+log shows "All 15 subtests passed" / no `not ok` lines.
+
+---
+
 ## 2026-09-04 · migration · Phase 0 schema, RLS, triggers and pgTAP suite (not yet applied to any database)
 
 **Kind:** migration

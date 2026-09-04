@@ -7,6 +7,15 @@
 -- against a live Postgres 16 container; see MEMORY.md for that session.
 --
 -- select plan(N) below must match the number of assertions actually run.
+--
+-- throws_ok's 3-arg form is (sql, errcode, errmsg) on the pgTAP actually
+-- installed here — NOT (sql, errcode, description) as pgTAP's docs read
+-- from memory. Confirmed the hard way: an earlier version of this file
+-- used the 3-arg form expecting the third argument to be a free-text test
+-- label, and 9 of 15 "assertions" failed in real CI because the label
+-- text didn't match the raised error message, even though every SQLSTATE
+-- was exactly right. Always use the 4-arg form below and pass NULL for
+-- errmsg to check the code only, with a real description as the 4th arg.
 
 begin;
 select plan(15);
@@ -53,6 +62,7 @@ select throws_ok(
   $$ insert into criteria (instrument_id, section_code, section_label, section_max, item_code, item_label, item_max, order_index)
      values ('30000000-0000-0000-0000-000000000001', '2', 'S2', 999, 'i', 'Bad', 1, 3) $$,
   'P0001',
+  null,
   'criteria section maxima mismatch is rejected'
 );
 
@@ -60,6 +70,7 @@ select throws_ok(
   $$ insert into assignments (trainee_id, supervisor_id, slot)
      values ('20000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', 'a2') $$,
   '23505',
+  null,
   'one supervisor cannot hold both slots for one trainee'
 );
 
@@ -72,6 +83,7 @@ select throws_ok(
      values ('40000000-0000-0000-0000-000000000099', '20000000-0000-0000-0000-000000000001',
              '30000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', 'a1') $$,
   '23505',
+  null,
   'assessment_marks is unique per (trainee, instrument, slot)'
 );
 
@@ -80,6 +92,7 @@ select throws_ok(
      select '40000000-0000-0000-0000-000000000001', id, item_max
      from criteria where instrument_id = '30000000-0000-0000-0000-000000000001' and item_code = 'i' $$,
   'P0001',
+  null,
   'a 1-of-2 submission is refused (complete-form check)'
 );
 
@@ -97,6 +110,7 @@ select throws_ok(
   $$ insert into result_revisions (result_id, superseded_total, new_total, reason, acted_by_id)
      select id, 0, 1, '   ', '00000000-0000-0000-0000-000000000004' from results limit 1 $$,
   '23514',
+  null,
   'an empty result_revisions.reason is rejected'
 );
 
@@ -158,6 +172,7 @@ select throws_ok(
   $$ update assessment_marks set total = 999
      where id = '40000000-0000-0000-0000-000000000001' $$,
   '42501',
+  null,
   'coordinator UPDATE on assessment_marks is denied at the grant level'
 );
 reset role;
@@ -168,6 +183,7 @@ select throws_ok(
   $$ update assessment_marks set total = 999
      where id = '40000000-0000-0000-0000-000000000001' $$,
   '42501',
+  null,
   'supervisor UPDATE on assessment_marks is denied at the grant level'
 );
 reset role;
@@ -178,11 +194,13 @@ select throws_ok(
   $$ update assessment_marks set total = 999
      where id = '40000000-0000-0000-0000-000000000001' $$,
   '42501',
+  null,
   'super_admin UPDATE on assessment_marks is denied at the grant level (no role gets this grant)'
 );
 select throws_ok(
   $$ delete from audit_log $$,
   '42501',
+  null,
   'DELETE on audit_log is denied for every role'
 );
 reset role;
