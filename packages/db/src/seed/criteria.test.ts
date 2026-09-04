@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   IPT_CRITERIA,
   IPT_MAX_TOTAL,
+  TP_PRACTICAL_CRITERIA,
+  TP_PRACTICAL_MAX_TOTAL,
   TP_THEORY_CRITERIA,
   TP_THEORY_MAX_TOTAL,
   type CriterionSeed,
@@ -42,6 +44,23 @@ describe('TP Theory criteria', () => {
   it('has 41 items across 10 sections, matching reference/forms/TP Theory form.txt', () => {
     expect(TP_THEORY_CRITERIA).toHaveLength(41);
     expect(sectionMaxima(TP_THEORY_CRITERIA).size).toBe(10);
+  });
+});
+
+describe('TP Practical criteria', () => {
+  checkInstrument(TP_PRACTICAL_CRITERIA, TP_PRACTICAL_MAX_TOTAL);
+
+  it('has 34 items across 5 sections, matching reference/forms/TP Practical form.txt', () => {
+    expect(TP_PRACTICAL_CRITERIA).toHaveLength(34);
+    expect(sectionMaxima(TP_PRACTICAL_CRITERIA).size).toBe(5);
+  });
+
+  it('section 2 has no duplicate item codes (source repeats "vii."; itemCode corrects the second to "viii." per user confirmation)', () => {
+    const section2Codes = TP_PRACTICAL_CRITERIA.filter((c) => c.sectionCode === '2').map(
+      (c) => c.itemCode,
+    );
+    expect(new Set(section2Codes).size).toBe(section2Codes.length);
+    expect(section2Codes).toEqual(['i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii', 'viii', 'ix', 'x']);
   });
 });
 

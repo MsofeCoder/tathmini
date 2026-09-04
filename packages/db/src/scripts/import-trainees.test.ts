@@ -175,6 +175,45 @@ describe('parseRoster / validateRoster', () => {
     expect(issues.some((i) => i.kind === 'duplicate_email')).toBe(true);
   });
 
+  it('reads a hyperlink-valued e-mail cell as its text, not "[object Object]" (real defect found importing the September 2026 TP roster)', async () => {
+    const path = join(dir, 'roster.xlsx');
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Summary');
+    sheet.addRow(['ROUTE 1', undefined, 'Mkama Maugo & Yohana Yona']);
+    sheet.addRow(HEADERS);
+    sheet.addRow([
+      1,
+      'Trainee One',
+      'REG-0001',
+      'CAVT',
+      'In-Campus',
+      'Food Production',
+      'Arusha VTC',
+      'Arusha',
+      'Arusha',
+      { text: 'trainee.one@example.test', hyperlink: 'mailto:trainee.one@example.test' },
+    ]);
+    sheet.addRow([
+      2,
+      'Trainee Two',
+      'REG-0002',
+      'CAVT',
+      'In-Campus',
+      'Food Production',
+      'Arusha VTC',
+      'Arusha',
+      'Arusha',
+      { text: 'trainee.two@example.test', hyperlink: 'mailto:trainee.two@example.test' },
+    ]);
+    sheet.addRow([]);
+    await workbook.xlsx.writeFile(path);
+
+    const rows = await parseRoster(path);
+    expect(rows[0]?.email).toBe('trainee.one@example.test');
+    expect(rows[1]?.email).toBe('trainee.two@example.test');
+    expect(validateRoster(rows)).toHaveLength(0);
+  });
+
   it('flags a row missing a required field', () => {
     const row: RosterRow = {
       route: 'ROUTE 1',

@@ -1,14 +1,9 @@
 /**
- * Verbatim criteria for TP Theory and IPT, transcribed from
- * reference/forms/TP Theory form.txt and reference/forms/IPT assessment form.txt.
- * Wording, section numbers and item letters/numbers are copied exactly —
- * never paraphrased, rounded or renumbered (AGENTS.md).
- *
- * TP Practical is deliberately NOT included here. Its verbatim source has
- * two numbering defects (a repeated "vii." in section 2; an unnumbered
- * final section) that need the user's confirmation before seeding — see
- * MEMORY.md. Seeding it with a guessed fix would violate the same rule
- * this file exists to honour.
+ * Verbatim criteria for TP Theory, TP Practical, and IPT, transcribed from
+ * reference/forms/TP Theory form.txt, reference/forms/TP Practical form.txt,
+ * and reference/forms/IPT assessment form.txt. Wording, section numbers and
+ * item letters/numbers are copied exactly — never paraphrased, rounded or
+ * renumbered (AGENTS.md) — with one recorded exception, below.
  */
 
 export interface CriterionSeed {
@@ -369,6 +364,312 @@ export const TP_THEORY_CRITERIA: CriterionSeed[] = [
     sectionMax: 5,
     itemCode: 'iii',
     itemLabel: 'Acceptance of the advice given by the examiner',
+    itemMax: 1,
+  },
+];
+
+export const TP_PRACTICAL_MAX_TOTAL = 50;
+
+/**
+ * "PERSONALITY ATRIBUTIES" is copied verbatim (source misspelling, not
+ * ours to correct — same rule that keeps "intergraded"/"though" below
+ * as the source has them, not "integrated"/"though" harmonized to match
+ * each other).
+ *
+ * One recorded, user-approved exception to strict verbatim transcription:
+ * the source ("Fomu ya Assessment TP_Practical Final.docx", 2026-09-04)
+ * has two items both labeled "vii." in section 2 — "Emphasized safely
+ * measure" and "Practical performance intergraded with knowledge thought
+ * oral questioning" — with "viii." skipped entirely. The user confirmed
+ * the second one should be item "viii.". reference/forms/TP Practical
+ * form.txt is NOT changed to match (it stays a literal transcription of
+ * what the document says); only this itemCode reflects the correction.
+ * See MEMORY.md.
+ */
+export const TP_PRACTICAL_CRITERIA: CriterionSeed[] = [
+  // 1 · LESSON PREPARATION (15)
+  {
+    sectionCode: '1',
+    sectionLabel: 'LESSON PREPARATION',
+    sectionMax: 15,
+    itemCode: 'i',
+    itemLabel: 'Availability of scheme of training',
+    itemMax: 1,
+  },
+  {
+    sectionCode: '1',
+    sectionLabel: 'LESSON PREPARATION',
+    sectionMax: 15,
+    itemCode: 'ii',
+    itemLabel: 'Availability of lesson plan',
+    itemMax: 1,
+  },
+  {
+    sectionCode: '1',
+    sectionLabel: 'LESSON PREPARATION',
+    sectionMax: 15,
+    itemCode: 'iii',
+    itemLabel: 'Ability to set learning objectives',
+    itemMax: 1,
+  },
+  {
+    sectionCode: '1',
+    sectionLabel: 'LESSON PREPARATION',
+    sectionMax: 15,
+    itemCode: 'iv',
+    itemLabel: 'Prepare appropriate task',
+    itemMax: 2,
+  },
+  {
+    sectionCode: '1',
+    sectionLabel: 'LESSON PREPARATION',
+    sectionMax: 15,
+    itemCode: 'v',
+    itemLabel: 'Take account on safety requirements',
+    itemMax: 1,
+  },
+  {
+    sectionCode: '1',
+    sectionLabel: 'LESSON PREPARATION',
+    sectionMax: 15,
+    itemCode: 'vi',
+    itemLabel:
+      'Select training material/aids appropriate to the nature of the task and level of trainees',
+    itemMax: 2,
+  },
+  {
+    sectionCode: '1',
+    sectionLabel: 'LESSON PREPARATION',
+    sectionMax: 15,
+    itemCode: 'vii',
+    itemLabel: 'Select training tools/machine/equipment',
+    itemMax: 1,
+  },
+  {
+    sectionCode: '1',
+    sectionLabel: 'LESSON PREPARATION',
+    sectionMax: 15,
+    itemCode: 'viii',
+    itemLabel: 'Ability to integrate environmental issues into his occupational practice',
+    itemMax: 1,
+  },
+  {
+    sectionCode: '1',
+    sectionLabel: 'LESSON PREPARATION',
+    sectionMax: 15,
+    itemCode: 'ix',
+    itemLabel: 'Preparation of information sheet',
+    itemMax: 1,
+  },
+  {
+    sectionCode: '1',
+    sectionLabel: 'LESSON PREPARATION',
+    sectionMax: 15,
+    itemCode: 'x',
+    itemLabel: 'Preparation of assessment sheet',
+    itemMax: 2,
+  },
+  {
+    sectionCode: '1',
+    sectionLabel: 'LESSON PREPARATION',
+    sectionMax: 15,
+    itemCode: 'xi',
+    itemLabel: 'setting a target time for a task',
+    itemMax: 1,
+  },
+  {
+    sectionCode: '1',
+    sectionLabel: 'LESSON PREPARATION',
+    sectionMax: 15,
+    itemCode: 'xii',
+    itemLabel: 'Organizing student in groups',
+    itemMax: 1,
+  },
+
+  // 2 · PRACTICAL SESSION DELIVERY (20)
+  {
+    sectionCode: '2',
+    sectionLabel: 'PRACTICAL SESSION DELIVERY',
+    sectionMax: 20,
+    itemCode: 'i',
+    itemLabel: 'Arranging workshop as per given task and observing safely requirements',
+    itemMax: 2,
+  },
+  {
+    sectionCode: '2',
+    sectionLabel: 'PRACTICAL SESSION DELIVERY',
+    sectionMax: 20,
+    itemCode: 'ii',
+    itemLabel: 'Task explained clearly and key element emphasized',
+    itemMax: 2,
+  },
+  {
+    sectionCode: '2',
+    sectionLabel: 'PRACTICAL SESSION DELIVERY',
+    sectionMax: 20,
+    itemCode: 'iii',
+    itemLabel: 'Ability to use requirement material',
+    itemMax: 1,
+  },
+  {
+    sectionCode: '2',
+    sectionLabel: 'PRACTICAL SESSION DELIVERY',
+    sectionMax: 20,
+    itemCode: 'iv',
+    itemLabel: 'Ability to demonstrate clearly',
+    itemMax: 3,
+  },
+  {
+    sectionCode: '2',
+    sectionLabel: 'PRACTICAL SESSION DELIVERY',
+    sectionMax: 20,
+    itemCode: 'v',
+    itemLabel: 'Demonstrated mastery of his/her occupation competently',
+    itemMax: 2,
+  },
+  {
+    sectionCode: '2',
+    sectionLabel: 'PRACTICAL SESSION DELIVERY',
+    sectionMax: 20,
+    itemCode: 'vi',
+    itemLabel: 'Task performed by trainee, mistakes corrected',
+    itemMax: 3,
+  },
+  {
+    sectionCode: '2',
+    sectionLabel: 'PRACTICAL SESSION DELIVERY',
+    sectionMax: 20,
+    itemCode: 'vii',
+    itemLabel: 'Emphasized safely measure',
+    itemMax: 2,
+  },
+  {
+    // See file-level comment: source has this as a second "vii.";
+    // corrected to "viii." here per the user's explicit confirmation.
+    sectionCode: '2',
+    sectionLabel: 'PRACTICAL SESSION DELIVERY',
+    sectionMax: 20,
+    itemCode: 'viii',
+    itemLabel: 'Practical performance intergraded with knowledge thought oral questioning',
+    itemMax: 2,
+  },
+  {
+    sectionCode: '2',
+    sectionLabel: 'PRACTICAL SESSION DELIVERY',
+    sectionMax: 20,
+    itemCode: 'ix',
+    itemLabel: 'Compliance of the subject matter with environment',
+    itemMax: 1,
+  },
+  {
+    sectionCode: '2',
+    sectionLabel: 'PRACTICAL SESSION DELIVERY',
+    sectionMax: 20,
+    itemCode: 'x',
+    itemLabel: 'Ability of questioning and handling learners responses',
+    itemMax: 2,
+  },
+
+  // 3 · TRAINEES, ASSESSMENT (8)
+  {
+    sectionCode: '3',
+    sectionLabel: 'TRAINEES, ASSESSMENT',
+    sectionMax: 8,
+    itemCode: 'i',
+    itemLabel: 'Process assessment done and safely measures observed',
+    itemMax: 3,
+  },
+  {
+    sectionCode: '3',
+    sectionLabel: 'TRAINEES, ASSESSMENT',
+    sectionMax: 8,
+    itemCode: 'ii',
+    itemLabel: 'Final product assessed as per set standards/ criteria',
+    itemMax: 2,
+  },
+  {
+    sectionCode: '3',
+    sectionLabel: 'TRAINEES, ASSESSMENT',
+    sectionMax: 8,
+    itemCode: 'iii',
+    itemLabel: 'Practical performance intergraded with knowledge though oral questioning',
+    itemMax: 1,
+  },
+  {
+    sectionCode: '3',
+    sectionLabel: 'TRAINEES, ASSESSMENT',
+    sectionMax: 8,
+    itemCode: 'iv',
+    itemLabel: 'Trainees progress monitored and recorded',
+    itemMax: 1,
+  },
+  {
+    sectionCode: '3',
+    sectionLabel: 'TRAINEES, ASSESSMENT',
+    sectionMax: 8,
+    itemCode: 'v',
+    itemLabel: 'Work area cleaned, tools and equipment stored as required',
+    itemMax: 1,
+  },
+
+  // 4 · SELF EXPRESSION (3)
+  {
+    sectionCode: '4',
+    sectionLabel: 'SELF EXPRESSION',
+    sectionMax: 3,
+    itemCode: 'i',
+    itemLabel:
+      'Speaking and communication skills(confidence, clarity, lucidity fluency, articulation and appropriateness',
+    itemMax: 1,
+  },
+  {
+    sectionCode: '4',
+    sectionLabel: 'SELF EXPRESSION',
+    sectionMax: 3,
+    itemCode: 'ii',
+    itemLabel: 'Audibility of his/her voice',
+    itemMax: 1,
+  },
+  {
+    sectionCode: '4',
+    sectionLabel: 'SELF EXPRESSION',
+    sectionMax: 3,
+    itemCode: 'iii',
+    itemLabel: 'Logic and ability of explaining items',
+    itemMax: 1,
+  },
+
+  // 5 · PERSONALITY ATRIBUTIES (4)
+  {
+    sectionCode: '5',
+    sectionLabel: 'PERSONALITY ATRIBUTIES',
+    sectionMax: 4,
+    itemCode: 'i',
+    itemLabel: 'Gentleness and appropriate language to learners',
+    itemMax: 1,
+  },
+  {
+    sectionCode: '5',
+    sectionLabel: 'PERSONALITY ATRIBUTIES',
+    sectionMax: 4,
+    itemCode: 'ii',
+    itemLabel: 'Neatness and proper dressing',
+    itemMax: 1,
+  },
+  {
+    sectionCode: '5',
+    sectionLabel: 'PERSONALITY ATRIBUTIES',
+    sectionMax: 4,
+    itemCode: 'iii',
+    itemLabel: 'Emphasized to trainees on occupation ethics',
+    itemMax: 1,
+  },
+  {
+    sectionCode: '5',
+    sectionLabel: 'PERSONALITY ATRIBUTIES',
+    sectionMax: 4,
+    itemCode: 'iv',
+    itemLabel: 'Provide a model of good occupational practices',
     itemMax: 1,
   },
 ];

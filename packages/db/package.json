@@ -11,11 +11,16 @@
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
-    "import:trainees": "tsx src/scripts/import-trainees.ts"
+    "import:trainees": "tsx src/scripts/import-trainees.ts",
+    "import:ipt-roster": "tsx src/scripts/import-ipt-roster.ts",
+    "create:accounts": "tsx src/scripts/create-accounts.ts",
+    "generate:tp-import-sql": "tsx src/scripts/generate-tp-import-sql.ts"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.115.0",
     "drizzle-orm": "^0.38.2",
-    "postgres": "^3.4.5"
+    "postgres": "^3.4.5",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "drizzle-kit": "^0.30.1",

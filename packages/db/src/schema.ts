@@ -27,8 +27,10 @@ import {
  *   complete-form check and the total can be enforced/maintained by
  *   ordinary constraints and triggers instead of application code.
  *
- * Not yet applied to any database — no Supabase project is connected from
- * here. This is DDL for review, per PLAN.md 0.2 ("show the SQL and wait").
+ * Applied to the College's real Supabase project (`azlwxriyhdshfhklonrx`)
+ * via migrations 0000–0004 (2026-09-04, see MEMORY.md). Still the source
+ * of truth for packages/db/migrations/ — generate new migrations from
+ * changes here via `drizzle-kit generate`, per packages/db/README.md.
  */
 
 export const appRoleEnum = pgEnum('app_role', ['supervisor', 'coordinator', 'super_admin']);
@@ -50,6 +52,12 @@ export const users = pgTable('users', {
   name: text('name').notNull(),
   email: text('email').notNull().unique(),
   active: boolean('active').notNull().default(true),
+  // True until the holder signs in and sets their own password (accounts
+  // are admin-provisioned with a generated one-time password — no
+  // self-registration, per CONTEXT.md). Cleared via the
+  // clear_own_password_change_flag() RPC (migration 0009), not a direct
+  // UPDATE — no RLS grant lets a user write their own row otherwise.
+  mustChangePassword: boolean('must_change_password').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -1,9 +1,11 @@
 # @tathmini/db
 
 Drizzle schema, RLS/functions migrations, seed data, and the pgTAP suite.
-No Supabase project is connected yet (`ROADMAP.md` Phase 0) — everything
-here has instead been verified against a local Postgres. This file
-documents that workflow so it's reproducible without re-deriving it.
+The College's real Supabase project is now connected (`azlwxriyhdshfhklonrx`;
+migrations `0000`–`0004` applied 2026-09-04, see `MEMORY.md`). Every schema
+change is still proven against a local Postgres first, exactly as below,
+before it goes anywhere near the real project — this file documents that
+workflow so it's reproducible without re-deriving it.
 
 ## Layout
 

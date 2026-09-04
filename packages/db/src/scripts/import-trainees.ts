@@ -23,6 +23,7 @@
  * round of real data-quality issues (see MEMORY.md).
  */
 
+import { pathToFileURL } from 'node:url';
 import ExcelJS from 'exceljs';
 
 export interface RosterRow {
@@ -46,9 +47,32 @@ export interface ValidationIssue {
   rows: RosterRow[];
 }
 
+/**
+ * ExcelJS represents some cells as an object rather than a primitive —
+ * a hyperlink (`mailto:` links on an email column, in practice, are
+ * exactly this), rich text, or a formula result. `String(v)` on any of
+ * these silently produces the literal text "[object Object]" instead of
+ * throwing, so a naive cell() falsely flagged 17 real, distinct e-mail
+ * addresses as one "duplicate" shared by all of them — found importing
+ * the real September 2026 roster. See MEMORY.md.
+ */
 function cell(row: ExcelJS.Row, col: number): string {
   const v = row.getCell(col).value;
   if (v === null || v === undefined) return '';
+  if (typeof v === 'object') {
+    if ('text' in v && typeof v.text === 'string') return v.text.trim();
+    if ('richText' in v && Array.isArray(v.richText)) {
+      return v.richText
+        .map((r) => r.text)
+        .join('')
+        .trim();
+    }
+    if ('result' in v && v.result !== null && v.result !== undefined) {
+      return String(v.result).trim();
+    }
+    if (v instanceof Date) return v.toISOString().trim();
+    return '';
+  }
   return String(v).trim();
 }
 
@@ -175,6 +199,9 @@ async function main() {
   console.log('Roster is valid. No DATABASE_URL wired up yet — nothing was written.');
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Naive `file://${process.argv[1]}` comparison never matches on Windows
+// (import.meta.url is `file:///C:/...`, argv[1] is `C:\...`) — pathToFileURL
+// normalizes both correctly cross-platform.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main();
 }
