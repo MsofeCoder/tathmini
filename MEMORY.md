@@ -47,6 +47,73 @@ the diff. This file is for knowledge that would otherwise be lost.
 
 ---
 
+## 2026-09-05 · security · Supabase env vars dropped the NEXT_PUBLIC_ prefix; unused browser client deleted
+
+**Kind:** security
+**Phase:** 1
+**Commit / PR:** (pending)
+
+**What changed**
+`NEXT_PUBLIC_SUPABASE_URL` → `SUPABASE_URL` and
+`NEXT_PUBLIC_SUPABASE_ANON_KEY` → `SUPABASE_ANON_KEY`, everywhere they
+are read: `apps/web/src/lib/supabase/server.ts`,
+`apps/web/src/middleware.ts`,
+`packages/db/src/scripts/create-accounts.ts`, plus `.env.example`,
+`README.md` and the local `apps/web/.env.local`.
+
+`apps/web/src/lib/supabase/client.ts` (a `createBrowserClient` wrapper)
+was deleted. Nothing imported it — confirmed by grep and by scanning
+every client chunk of the deployed bundle, which contains no Supabase
+URL at all. After the rename it would have read two `undefined` values
+in the browser, so leaving it in place was a trap rather than a
+convenience. Restore it from git history if a browser client is ever
+genuinely needed, and give it its own explicitly public env vars.
+
+**Why this way**
+The prefix was never doing anything. Every Supabase call in this app is
+server-side — server components, Server Actions, and the middleware
+session check — so `NEXT_PUBLIC_` only inlined both values into the
+client bundle for no benefit. The anon key is public by design and RLS
+is the real boundary, so this is defence in depth, not a fix for a
+vulnerability: it narrows what ships to a shared field device.
+
+**Watch out for**
+Two things.
+
+1. **The Vercel environment variables must be renamed to match**, or
+   every sign-in fails. There is no error: the app renders normally and
+   the Server Action returns the ordinary "That username and password do
+   not match an account issued by the Administrator" copy, because
+   `signInWithPassword` simply errors and `login/actions.ts` maps any
+   error to that one message. It reads as a bad password, not as
+   misconfiguration.
+2. That exact failure was already live on
+   `https://tathmini-web.vercel.app` **before** this change, with the
+   old names — `test.supervisor` was rejected in a real browser while
+   the same credentials authenticated fine against
+   `azlwxriyhdshfhklonrx` directly and through a local dev server on the
+   same `.env.local`. So the deployed project's variables were already
+   wrong (mismatched, truncated, or Preview-only). Renaming them is now
+   the same operation as fixing them.
+
+Also fixed in passing: `pnpm lint` had been failing since the Next
+15.5 upgrade because the regenerated `next-env.d.ts` emits a
+triple-slash reference to `.next/types/routes.d.ts`. It is generated and
+self-documented as "should not be edited", so it is now in
+`apps/web/eslint.config.mjs`'s `ignores`.
+
+**Verified by**
+`pnpm lint && pnpm test && pnpm typecheck` clean (112 tests),
+`pnpm format:check` clean, `pnpm --filter @tathmini/web build` clean
+with every route under the 180 KB budget. Then a real Chromium browser
+(mobile viewport, over the LAN at `172.16.11.190:3187`) signed in as
+`test.supervisor` and landed on `/home` with the real route list —
+proving the renamed variables resolve at runtime in both the middleware
+and the Server Action. Confirmed afterwards that no built client chunk
+contains the project ref or the key.
+
+---
+
 ## 2026-09-04 · feature · Offline marking made real: route snapshot in IndexedDB, /offline entry point, submit outbox, service worker
 
 **Kind:** feature

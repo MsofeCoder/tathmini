@@ -6,7 +6,7 @@
  * would skip GoTrue's own bookkeeping (password hashing, confirmation
  * state) and likely not produce a working account.
  *
- * Needs SUPABASE_SERVICE_ROLE_KEY and NEXT_PUBLIC_SUPABASE_URL in the
+ * Needs SUPABASE_SERVICE_ROLE_KEY and SUPABASE_URL in the
  * environment. This key is never something an agent should hold — run
  * this yourself, locally, with your own .env.local. See MEMORY.md for why
  * account creation went this route instead of any other.
@@ -93,10 +93,10 @@ export async function createAccounts(
 }
 
 async function main() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const url = process.env.SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !serviceRoleKey) {
-    console.error('Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.');
+    console.error('Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.');
     process.exitCode = 1;
     return;
   }
