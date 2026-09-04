@@ -1,0 +1,70 @@
+# Tathmini
+
+Digital assessment sheet for Morogoro Vocational Teachers' Training College
+(MVTTC), replacing the paper-based VETA Teaching Practice (TP) and Industrial
+Practical Training (IPT) assessment forms with an offline-first PWA.
+
+**Start here, not in this file:**
+
+1. [`AGENTS.md`](./AGENTS.md) — operating rules for working in this repo
+2. [`CONTEXT.md`](./CONTEXT.md) — the domain, the roles, decisions already made
+3. [`ROADMAP.md`](./ROADMAP.md) — which phase is active and its exit gate
+4. [`MEMORY.md`](./MEMORY.md) — the project's append-only decision log
+
+This file is the human quickstart only — how to get the workspace running
+locally. It does not duplicate the "why" that lives in the files above.
+
+## Stack
+
+pnpm workspace · Next.js 15 (App Router) · React 19 · TypeScript strict ·
+Tailwind CSS v4 · Supabase (Postgres 16, Auth, Storage) · Drizzle ORM ·
+Zod · Vitest · pgTAP. See `AGENTS.md` § Stack for the full, fixed list and
+what was rejected.
+
+## Layout
+
+```
+apps/web           Next.js PWA (supervisor, coordinator, admin surfaces)
+packages/shared     Zod schemas + grading engine, imported by client and server
+packages/db         Drizzle schema, migrations, RLS/functions, pgTAP suite, seed data
+reference/          The prototype, verbatim VETA forms, architecture doc — read-only
+```
+
+## Prerequisites
+
+- Node.js ≥ 20, pnpm ≥ 9 (`corepack enable` will pick up the pinned version)
+- Docker, for running Postgres locally (no hosted Supabase project exists yet
+  — see `ROADMAP.md` Phase 0)
+
+## Getting started
+
+```bash
+pnpm install
+pnpm lint && pnpm typecheck && pnpm test
+pnpm --filter @tathmini/web dev   # http://localhost:3000
+```
+
+## Database
+
+There is no Supabase project connected yet (`ROADMAP.md` Phase 0). The
+schema and RLS migrations are written and verified against a local
+throwaway Postgres — see [`packages/db/README.md`](./packages/db/README.md)
+for the exact local workflow, including how to apply the migrations and
+run the pgTAP suite without a Supabase project.
+
+## Environment variables
+
+Copy `.env.example` to `.env.local` and fill in what you have. Nothing is
+required to run `pnpm lint`/`typecheck`/`test`/`build` — see the comments
+in `.env.example` for what each variable gates.
+
+## Conventions
+
+- **pnpm only** — never npm or yarn.
+- **Conventional Commits**, enforced by a commit-msg hook
+  (`feat:`, `fix:`, `chore:`, `refactor:`, `test:`, `docs:`, `db:`, `ci:`).
+- **PRs required** — no direct commits to `main`. See `AGENTS.md` for what
+  needs explicit sign-off before it merges (migrations, RLS, auth, anything
+  that could alter a stored mark).
+- `pnpm lint && pnpm test && pnpm typecheck` must be clean before a PR is
+  called done.

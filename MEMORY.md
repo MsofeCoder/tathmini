@@ -47,6 +47,51 @@ the diff. This file is for knowledge that would otherwise be lost.
 
 ---
 
+## 2026-09-04 · ops · Operations-baseline docs: README, packages/db/README, .env.example
+
+**Kind:** ops
+**Phase:** 0
+**Commit / PR:** (pending — see below)
+
+**What changed**
+Root `README.md` (human quickstart — stack, layout, prerequisites,
+`pnpm install && pnpm dev`, pointers to `AGENTS.md`/`CONTEXT.md`/
+`ROADMAP.md` for the "why"). `packages/db/README.md` documents the exact
+local-Postgres workflow this session built and used to verify the schema
+and pgTAP suite without a Supabase project — applying migrations,
+running pgTAP, changing the schema, importing the roster. `.env.example`
+lists the two environment variables actually read by code today
+(`DATABASE_URL`, `TRAINEE_REGISTER_PATH`) plus commented-out Supabase/
+Sentry placeholders for Phase 0.5, none of which are wired up yet.
+
+**Why this way**
+`ROADMAP.md` Phase 0 names "Supabase CLI local dev + migration workflow
+documented" as an exit-relevant task; the Supabase-project half of that
+needs an account only the user can provide, but the Postgres-level half
+(how to apply the migrations, run pgTAP, without any Supabase project at
+all) was already fully worked out and verified in the previous session
+and was undocumented anywhere but this file's own entries — worth
+writing down properly rather than leaving it to be re-derived.
+
+**Watch out for**
+`packages/db/README.md`'s commands were re-verified end to end against a
+fresh container while writing this entry, not just carried over from
+memory — the first draft actually had two real mistakes: `docker cp`'s
+destination doesn't need the `//tmp/` MSYS escape (only bare `docker exec
+... -f /tmp/x` does; `docker cp`'s `container:/tmp/x` argument doesn't
+start with `/` so MSYS leaves it alone), and `docker exec container ls
+/tmp/x` used as a verification step is *itself* broken by the same
+mangling — don't trust a first pass at documenting a workaround for a
+path-mangling bug without re-running it fresh afterward.
+
+**Verified by**
+Fresh `docker run` → apply auth stub → apply both migrations → install
+pgtap → run `pgtap/phase0.sql`, using the exact commands now in
+`packages/db/README.md`, all 15 assertions passing. `pnpm lint && pnpm
+test && pnpm typecheck` clean.
+
+---
+
 ## 2026-09-04 · bugfix · pgTAP suite's throws_ok calls were checking the wrong thing; CI wasn't failing on assertion failures
 
 **Kind:** bugfix
