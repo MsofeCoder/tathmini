@@ -76,13 +76,25 @@ served natively.
 
 Set these in the Vercel project (Production _and_ Preview):
 
-| Variable                        | Where to get it       |
-| ------------------------------- | --------------------- |
-| `NEXT_PUBLIC_SUPABASE_URL`      | `apps/web/.env.local` |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `apps/web/.env.local` |
+| Variable            | Where to get it       |
+| ------------------- | --------------------- |
+| `SUPABASE_URL`      | `apps/web/.env.local` |
+| `SUPABASE_ANON_KEY` | `apps/web/.env.local` |
 
-Both are safe to expose — the anon key is public by design; RLS is what
-guards the data.
+Note the **absence of a `NEXT_PUBLIC_` prefix** — that is deliberate and
+the names must match exactly. Every Supabase call is server-side
+(`src/lib/supabase/server.ts` and `src/middleware.ts`); nothing in the
+browser reads these, so the prefix would only inline both values into
+the client bundle for no benefit. Adding it back would not break the
+app, which is precisely why it is worth stating: it would silently widen
+exposure. The anon key is public by design and RLS is the real
+boundary — keeping it server-only is defence in depth.
+
+A mismatched or truncated `SUPABASE_ANON_KEY` does not fail loudly. The
+app renders normally and every sign-in returns "That username and
+password do not match an account issued by the Administrator", which
+looks like a credentials problem rather than a configuration one. If
+sign-in fails for an account you know is good, check this first.
 
 Set the function region to **Cape Town (`cpt1`)** if the plan allows it.
 The default (US East) puts a transatlantic round trip on every render,
