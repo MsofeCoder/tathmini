@@ -2,6 +2,11 @@
 
 Claude Code entry point for Tathmini.
 
+> **If [`HANDOFF.md`](./HANDOFF.md) exists in this repo, read it first** —
+> it's a dated, disposable briefing for a session that just picked this
+> project up mid-sprint. It doesn't override anything below; it just says
+> where to start.
+
 **All working rules live in [`AGENTS.md`](./AGENTS.md). Read it before anything
 else.** This file exists only because Claude Code loads `CLAUDE.md` by name.
 

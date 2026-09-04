@@ -1,0 +1,90 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1788507867264,
+      "tag": "0000_perfect_venom",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1788507884844,
+      "tag": "0001_rls_and_functions",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788516114284,
+      "tag": "0002_icy_cerebro",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788516126606,
+      "tag": "0003_trainees_track_contact_check",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788525070576,
+      "tag": "0004_fix_chain_audit_log_digest_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788525936690,
+      "tag": "0005_seed_tp_theory_ipt_criteria",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788526649508,
+      "tag": "0006_seed_tp_practical_criteria",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788534577187,
+      "tag": "0007_import_ipt_roster_data",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1788535535883,
+      "tag": "0008_import_tp_roster_data",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1788537390259,
+      "tag": "0009_users_must_change_password",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788537928874,
+      "tag": "0010_link_dev_accounts",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1788539072015,
+      "tag": "0011_test_route_and_trainees",
+      "breakpoints": true
+    }
+  ]
+}

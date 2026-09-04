@@ -34,13 +34,13 @@ S/N  |  AREA OF ASSESSMENT  | TOTAL POINTS  | POINTS DISTRIBUTION  | POINTS AWAR
 | I. Speaking and communication skills(confidence, clarity, lucidity fluency, articulation and appropriateness  |   | 1  |   |   |
 | Ii .Audibility of his/her voice  |   | 1  |   |   |
 | Iii.  Logic and ability of explaining items  |   | 1  |   |   |
-| PERSONALITY ATRIBUTIES  |   4   |   |   |   |
+5  | PERSONALITY ATRIBUTIES  |   4   |   |   |   |
 | i. Gentleness and appropriate language  to learners  |   | 1  |   |   |
 | ii. Neatness  and proper  dressing  |   | 1  |   |   |
 | iii. Emphasized to trainees on occupation ethics  |   | 1  |   |   |
 | iv. Provide a model of good occupational practices  |   | 1  |   |   |
 | TOTAL  | 50  | 50  |   |   |
-|   |   |   |   |   |     SUPERVISOR’S GENERAL COMMENTS: …………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………  KEY:
+|   |   |   |   |   |     SUPERVISOR’S GENERAL COMMENTS: …………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………………  KEY:
 Grade  | A  | B  | C  | D  | F  |
 Score Range  | 80 – 100%  | 65 – 79%  | 50 – 64%  | 40 – 49%  | 00 – 39%  |
 | Excellent  | Very Good  | Good  | Poor  | Fail  |
@@ -48,7 +48,28 @@ Class of award  | First Class  | Second Class  | Pass  |   |   |
 GPA  | 3.5 – 4.0  | 3.0 – 3.4  | 2.0 – 2.9  |   |   |  Note: Candidates with grade A, B and C will qualify for NTA Level 5  TOTAL MARKS`GRADE
 Please put a Tick "√" in the appropriate box below:   |   |   |   |   |
 | Standard attained  | Standard yet to be attained  |
-|    |    |
+|    |    |
 |   |   |
 |   |
 NB: Standard will have been attained if the total marks assessed reaches 50% and above.  |    SUPERVISOR’S NAME………………………………..………..…… SIGNATURE ……………………………     DATE …………….………..
+
+--- Source correction record (see MEMORY.md) ---
+Source: "Fomu ya Assessment TP_Practical Final.docx" (user-supplied corrected
+copy, 2026-09-04), superseding the earlier scanned/transcribed .txt this file
+used to hold. Two defects were tracked against that earlier source:
+
+1. Section 5 ("PERSONALITY ATRIBUTIES" [sic — verbatim, not a typo we fix])
+   had no S/N number in the original. FIXED in the .docx: now explicitly
+   numbered "5". Reflected above.
+
+2. Section 2 (PRACTICAL SESSION DELIVERY) still has two items both labeled
+   "vii." — "vii. Emphasized safely measure" and "vii. Practical performance
+   intergraded with knowledge thought oral questioning" — with "viii."
+   skipped entirely. This is UNCHANGED in the corrected .docx; still present
+   verbatim above, exactly as the source document has it. The user confirmed
+   (2026-09-04) that the second "vii." (the "Practical performance
+   intergraded..." item) should be treated as item "viii." for our purposes.
+   `packages/db/src/seed/criteria.ts` applies that correction when
+   transcribing into `itemCode` — this file stays a literal transcription of
+   the source and is deliberately NOT changed to match, so it still reflects
+   what the actual document says.
