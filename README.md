@@ -46,11 +46,40 @@ pnpm --filter @tathmini/web dev   # http://localhost:3000
 
 ## Database
 
-There is no Supabase project connected yet (`ROADMAP.md` Phase 0). The
-schema and RLS migrations are written and verified against a local
-throwaway Postgres — see [`packages/db/README.md`](./packages/db/README.md)
-for the exact local workflow, including how to apply the migrations and
-run the pgTAP suite without a Supabase project.
+The College's Supabase project (`af-south-1`) is connected and every
+migration in `packages/db/migrations/` is applied to it. Prove a schema
+change against a local throwaway Postgres before applying it live — see
+[`packages/db/README.md`](./packages/db/README.md) for that workflow,
+including how to run the pgTAP suite without touching the real project.
+
+## Deployment (Vercel)
+
+`vercel.json` at the repo root already tells Vercel how to build this
+pnpm workspace, so **leave the project's Root Directory as the repo
+root** — do not set it to `apps/web`, or the workspace packages
+(`@tathmini/shared`) will not resolve.
+
+Set these in the Vercel project (Production *and* Preview):
+
+| Variable | Where to get it |
+|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | `apps/web/.env.local` |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `apps/web/.env.local` |
+
+Both are safe to expose — the anon key is public by design; RLS is what
+guards the data.
+
+Set the function region to **Cape Town (`cpt1`)** if the plan allows it.
+The default (US East) puts a transatlantic round trip on every render,
+and `/home` alone issues seven Supabase queries plus the middleware auth
+check.
+
+**After the first deploy, check `https://<domain>/sw.js` returns
+JavaScript, not a 404.** It is generated into `apps/web/public/` during
+the build and is gitignored; if it is missing, the service worker never
+registers and offline support is silently dead. Also confirm `/offline`
+loads without a session — it is a public path by design (see
+`middleware.ts`).
 
 ## Environment variables
 
