@@ -59,11 +59,11 @@ pnpm workspace, so **leave the project's Root Directory as the repo
 root** — do not set it to `apps/web`, or the workspace packages
 (`@tathmini/shared`) will not resolve.
 
-Set these in the Vercel project (Production *and* Preview):
+Set these in the Vercel project (Production _and_ Preview):
 
-| Variable | Where to get it |
-|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | `apps/web/.env.local` |
+| Variable                        | Where to get it       |
+| ------------------------------- | --------------------- |
+| `NEXT_PUBLIC_SUPABASE_URL`      | `apps/web/.env.local` |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `apps/web/.env.local` |
 
 Both are safe to expose — the anon key is public by design; RLS is what
