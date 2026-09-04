@@ -63,7 +63,7 @@ explicit approval, not an agent's judgement.
 | Data residency | Managed Supabase, **`af-south-1` Cape Town**. Not Tanzania-hosted. |
 | Super Admin may correct a mark? | **Yes** — but only as a *superseding revision* with a typed reason. Original stays visible forever. Never an in-place edit. |
 | Two assessors far apart? | **Just average.** No flagging, no third assessor, no divergence threshold. |
-| Trainee accounts? | **None.** Trainees receive their PDF by e-mail only. |
+| Trainee accounts? | **None.** TP trainees receive their PDF by e-mail. IPT trainees receive SMS only, never e-mail — the real registers show why: the TP register captures an e-mail address per trainee and no phone; the IPT register captures a phone number and no e-mail. Gate the channel by track, don't offer a channel the College has no data for. |
 | GPS stamp at submission? | **Never build it.** The College declined it as staff surveillance. |
 | Result retention | 24 months of archives for VETA audit. |
 | Assessor independence | Assessor 2 must not be able to see Assessor 1's marks before both submit. Enforce in the database. |

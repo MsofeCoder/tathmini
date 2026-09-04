@@ -69,19 +69,36 @@ export const routes = pgTable('routes', {
 
 // ── Trainees ──────────────────────────────────────────────────────
 
+/**
+ * `email`/`phone` are both nullable, but never both null in practice — see
+ * the `trainees_track_contact_check` CHECK constraint in the companion
+ * SQL. The real September 2026 rosters showed this is track-dependent,
+ * not optional: the TP register has an e-mail column and no phone
+ * column; the IPT register has a phone column and no e-mail column. That
+ * is also why TP notices go by e-mail and IPT notices go by SMS only —
+ * a College data-collection fact, not an arbitrary product choice.
+ *
+ * `registrationNumber` is nullable because the only IPT source seen so
+ * far (a route/assessor planning sheet, not a full register — see
+ * MEMORY.md) has no registration-number column at all, even though the
+ * printed IPT form itself has a "Registration/Index No." field. Treat a
+ * null here as "not yet backfilled from the real register," not as
+ * IPT trainees having no registration number.
+ */
 export const trainees = pgTable(
   'trainees',
   {
     id: uuid('id').primaryKey().defaultRandom(),
     name: text('name').notNull(),
-    registrationNumber: text('registration_number').notNull().unique(),
+    registrationNumber: text('registration_number').unique(),
     course: text('course').notNull(), // CAVT / TC-TVTE / OD-TVTE, from the roster
     modeOfStudy: text('mode_of_study'), // In-Campus / ODeL
-    occupation: text('occupation').notNull(), // pre-loaded, read-only in the UI
-    institution: text('institution').notNull(), // VTC name
+    occupation: text('occupation').notNull(), // pre-loaded, read-only in the UI; "TRADE" on the IPT roster
+    institution: text('institution').notNull(), // VTC name (TP) or industrial firm/"COMPANY" (IPT)
     district: text('district'),
     region: text('region'),
-    email: text('email').notNull(),
+    email: text('email'),
+    phone: text('phone'),
     track: trackTypeEnum('track').notNull(),
     routeId: uuid('route_id')
       .notNull()

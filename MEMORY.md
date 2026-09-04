@@ -47,6 +47,80 @@ the diff. This file is for knowledge that would otherwise be lost.
 
 ---
 
+## 2026-09-04 · decision · IPT notices are SMS-only, never e-mail; trainees.email/phone made track-dependent
+
+**Kind:** decision
+**Phase:** 0
+**Commit / PR:** (pending — see below)
+
+**What changed**
+User supplied a real IPT route/assessor/trainee document
+("IPT ASSESSMENT SEPTEMBER 2026.xls") and stated the rule directly: IPT
+trainees get SMS feedback only, not e-mail. Updated `CONTEXT.md`'s
+"Trainee accounts?" decision row to say so explicitly (previously it
+only said "e-mail only," inherited unchanged from the TP-only prototype
+era).
+
+Schema change (`packages/db/src/schema.ts`, migrations `0002`/`0003`):
+`trainees.registration_number` and `trainees.email` are now nullable;
+added `trainees.phone` (nullable); added a CHECK constraint,
+`trainees_track_contact_check`, requiring `email` for `track = 'TP'` and
+`phone` for `track = 'IPT'`. `packages/db/pgtap/phase0.sql` grew three
+assertions proving it (IPT-no-phone rejected, TP-no-email rejected,
+IPT-with-phone-no-email accepted) — plan 15 → 18, all passing, verified
+the same way as the rest of the suite (fresh local Postgres 16 + real
+pgTAP, not the stub).
+
+**Why this way**
+Not an arbitrary product rule — a fact about what the College's own
+registers actually capture. The September 2026 TP roster
+(`TEACHING PRACTICE TRAINEES SEPTEMBER 2026.xlsx`) has an e-mail column
+and no phone column; the IPT document has a phone column (`PHONE NO`)
+and no e-mail column at all, across all 118 trainees in it. A schema
+that required both, or that let the UI silently offer an e-mail option
+for IPT trainees, would be offering a channel the College has no data
+to support — the CHECK constraint makes that unrepresentable rather than
+relying on the UI to enforce it (AGENTS.md rule 1: authorisation/
+validity lives in Postgres, not a client condition).
+
+**Watch out for**
+The IPT document is genuinely messier than the TP one and raises two
+open questions that are **not** resolved by this entry — do not treat
+this schema change as "the IPT roster is now importable":
+
+1. **No registration number at all.** The IPT sheet (tab misleadingly
+   named "SETTING AND MODERATION JAN 2026," inside a workbook titled
+   "IPT ASSESSMENT SEPTEMBER 2026.xls" that is mostly unrelated
+   staff-payment/logistics sheets — invigilation, marking, setting and
+   moderation allowances) has columns SN/NAME/SEX/TRADE/REGIONAL/
+   DISTRICT/COMPANY/PHONE NO. No registration number, even though the
+   printed IPT form itself has a "Registration/Index No." field. This
+   looks like a route/assessor planning sheet, not the full official
+   IPT register — asked the user whether a fuller register exists.
+2. **Real duplicate/data-quality issues**, same pattern as the TP
+   roster: "Adeni Mwanitu" and "Heri Ayubu" each appear in two different
+   routes (Route 2 and Route 4) with the same name and the same phone
+   number — almost certainly the same trainee entered twice. Separately,
+   two pairs of *different* trainees share a phone number each
+   (Philomena Kuzenza/Hemedi Hemedi on 783944072; Joshua Izack/Alex
+   Nziku on 617892997) — data-entry error or a shared household phone,
+   but either way two different trainees' results would currently
+   reach the same number.
+
+`import-trainees.ts` does **not** yet parse the IPT format — its column
+layout, route-header text ("ROUT NO. 1 ... ASSESSORS: X & Y" all in one
+cell, inconsistent as "ROUT"/"ROUTE", "NO. 1"/"NO 3.") and the missing
+registration number all differ enough from the TP format that extending
+the parser before the two questions above are answered risks building
+against the wrong shape twice.
+
+**Verified by**
+Fresh local Postgres 16 + real pgTAP: all four migrations (`0000`–
+`0003`) apply cleanly in order; 18/18 pgTAP assertions pass, including
+the three new ones. `pnpm typecheck` clean.
+
+---
+
 ## 2026-09-04 · ops · Operations-baseline docs: README, packages/db/README, .env.example
 
 **Kind:** ops

@@ -18,7 +18,7 @@
 -- errmsg to check the code only, with a real description as the 4th arg.
 
 begin;
-select plan(15);
+select plan(18);
 
 -- ── Fixtures ─────────────────────────────────────────────────────
 insert into auth.users (id) values
@@ -112,6 +112,32 @@ select throws_ok(
   '23514',
   null,
   'an empty result_revisions.reason is rejected'
+);
+
+-- Track-dependent contact channel (TP → e-mail, IPT → SMS only) — a fact
+-- about what the College's registers actually capture, not an arbitrary
+-- rule. See schema.ts's comment on `trainees` and MEMORY.md.
+select throws_ok(
+  $$ insert into trainees (name, course, occupation, institution, track, route_id, email, phone)
+     values ('IPT No Phone', 'CAVT', 'Electrical', 'Test Co', 'IPT',
+             '10000000-0000-0000-0000-000000000001', 'a@b.test', null) $$,
+  '23514',
+  null,
+  'an IPT trainee with no phone is rejected'
+);
+select throws_ok(
+  $$ insert into trainees (name, course, occupation, institution, track, route_id, email, phone)
+     values ('TP No Email', 'CAVT', 'Electrical', 'Test VTC', 'TP',
+             '10000000-0000-0000-0000-000000000001', null, '0700000000') $$,
+  '23514',
+  null,
+  'a TP trainee with no e-mail is rejected'
+);
+select lives_ok(
+  $$ insert into trainees (name, course, occupation, institution, track, route_id, email, phone)
+     values ('IPT With Phone', 'CAVT', 'Electrical', 'Test Co', 'IPT',
+             '10000000-0000-0000-0000-000000000001', null, '0700000001') $$,
+  'an IPT trainee with a phone and no e-mail is accepted'
 );
 
 -- Postgres forbids a data-modifying CTE nested inside a subquery, which

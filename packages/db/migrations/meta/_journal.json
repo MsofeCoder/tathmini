@@ -15,6 +15,20 @@
       "when": 1788507884844,
       "tag": "0001_rls_and_functions",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788516114284,
+      "tag": "0002_icy_cerebro",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788516126606,
+      "tag": "0003_trainees_track_contact_check",
+      "breakpoints": true
     }
   ]
 }
