@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+  body { margin: 0; }
+  a { color: #12665b; }
+  a:hover { color: #0d4a43; }
+</style>
+<script src="./doc-page.js"></script>
+</helmet>
+
+<doc-page size="a4">
+  <sc-for list="{{ pages }}" as="pg" hint-placeholder-count="4">
+    <section class="page" style="padding: 6mm 8mm; box-sizing: border-box; font-family: 'Times New Roman', Times, serif; color: #000; display: flex; flex-direction: column; gap: 3px;">
+
+      <div style="text-align: center; line-height: 1.25;">
+        <div style="font-size: 10pt; font-weight: 700; letter-spacing: 0.2px;">VOCATIONAL EDUCATION AND TRAINING AUTHORITY</div>
+        <div style="font-size: 9pt; font-weight: 700;">MOROGORO VOCATIONAL TEACHERS' TRAINING COLLEGE (MVTTC)</div>
+        <div style="font-size: 9.5pt; font-weight: 700; margin-top: 2px; text-decoration: underline;">{{ pg.formTitle }}</div>
+        <div style="font-size: 8.5pt;">{{ pg.formSubtitle }}</div>
+      </div>
+
+      <div style="font-size: 8pt; line-height: 1.5;">
+        <sc-for list="{{ pg.headerLines }}" as="h" hint-placeholder-count="4">
+          <div style="display: flex; gap: 14px; flex-wrap: wrap;">
+            <sc-for list="{{ h.fields }}" as="f" hint-placeholder-count="3">
+              <span style="{{ f.style }}">{{ f.label }}<span style="font-weight: 700; border-bottom: 1px dotted #000; padding: 0 4px;">{{ f.value }}</span></span>
+            </sc-for>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="font-size: 6.4pt; line-height: 1.25; border: 1px solid #000; padding: 2px 5px;">
+        <span style="font-weight: 700;">INSTRUCTIONS TO SUPERVISOR(S): </span>{{ pg.instructions }}
+      </div>
+
+      <div style="border: 1px solid #000;">
+        <div style="display: grid; grid-template-columns: {{ pg.grid }}; font-size: 6.2pt; font-weight: 700; text-align: center; background: #e9e9e9;">
+          <sc-for list="{{ pg.columns }}" as="c" hint-placeholder-count="6">
+            <div style="{{ c.style }}">{{ c.label }}</div>
+          </sc-for>
+        </div>
+        <sc-for list="{{ pg.rows }}" as="r" hint-placeholder-count="20">
+          <div style="{{ r.rowStyle }}">
+            <sc-for list="{{ r.cells }}" as="cell" hint-placeholder-count="6">
+              <div style="{{ cell.style }}">{{ cell.text }}</div>
+            </sc-for>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="font-size: 7.5pt;">
+        <div style="font-weight: 700; letter-spacing: 0.2px;">{{ pg.commentHeading }}</div>
+        <div style="border: 1px solid #000; min-height: 34px; padding: 3px 5px; font-size: 7.2pt; line-height: 1.3; white-space: pre-wrap;">{{ pg.comment }}</div>
+      </div>
+
+      <div style="display: flex; gap: 8px; align-items: flex-start;">
+        <div style="flex: 1.35; border: 1px solid #000;">
+          <div style="font-size: 7pt; font-weight: 700; padding: 1px 4px; border-bottom: 1px solid #000;">KEY:</div>
+          <div style="display: grid; grid-template-columns: 1.15fr repeat(5, 1fr); font-size: 6pt; text-align: center;">
+            <sc-for list="{{ keyCells }}" as="k" hint-placeholder-count="24">
+              <div style="{{ k.style }}">{{ k.text }}</div>
+            </sc-for>
+          </div>
+          <div style="font-size: 6pt; padding: 1px 4px; border-top: 1px solid #000;">Note: Candidates with grade A, B and C will qualify for NTA Level 5.</div>
+        </div>
+
+        <div style="flex: 1; display: flex; flex-direction: column; gap: 6px;">
+          <div style="border: 1px solid #000;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; font-size: 7.5pt; text-align: center;">
+              <div style="padding: 3px 4px; border-right: 1px solid #000; border-bottom: 1px solid #000; font-weight: 700;">TOTAL MARKS</div>
+              <div style="padding: 3px 4px; border-bottom: 1px solid #000; font-weight: 700;">GRADE</div>
+              <div style="padding: 5px 4px; border-right: 1px solid #000; font-size: 11pt; font-weight: 700;">{{ pg.totalMarks }}</div>
+              <div style="padding: 5px 4px; font-size: 11pt; font-weight: 700;">{{ pg.grade }}</div>
+            </div>
+          </div>
+          <div style="border: 1px solid #000;">
+            <div style="font-size: 7pt; padding: 2px 5px; border-bottom: 1px solid #000;">Please put a tick "&#10003;" in the appropriate box below:</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; font-size: 7.5pt; text-align: center;">
+              <div style="padding: 3px 4px; border-right: 1px solid #000; border-bottom: 1px solid #000; font-weight: 700;">COMPETENT</div>
+              <div style="padding: 3px 4px; border-bottom: 1px solid #000; font-weight: 700;">NOT COMPETENT</div>
+              <div style="padding: 6px 4px; border-right: 1px solid #000; font-size: 13pt; font-weight: 700; line-height: 1;">{{ pg.tickCompetent }}</div>
+              <div style="padding: 6px 4px; font-size: 13pt; font-weight: 700; line-height: 1;">{{ pg.tickNot }}</div>
+            </div>
+            <div style="font-size: 6.5pt; padding: 2px 5px; border-top: 1px solid #000; line-height: 1.3;">NB: The trainee is recorded as COMPETENT if the total marks assessed reach 50% and above.</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top: auto; font-size: 7.5pt; display: flex; gap: 14px; align-items: flex-end; padding-top: 3px;">
+        <span style="flex: 1.2;">SUPERVISOR'S NAME <span style="font-weight: 700; border-bottom: 1px dotted #000; padding: 0 6px;">{{ pg.assessorName }}</span></span>
+        <span style="flex: 1;">SIGNATURE <span style="border-bottom: 1px dotted #000; padding: 0 26px;">&nbsp;</span></span>
+        <span style="flex: 0.9;">DATE <span style="font-weight: 700; border-bottom: 1px dotted #000; padding: 0 6px;">{{ pg.date }}</span></span>
+      </div>
+      <div style="font-size: 6.5pt; color: #444; text-align: right;">{{ pg.footer }}</div>
+    </section>
+  </sc-for>
+
+  <section class="page" style="padding: 14mm 12mm; box-sizing: border-box; font-family: 'Times New Roman', Times, serif; color: #000; display: flex; flex-direction: column; gap: 10px;">
+    <div style="text-align: center; line-height: 1.3;">
+      <div style="font-size: 12pt; font-weight: 700;">VOCATIONAL EDUCATION AND TRAINING AUTHORITY</div>
+      <div style="font-size: 10.5pt; font-weight: 700;">MOROGORO VOCATIONAL TEACHERS' TRAINING COLLEGE (MVTTC)</div>
+      <div style="font-size: 11.5pt; font-weight: 700; margin-top: 4px; text-decoration: underline;">CONSOLIDATED RESULT — TEACHING PRACTICE ASSESSMENT</div>
+      <div style="font-size: 9pt;">Average of the two independent assessors, as required by the College</div>
+    </div>
+
+    <div style="border: 1px solid #000; font-size: 9pt;">
+      <sc-for list="{{ summaryParticulars }}" as="p" hint-placeholder-count="8">
+        <div style="{{ p.style }}"><span style="color: #333;">{{ p.label }}</span><span style="font-weight: 700;">{{ p.value }}</span></div>
+      </sc-for>
+    </div>
+
+    <div style="border: 1px solid #000;">
+      <div style="display: grid; grid-template-columns: 1.1fr 1.5fr 1fr 1fr 1fr 0.8fr; font-size: 8pt; font-weight: 700; text-align: center; background: #e9e9e9;">
+        <sc-for list="{{ summaryHead }}" as="h" hint-placeholder-count="6">
+          <div style="{{ h.style }}">{{ h.label }}</div>
+        </sc-for>
+      </div>
+      <sc-for list="{{ summaryRows }}" as="r" hint-placeholder-count="3">
+        <div style="{{ r.rowStyle }}">
+          <sc-for list="{{ r.cells }}" as="cell" hint-placeholder-count="6">
+            <div style="{{ cell.style }}">{{ cell.text }}</div>
+          </sc-for>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="border: 2px solid #000; padding: 8px 12px; display: flex; align-items: center; justify-content: space-between; gap: 18px;">
+      <div>
+        <div style="font-size: 8.5pt; font-weight: 700; letter-spacing: 0.5px;">OFFICIAL VERDICT</div>
+        <div style="font-size: 17pt; font-weight: 700; line-height: 1.1;">{{ verdict }}</div>
+        <div style="font-size: 8.5pt;">{{ verdictDetail }}</div>
+      </div>
+      <div style="text-align: right;">
+        <div style="font-size: 8pt; font-weight: 700;">AVERAGE</div>
+        <div style="font-size: 26pt; font-weight: 700; line-height: 1;">{{ averagePct }}</div>
+      </div>
+    </div>
+
+    <div style="border: 1px solid #000;">
+      <div style="font-size: 8.5pt; font-weight: 700; padding: 3px 6px; border-bottom: 1px solid #000;">COMMENTS TO THE TRAINEE</div>
+      <sc-for list="{{ summaryComments }}" as="c" hint-placeholder-count="2">
+        <div style="padding: 5px 7px; border-bottom: 1px solid #ddd; font-size: 9pt; line-height: 1.45;">
+          <span style="font-weight: 700;">{{ c.tag }} </span>{{ c.text }}
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: auto; font-size: 8.5pt;">
+      <sc-for list="{{ signatures }}" as="sg" hint-placeholder-count="4">
+        <div>
+          <div style="border-bottom: 1px solid #000; height: 26px;"></div>
+          <div style="font-weight: 700; margin-top: 3px;">{{ sg.name }}</div>
+          <div style="color: #333;">{{ sg.role }}</div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="font-size: 7pt; color: #444; text-align: center;">Grading key — A 80–100% · B 65–79% · C 50–64% · D 40–49% · F 0–39%. Class of Award and GPA on grades A, B and C only. Recorded as COMPETENT at 50% and above. Generated by Tathmini · report ref {{ reportRef }}.</div>
+  </section>
+</doc-page>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+// Verbatim VETA Teaching Practice assessment forms, reproduced field for field
+// from the College's own documents ("Fomu ya Assessment TP theory Final" and
+// "Fomu ya Assessment TP_Practical Final"). Each assessor's filled copy prints
+// as its own page, then one consolidated page carries the official average.
+const THEORY_FORM = [
+  ['1', 'LESSON PREPARATION', 6, [
+    ['i.', 'Availability of scheme of work and lesson plan', 1],
+    ['ii.', 'Ability to state lesson objectives and competence', 1],
+    ['iii.', 'Acceptable sequencing of lesson plan components', 1],
+    ['iv.', 'Correlation of stages, assessment activities and certainty of specific objectives', 1],
+    ['v.', 'Take account on safety requirements', 0.5],
+    ['vi.', 'Selection and preparation of teaching aids', 0.5],
+    ['vii.', 'Ability to keep students record', 1],
+  ]],
+  ['2', 'SKILLS AND KNOWLEDGE', 10, [
+    ['i.', 'Ability to use recall questions', 1],
+    ['ii.', 'Mastery of subject matter', 3],
+    ['iii.', 'Sequence of content', 2],
+    ['iv.', 'Compliance of the subject matter with environment', 1],
+    ['v.', 'Skills of questioning and handling learners responses', 1],
+    ['vi.', 'Emphasize safety measures', 2],
+  ]],
+  ['3', 'TEACHING METHODS', 6, [
+    ['i.', 'Selection of appropriate methods', 1],
+    ['ii.', 'Proper application of selected methods', 2],
+    ['iii.', 'Effectiveness of applied methods', 2],
+    ['iv.', 'Promote full participation of all trainees', 1],
+  ]],
+  ['4', 'TEACHING AND LEARNING AIDS', 8, [
+    ['i.', 'Having them in the class', 1],
+    ['ii.', 'Compliance with specific objectives', 2],
+    ['iii.', 'Appearance, size and visibility', 1],
+    ['iv.', 'Creativity and innovativeness', 2],
+    ['v.', 'Ability of using them', 2],
+  ]],
+  ['5', 'SELF EXPRESSION', 3, [
+    ['i.', 'Speaking and communication skills (competence, loudness, clarity, lucidity/fluency, articulation and appropriateness)', 1],
+    ['ii.', 'Audibility of his/her voice in the class', 1],
+    ['iii.', 'Logic and ability of explaining', 1],
+  ]],
+  ['6', 'CHALKBOARD / FLIPCHART / WHITEBOARD / MULTIMEDIA / METAPLAN CARDS WORK', 4, [
+    ['i.', 'Decency and readability of writings', 2],
+    ['ii.', 'Arrangement of work', 1],
+    ['iii.', 'Proper positioning during explanation', 1],
+  ]],
+  ['7', 'STUDENTS ACTIVITIES', 3, [
+    ['i.', 'Quantity, quality and adequacy to student', 1],
+    ['ii.', 'Correlation with specific objectives', 1],
+    ['iii.', 'Correlation with learners daily life experience', 1],
+  ]],
+  ['8', 'CLASSROOM CONTROL', 3, [
+    ['i.', 'Class management and discipline of the class', 1],
+    ['ii.', 'Ability to solve problems arising during the lesson', 1],
+    ['iii.', 'Classroom organization', 1],
+  ]],
+  ['9', 'PERSONALITY', 2, [
+    ['i.', 'Gentleness and appropriate language to learners', 0.5],
+    ['ii.', 'Neatness of dressing', 0.5],
+    ['iii.', 'Neatness of the body', 0.5],
+    ['iv.', 'Ability to draw attention', 0.5],
+  ]],
+  ['10', 'SELF ASSESSMENT OF THE LESSON', 5, [
+    ['i.', 'How his/her comments reflect the success and failure of objectives', 2],
+    ['ii.', 'Strategies for improvement', 2],
+    ['iii.', 'Acceptance of the advice given by the examiner', 1],
+  ]],
+];
+
+const PRACTICAL_FORM = [
+  ['1', 'LESSON PREPARATION', 15, [
+    ['i.', 'Availability of scheme of training', 1],
+    ['ii.', 'Availability of lesson plan', 1],
+    ['iii.', 'Ability to set learning objectives', 1],
+    ['iv.', 'Prepare appropriate task', 2],
+    ['v.', 'Take account on safety requirements', 1],
+    ['vi.', 'Select training material/aids appropriate to the nature of the task and level of trainees', 2],
+    ['vii.', 'Select training tools/machine/equipment', 1],
+    ['viii.', 'Ability to integrate environmental issues into his occupational practice', 1],
+    ['ix.', 'Preparation of information sheet', 1],
+    ['x.', 'Preparation of assessment sheet', 2],
+    ['xi.', 'Setting a target time for a task', 1],
+    ['xii.', 'Organizing students in groups', 1],
+  ]],
+  ['2', 'PRACTICAL SESSION DELIVERY', 20, [
+    ['i.', 'Arranging workshop as per given task and observing safety requirements', 2],
+    ['ii.', 'Task explained clearly and key elements emphasized', 2],
+    ['iii.', 'Ability to use required material', 1],
+    ['iv.', 'Ability to demonstrate clearly', 3],
+    ['v.', 'Demonstrated mastery of his/her occupation competently', 2],
+    ['vi.', 'Task performed by trainee, mistakes corrected', 3],
+    ['vii.', 'Emphasized safety measures', 2],
+    ['viii.', 'Practical performance integrated with knowledge through oral questioning', 2],
+    ['ix.', 'Compliance of the subject matter with environment', 1],
+    ['x.', 'Ability of questioning and handling learners responses', 2],
+  ]],
+  ['3', "TRAINEES' ASSESSMENT", 8, [
+    ['i.', 'Process assessment done and safety measures observed', 3],
+    ['ii.', 'Final product assessed as per set standards/criteria', 2],
+    ['iii.', 'Practical performance integrated with knowledge through oral questioning', 1],
+    ['iv.', 'Trainees progress monitored and recorded', 1],
+    ['v.', 'Work area cleaned, tools and equipment stored as required', 1],
+  ]],
+  ['4', 'SELF EXPRESSION', 3, [
+    ['i.', 'Speaking and communication skills (confidence, clarity, lucidity/fluency, articulation and appropriateness)', 1],
+    ['ii.', 'Audibility of his/her voice', 1],
+    ['iii.', 'Logic and ability of explaining items', 1],
+  ]],
+  ['5', 'PERSONALITY ATTRIBUTES', 4, [
+    ['i.', 'Gentleness and appropriate language to learners', 1],
+    ['ii.', 'Neatness and proper dressing', 1],
+    ['iii.', 'Emphasized to trainees on occupation ethics', 1],
+    ['iv.', 'Provide a model of good occupational practices', 1],
+  ]],
+];
+
+const INSTRUCTIONS = 'Fill in two copies; one copy will be given to the candidate. The marks for each observable behaviour are indicated. For each part award a mark which a candidate deserves in accordance with his/her performance. Find the sum of the awarded marks. With the aid of the key below give the trainee\u2019s grade. Comment on the right hand column only when a candidate scores less than half or full score, and not clues such as excellent, very good, good, fair etc. After every assessment the trainee should be consulted and advised on all matters arising during the assessment.';
+
+// The trainee and the two assessors' filled marks. In the running system these
+// arrive from the assessment records; here they are one worked example.
+const TRAINEE = {
+  name: 'Baraka J. Kimaro', group: 'TP Group A', region: 'Morogoro', district: 'Morogoro Municipal',
+  vtc: 'Kihonda VTC', occupation: 'Motor Vehicle Mechanics', klass: 'Auto Engines Year 2',
+  time: '10:20 \u2013 11:00', date: '12 August 2026', regNo: 'MVTTC/TC-TVTE/2025/017',
+  programme: 'TC-TVTE \u00b7 NTA Level 5', phone: '+255 754 220 977',
+};
+
+const MARKS = {
+  a1: {
+    name: 'J. Mwakalinga',
+    theory: [1, 1, 1, 0.5, 0.5, 0.5, 1, 1, 2.5, 1.5, 1, 1, 2, 1, 1.5, 1.5, 1, 1, 2, 1, 1.5, 2, 3, 3, 3, 3, 1, 1, 1, 1, 0.5, 0.5, 0.5, 0.5, 1.5, 1.5, 1],
+    practical: [1, 1, 1, 1.5, 1, 1.5, 1, 1, 1, 1.5, 1, 1, 1.5, 1.5, 1, 2.5, 1.5, 2, 1.5, 1.5, 1, 1.5, 2, 1.5, 1, 1, 1, 1, 1, 1, 1, 1],
+    theoryComment: 'Mastery of the subject matter was strong and the trainees followed the content well. Involve every trainee, not only those who raise their hands \u2014 use group work and direct questions. Write the safety requirements of the lesson into your plan and remind the trainees of them.',
+    practicalComment: 'Confident demonstration and good workshop safety discipline. Plan your workshop time so that demonstration, practice and cleaning up all fit within the session. Prepare the assessment sheet with clear criteria before the trainees begin the task.',
+  },
+  a2: {
+    name: 'S. Mwakyembe',
+    theory: [1, 1, 1, 0.5, 0.5, 0.5, 1, 1, 2, 1.5, 1, 1, 1.5, 1, 1.5, 1.5, 1, 1, 2, 1, 1, 2, 3, 2.5, 3, 3, 1, 1, 1, 1, 0.5, 0.5, 0.5, 0.5, 1.5, 1, 1],
+    practical: [1, 1, 1, 1.5, 1, 1.5, 1, 0.5, 1, 1.5, 1, 1, 1.5, 1.5, 1, 2, 1.5, 2, 1.5, 1.5, 1, 1.5, 2, 1.5, 1, 1, 1, 1, 1, 1, 1, 1],
+    theoryComment: 'The lesson was well sequenced. Give more attention to the correlation of stages and assessment activities with the specific objectives, and to using the board systematically.',
+    practicalComment: 'Good handling of tools and clear instructions. Integrate environmental issues into the occupational practice, and monitor and record each trainee\u2019s progress as the session proceeds.',
+  },
+};
+
+function fmt(n) { return n === '' || n === null || n === undefined ? '' : (Number.isInteger(n) ? String(n) : n.toFixed(1)); }
+function gradeFor(pct) {
+  if (pct >= 80) return 'A';
+  if (pct >= 65) return 'B';
+  if (pct >= 50) return 'C';
+  if (pct >= 40) return 'D';
+  return 'F';
+}
+function classOfAward(g) { return g === 'A' ? 'First Class' : g === 'B' ? 'Second Class' : g === 'C' ? 'Pass' : 'Not awarded'; }
+function gpaFor(pct, g) {
+  const lerp = (lo, hi, a, b) => lo + ((pct - a) / (b - a)) * (hi - lo);
+  if (g === 'A') return Math.min(4.0, lerp(3.5, 4.0, 80, 100)).toFixed(1);
+  if (g === 'B') return lerp(3.0, 3.4, 65, 79.99).toFixed(1);
+  if (g === 'C') return lerp(2.0, 2.9, 50, 64.99).toFixed(1);
+  return '\u2014';
+}
+
+class Component extends DCLogic {
+  // One page per assessor per instrument, exactly as the paper form is filled.
+  buildPage(form, marks, opts) {
+    const bd = '1px solid #000';
+    const cell = (text, align, weight, flexEnd) => ({
+      text,
+      style: 'padding: 0.2px 3px; border-right: ' + bd + '; border-top: ' + bd
+        + '; font-size: 5.9pt; line-height: 1.08; text-align: ' + (align || 'left')
+        + '; font-weight: ' + (weight || 400) + ';',
+    });
+    const rows = [];
+    let i = 0;
+    let total = 0;
+    form.forEach((sec) => {
+      rows.push({
+        rowStyle: 'display: grid; grid-template-columns: ' + opts.grid + '; background: #f0f0f0;',
+        cells: [
+          cell(sec[0], 'center', 700),
+          cell(sec[1], 'left', 700),
+          cell(String(sec[2]), 'center', 700),
+          cell('', 'center'),
+          cell('', 'center'),
+          cell('', 'left'),
+        ],
+      });
+      sec[3].forEach((c) => {
+        const awarded = marks[i];
+        i += 1;
+        total += awarded || 0;
+        const short = awarded !== undefined && awarded < c[2] / 2;
+        rows.push({
+          rowStyle: 'display: grid; grid-template-columns: ' + opts.grid + ';',
+          cells: [
+            cell('', 'center'),
+            cell(c[0] + ' ' + c[1], 'left'),
+            cell('', 'center'),
+            cell(fmt(c[2]), 'center'),
+            cell(fmt(awarded), 'center', 700),
+            cell(short ? 'See general comments' : '', 'left'),
+          ],
+        });
+      });
+    });
+    rows.push({
+      rowStyle: 'display: grid; grid-template-columns: ' + opts.grid + '; background: #e2e2e2;',
+      cells: [
+        cell('', 'center'),
+        cell('TOTAL', 'right', 700),
+        cell(String(opts.max), 'center', 700),
+        cell(String(opts.max), 'center', 700),
+        cell(fmt(Math.round(total * 10) / 10), 'center', 700),
+        cell('', 'left'),
+      ],
+    });
+    const pct = (total / opts.max) * 100;
+    const head = (label, value, flex) => ({
+      label: label + ' ',
+      value,
+      style: 'flex: ' + flex + '; white-space: nowrap;',
+    });
+    return {
+      formTitle: 'TEACHING PRACTICE ASSESSMENT FORM',
+      formSubtitle: opts.subtitle,
+      instructions: INSTRUCTIONS,
+      grid: opts.grid,
+      columns: opts.columns.map((c, n) => ({
+        label: c,
+        style: 'padding: 2px 4px; border-right: ' + (n === opts.columns.length - 1 ? '0' : bd) + ';',
+      })),
+      headerLines: [
+        { fields: [head('NAME OF CANDIDATE', TRAINEE.name, 2), head('GROUP', TRAINEE.group, 1)] },
+        { fields: [head('REGION', TRAINEE.region, 1), head('DISTRICT', TRAINEE.district, 1.2), head('VTC', TRAINEE.vtc, 1), head('DATE', TRAINEE.date, 1)] },
+        { fields: [head('OCCUPATION', TRAINEE.occupation, 1.4), head('CLASS', TRAINEE.klass, 1.2), head('TIME', TRAINEE.time, 0.9)] },
+      ],
+      rows,
+      commentHeading: "SUPERVISOR'S GENERAL COMMENTS:",
+      comment: opts.comment,
+      totalMarks: fmt(Math.round(total * 10) / 10) + ' / ' + opts.max,
+      grade: gradeFor(pct),
+      tickCompetent: pct >= 50 ? '\u2713' : '',
+      tickNot: pct >= 50 ? '' : '\u2713',
+      assessorName: marksName(marks, opts),
+      date: TRAINEE.date,
+      footer: opts.footer,
+      total: Math.round(total * 10) / 10,
+      pct,
+    };
+  }
+
+  renderVals() {
+    const grid = '5% 43% 10% 13% 13% 16%';
+    const columns = ['S/N', 'ITEM DESCRIPTION', 'TOTAL POINTS', 'POINTS DISTRIBUTION', 'POINTS AWARDED', 'COMMENTS'];
+    const pageDefs = [
+      ['a1', 'theory', THEORY_FORM, 50, 'Classroom situation (Theory / Cognitive)', 'theoryComment'],
+      ['a1', 'practical', PRACTICAL_FORM, 50, 'Part B: Workshop situation (Practical / Psychomotor)', 'practicalComment'],
+      ['a2', 'theory', THEORY_FORM, 50, 'Classroom situation (Theory / Cognitive)', 'theoryComment'],
+      ['a2', 'practical', PRACTICAL_FORM, 50, 'Part B: Workshop situation (Practical / Psychomotor)', 'practicalComment'],
+    ];
+    const pages = pageDefs.map((d) => {
+      const slotLabel = d[0] === 'a1' ? 'Assessor 1' : 'Assessor 2';
+      const p = this.buildPage(d[2], MARKS[d[0]][d[1]], {
+        grid, columns, max: d[3], subtitle: d[4],
+        comment: MARKS[d[0]][d[5]],
+        footer: slotLabel + ' \u00b7 ' + MARKS[d[0]].name + ' \u00b7 assessors mark independently; the official result is the average of both.',
+        assessor: MARKS[d[0]].name,
+      });
+      p.assessorName = MARKS[d[0]].name + ' (' + slotLabel + ')';
+      p.slot = d[0];
+      p.instrument = d[1];
+      return p;
+    });
+
+    const totalOf = (slot, key) => pages.find((p) => p.slot === slot && p.instrument === key).total;
+    const slotTotal = (slot) => totalOf(slot, 'theory') + totalOf(slot, 'practical');
+    const avg = (slotTotal('a1') + slotTotal('a2')) / 2;
+    const avgPct = avg;
+    const grade = gradeFor(avgPct);
+
+    const bd = '1px solid #000';
+    const sCell = (text, align, weight, last) => ({
+      text,
+      style: 'padding: 3px 5px; border-top: ' + bd + '; border-right: ' + (last ? '0' : bd)
+        + '; font-size: 8.5pt; text-align: ' + (align || 'left') + '; font-weight: ' + (weight || 400) + ';',
+    });
+    const rowOf = (label, name, th, pr, tot, pct, bg) => ({
+      rowStyle: 'display: grid; grid-template-columns: 1.1fr 1.5fr 1fr 1fr 1fr 0.8fr;' + (bg ? ' background: ' + bg + ';' : ''),
+      cells: [
+        sCell(label, 'left', 700), sCell(name, 'left'),
+        sCell(th, 'center'), sCell(pr, 'center'),
+        sCell(tot, 'center', 700), sCell(pct, 'center', 700, true),
+      ],
+    });
+
+    return {
+      pages,
+      keyCells: [
+        ['Grade', 'A', 'B', 'C', 'D', 'F'],
+        ['Score Range', '80 \u2013 100%', '65 \u2013 79%', '50 \u2013 64%', '40 \u2013 49%', '00 \u2013 39%'],
+        ['', 'Excellent', 'Very Good', 'Good', 'Poor', 'Fail'],
+        ['Class of award', 'First Class', 'Second Class', 'Pass', '', ''],
+        ['GPA', '3.5 \u2013 4.0', '3.0 \u2013 3.4', '2.0 \u2013 2.9', '', ''],
+      ].reduce((acc, row, r) => acc.concat(row.map((text, c) => ({
+        text,
+        style: 'padding: 0.5px 3px; border-top: ' + (r ? bd : '0') + '; border-right: '
+          + (c === 5 ? '0' : bd) + '; font-weight: ' + (c === 0 || r === 0 ? 700 : 400) + ';',
+      }))), []),
+      summaryParticulars: [
+        ['Name of candidate', TRAINEE.name],
+        ['Registration No', TRAINEE.regNo],
+        ['Programme', TRAINEE.programme],
+        ['Group', TRAINEE.group],
+        ['Occupation', TRAINEE.occupation],
+        ['VTC \u00b7 District \u00b7 Region', TRAINEE.vtc + ' \u00b7 ' + TRAINEE.district + ' \u00b7 ' + TRAINEE.region],
+        ['Class \u00b7 Lesson time', TRAINEE.klass + ' \u00b7 ' + TRAINEE.time],
+        ['Date of assessment', TRAINEE.date],
+      ].map((p, i) => ({
+        label: p[0], value: p[1],
+        style: 'display: flex; justify-content: space-between; gap: 14px; padding: 4px 8px;'
+          + (i ? ' border-top: 1px solid #999;' : ''),
+      })),
+      summaryHead: ['ASSESSOR', 'NAME', 'THEORY / 50', 'PRACTICAL / 50', 'TOTAL / 100', '%'].map((label, n) => ({
+        label,
+        style: 'padding: 3px 5px; border-right: ' + (n === 5 ? '0' : bd) + ';',
+      })),
+      summaryRows: [
+        rowOf('Assessor 1', MARKS.a1.name, fmt(totalOf('a1', 'theory')), fmt(totalOf('a1', 'practical')), fmt(slotTotal('a1')), fmt(Math.round(slotTotal('a1') * 10) / 10) + '%'),
+        rowOf('Assessor 2', MARKS.a2.name, fmt(totalOf('a2', 'theory')), fmt(totalOf('a2', 'practical')), fmt(slotTotal('a2')), fmt(Math.round(slotTotal('a2') * 10) / 10) + '%'),
+        rowOf('OFFICIAL AVERAGE', 'Mean of the two assessors', fmt(Math.round(((totalOf('a1', 'theory') + totalOf('a2', 'theory')) / 2) * 10) / 10), fmt(Math.round(((totalOf('a1', 'practical') + totalOf('a2', 'practical')) / 2) * 10) / 10), fmt(Math.round(avg * 10) / 10), fmt(Math.round(avgPct * 10) / 10) + '%', '#e2e2e2'),
+      ],
+      verdict: avgPct >= 50 ? 'COMPETENT' : 'NOT COMPETENT',
+      verdictDetail: 'Average ' + fmt(Math.round(avg * 10) / 10) + ' of 100 (' + fmt(Math.round(avgPct * 10) / 10)
+        + '%) \u00b7 Grade ' + grade + ' \u00b7 GPA ' + gpaFor(avgPct, grade) + ' \u00b7 Class of Award: ' + classOfAward(grade)
+        + ' \u00b7 threshold 50%',
+      averagePct: fmt(Math.round(avgPct * 10) / 10) + '%',
+      summaryComments: [
+        { tag: 'ASSESSOR 1 \u2014', text: MARKS.a1.theoryComment + ' ' + MARKS.a1.practicalComment },
+        { tag: 'ASSESSOR 2 \u2014', text: MARKS.a2.theoryComment + ' ' + MARKS.a2.practicalComment },
+      ],
+      signatures: [
+        { name: MARKS.a1.name, role: 'Assessor 1 \u00b7 signature & date' },
+        { name: MARKS.a2.name, role: 'Assessor 2 \u00b7 signature & date' },
+        { name: TRAINEE.name, role: 'Trainee \u00b7 consulted and advised' },
+        { name: 'TP Coordinator', role: 'MVTTC' },
+      ],
+      reportRef: 'TM-2026-0417',
+    };
+  }
+}
+
+function marksName() { return ''; }
+</script>
+</body>
+</html>

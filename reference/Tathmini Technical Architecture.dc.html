@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
+<style>
+  body { margin: 0; }
+  a { color: #12665b; text-decoration: none; border-bottom: 1px solid #a8c9c0; }
+  a:hover { color: #0d4a43; border-bottom-color: #0d4a43; }
+</style>
+<script src="./doc-page.js"></script>
+</helmet>
+
+<doc-page size="a4">
+  <div slot="header" style="display: flex; justify-content: space-between; align-items: baseline; font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 8pt; color: #6b7b88; border-bottom: 1px solid #d8e2df; padding-bottom: 4px;">
+    <span style="font-weight: 600; color: #0d4a43;">TATHMINI — Technical Architecture &amp; Delivery Plan</span>
+    <span>MVTTC · Confidential · v1.0</span>
+  </div>
+  <div slot="footer" style="display: flex; justify-content: space-between; font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 8pt; color: #6b7b88; border-top: 1px solid #d8e2df; padding-top: 4px;">
+    <span>Prepared for the Principal, Academic Board and ICT Unit</span>
+    <span>September 2026</span>
+  </div>
+
+  <div style="font-family: 'Source Serif 4', Georgia, serif; color: #14232e; font-size: 10.5pt; line-height: 1.55;">
+
+    <div style="border-left: 4px solid #0d4a43; padding-left: 14px; margin-bottom: 22px;">
+      <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 8.5pt; font-weight: 700; letter-spacing: 1.2px; color: #12665b;">MOROGORO VOCATIONAL TEACHERS' TRAINING COLLEGE</div>
+      <h1 style="font-family: 'IBM Plex Sans', sans-serif; font-size: 24pt; font-weight: 700; letter-spacing: -0.6px; margin: 6px 0 4px 0; line-height: 1.1;">Tathmini — from prototype to production</h1>
+      <div style="font-size: 11.5pt; color: #3c4c58;">Technical architecture, security posture and delivery plan for the Digital Assessment Sheet (TP &amp; IPT)</div>
+    </div>
+
+    <div style="background: #f1f6f4; border: 1px solid #cfe0d9; border-radius: 4px; padding: 14px 16px; margin-bottom: 22px;">
+      <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 8.5pt; font-weight: 700; letter-spacing: 1px; color: #12665b; margin-bottom: 6px;">THE RECOMMENDATION IN ONE PARAGRAPH</div>
+      <p style="margin: 0;">Build Tathmini as a <strong>Next.js progressive web app on a Supabase Postgres backend</strong>, with the assessment record protected by database-level row security and an append-only audit log rather than by application code. Every mark is captured offline in IndexedDB and released to the server through a single durable outbox; the server, not the phone, is the authority on totals, grades and the competency verdict. Results are immutable once both assessors have submitted. The database is backed up automatically every night to encrypted storage the College controls, with the status of that backup visible on the Super Admin panel and a restore that has actually been rehearsed. Nothing in this stack is exotic: it is chosen so that a competent Tanzanian developer can maintain it after handover, and so that an auditor can be shown exactly who marked what, when, and from where.</p>
+    </div>
+
+    <h2 style="font-family: 'IBM Plex Sans', sans-serif; font-size: 14pt; font-weight: 700; letter-spacing: -0.3px; margin: 26px 0 4px 0; padding-bottom: 6px; border-bottom: 2px solid #0d4a43;">1 · Feature audit — what the prototype proves, and what production must add</h2>
+    <p style="margin: 10px 0 12px 0; color: #3c4c58;">The prototype has already settled the hard design questions. What follows is every feature it demonstrates, the engineering it needs behind it, and — the column that matters most — what would go wrong if that engineering were skipped.</p>
+
+    <table style="width: 100%; border-collapse: collapse; font-size: 8.8pt; font-family: 'IBM Plex Sans', sans-serif;">
+      <thead>
+        <tr style="background: #0d4a43; color: #fff;">
+          <th style="text-align: left; padding: 6px 8px; font-weight: 600; width: 22%;">Prototype feature</th>
+          <th style="text-align: left; padding: 6px 8px; font-weight: 600; width: 30%;">Production implementation</th>
+          <th style="text-align: left; padding: 6px 8px; font-weight: 600; width: 26%;">Technology</th>
+          <th style="text-align: left; padding: 6px 8px; font-weight: 600; width: 22%;">If skipped</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="background: #f7faf9;">
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 600;">Admin-issued login, no self-registration</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Server-side session auth; accounts created only by Super Admin; forced password change on first use; TOTP second factor for the two Super Admin accounts.</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Supabase Auth (email/password + TOTP), <span style="font-family: 'IBM Plex Mono', monospace; font-size: 8pt;">@supabase/ssr</span> cookies</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; color: #7a3325;">A stolen supervisor phone becomes a valid marking device.</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 600;">Three roles — Super Admin, Coordinator, Supervisor</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Roles enforced in Postgres row-level security, not in React. Coordinator gets <em>select</em> and export only; no update path exists for that role at all.</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Postgres RLS policies + <span style="font-family: 'IBM Plex Mono', monospace; font-size: 8pt;">auth.jwt()</span> role claim</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; color: #7a3325;">A hidden button or a crafted request lets a read-only user edit marks.</td>
+        </tr>
+        <tr style="background: #f7faf9;">
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 600;">Offline marking, sync on signal</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Every tap written to IndexedDB immediately. One outbox table, idempotent submit keyed by a client-generated UUID, exponential backoff, replay on reconnect.</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Dexie 4 + Serwist service worker + Background Sync</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; color: #7a3325;">Duplicate submissions, or a day of fieldwork lost to a flat battery.</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 600;">Gating — no skipped criteria, no partial submit</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Validated twice: in the client for guidance, and again in a database constraint that refuses a submission whose scored-criteria count does not match the instrument.</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Zod schemas shared client/server + Postgres <span style="font-family: 'IBM Plex Mono', monospace; font-size: 8pt;">CHECK</span></td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; color: #7a3325;">Incomplete forms reach the Board and the College cannot defend the grade.</td>
+        </tr>
+        <tr style="background: #f7faf9;">
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 600;">Two independent assessors, averaged</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Independence enforced by RLS: an assessor can read only their own slot until both are submitted. The average is a generated column, never a client value.</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">RLS policy on <span style="font-family: 'IBM Plex Mono', monospace; font-size: 8pt;">assessment_marks</span> + Postgres generated column</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; color: #7a3325;">Assessor 2 anchors to Assessor 1 and the second opinion is worthless.</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 600;">Auto-comment advice in Swahili-simple English</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Static, versioned phrase bank keyed by criterion — deterministic, reviewable by the Academic Board, works offline. No language model in the marking path.</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Versioned JSON in the repo, shipped in the app bundle</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; color: #7a3325;">Advice varies between trainees, needs network, and cannot be audited.</td>
+        </tr>
+        <tr style="background: #f7faf9;">
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 600;">Swahili notice by SMS / WhatsApp / e-mail</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Deep links stay for zero-cost field use; a server route is added so the College can also send centrally and keep a delivery record per trainee.</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Beem Africa or Africa's Talking (SMS), Brevo (e-mail), <span style="font-family: 'IBM Plex Mono', monospace; font-size: 8pt;">wa.me</span> links</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; color: #7a3325;">No proof a trainee was notified when they claim they were not.</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 600;">PDF report matching the VETA forms</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Rendered server-side into a fixed A4 sheet, hashed, and written once to storage. The stored file is the record; the screen preview is only a view of it.</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Playwright/Chromium in a worker → Supabase Storage, SHA-256 stamped</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; color: #7a3325;">Two people print the same result and get different pages.</td>
+        </tr>
+        <tr style="background: #f7faf9;">
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 600;">Excel download of results and averages</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Real <span style="font-family: 'IBM Plex Mono', monospace; font-size: 8pt;">.xlsx</span> with typed numeric cells, frozen headers and a provenance sheet stating who exported it and when.</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">ExcelJS in a server route; streamed, never assembled in phone memory</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; color: #7a3325;">Marks arrive in Excel as text and every formula the Registrar writes fails.</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 600;">Reassignment request and approval</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">A state machine — <em>requested → accepted / declined</em> — with every transition written to the audit log and notified by e-mail.</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Postgres enum + trigger; Supabase Realtime for the inbox badge</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; color: #7a3325;">Trainees fall between two supervisors and are never assessed.</td>
+        </tr>
+        <tr style="background: #f7faf9;">
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 600;">Coordinator dashboard, override, unlock</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Override is Super Admin only, requires a typed reason, never edits the original mark — it writes a superseding record and both remain visible.</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Append-only <span style="font-family: 'IBM Plex Mono', monospace; font-size: 8pt;">result_revisions</span> table; no <span style="font-family: 'IBM Plex Mono', monospace; font-size: 8pt;">UPDATE</span> grant</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; color: #7a3325;">A quiet edit to a grade is indistinguishable from the original marking.</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 600;">Install to home screen, works with no signal</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Full PWA: manifest, maskable icons, precached app shell, offline fallback, update prompt when a new version is deployed.</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Serwist (Workbox successor) with Next.js App Router</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; color: #7a3325;">Supervisors sit in a village with a blank white screen.</td>
+        </tr>
+        <tr style="background: #f7faf9;">
+          <td style="padding: 6px 8px; font-weight: 600;">— (new requirement)</td>
+          <td style="padding: 6px 8px;">Daily automatic backup with visible status, retention, download and a rehearsed restore — see section 5.</td>
+          <td style="padding: 6px 8px;">Scheduled <span style="font-family: 'IBM Plex Mono', monospace; font-size: 8pt;">pg_dump</span> → age-encrypted object storage</td>
+          <td style="padding: 6px 8px; color: #7a3325;">One bad migration erases a cohort's results permanently.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2 style="font-family: 'IBM Plex Sans', sans-serif; font-size: 14pt; font-weight: 700; letter-spacing: -0.3px; margin: 26px 0 4px 0; padding-bottom: 6px; border-bottom: 2px solid #0d4a43;">2 · The stack, and what I rejected</h2>
+    <p style="margin: 10px 0 12px 0; color: #3c4c58;">A stack is a set of liabilities you agree to maintain. Each choice below is followed by the alternative I turned down, because in five years the College will be asked why — and the answer should already be written down.</p>
+
+    <table style="width: 100%; border-collapse: collapse; font-size: 8.8pt; font-family: 'IBM Plex Sans', sans-serif;">
+      <thead>
+        <tr style="background: #0d4a43; color: #fff;">
+          <th style="text-align: left; padding: 6px 8px; font-weight: 600; width: 17%;">Layer</th>
+          <th style="text-align: left; padding: 6px 8px; font-weight: 600; width: 25%;">Choice</th>
+          <th style="text-align: left; padding: 6px 8px; font-weight: 600; width: 33%;">Why this one</th>
+          <th style="text-align: left; padding: 6px 8px; font-weight: 600; width: 25%;">Rejected, and why</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="background: #f7faf9;">
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 600;">Application</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Next.js 15 (App Router), React 19, TypeScript strict</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">One codebase serves the PWA and the server routes that must hold the marking rules. Server Components keep the phone bundle small.</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;"><strong>React Native / Flutter</strong> — an app store release cycle the College cannot control, and no benefit here: the device APIs we need are all on the web.</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 600;">Styling</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Tailwind CSS v4 + a small set of Radix primitives</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Radix gives correct focus and keyboard behaviour on dialogs and menus, which is where accessibility is usually lost. Tailwind keeps the shipped CSS near-zero.</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;"><strong>MUI / Chakra</strong> — 200 KB+ of component framework on a phone that is already struggling.</td>
+        </tr>
+        <tr style="background: #f7faf9;">
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 600;">Offline store</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Dexie 4 over IndexedDB, with a typed outbox</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Mature, small, well understood. The outbox pattern is boring on purpose: one queue, one worker, idempotent keys.</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;"><strong>PouchDB / RxDB sync</strong> — bidirectional replication invites conflict resolution we do not want anywhere near a grade.</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 600;">Service worker</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Serwist</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">The maintained successor to Workbox with first-class App Router support; precache, runtime caching and Background Sync in one config.</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;"><strong>next-pwa</strong> — unmaintained; <strong>hand-written SW</strong> — the single easiest way to ship an app that will not update.</td>
+        </tr>
+        <tr style="background: #f7faf9;">
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 600;">Database &amp; auth</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Supabase — Postgres 16, Auth, Storage, Realtime</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Row-level security lets the marking rules live in the database, where no client bug can bypass them. It is plain Postgres, so the College is never locked in.</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;"><strong>Firebase</strong> — proprietary query model, weak reporting, painful exports; <strong>bare VPS + Express</strong> — the College would own patching, backups and TLS forever.</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 600;">Data access</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Drizzle ORM for migrations and server queries</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">SQL-shaped, typed, and it produces migration files a DBA can read and review before they run against results.</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;"><strong>Prisma</strong> — heavier runtime, and its migration diffing is harder to audit line by line.</td>
+        </tr>
+        <tr style="background: #f7faf9;">
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 600;">Validation</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Zod schemas shared by client and server</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">One definition of a valid assessment. The phone uses it for guidance; the server uses the same file as the gate.</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;"><strong>Client-only checks</strong> — the classic way marks arrive that no form could have produced.</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 600;">PDF</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Server-side Chromium render of the same HTML form</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">The VETA sheet is a dense table; HTML reproduces it faithfully, and rendering it once on the server makes every copy byte-identical.</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;"><strong>Browser print on the phone</strong> — margins, fonts and page breaks differ per handset.</td>
+        </tr>
+        <tr style="background: #f7faf9;">
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 600;">Notifications</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Beem Africa / Africa's Talking (SMS), Brevo (e-mail)</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Local gateways with registered Tanzanian sender IDs deliver reliably to Vodacom, Airtel, Tigo and Halotel; an international aggregator often does not.</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;"><strong>Twilio</strong> — priced in USD per message with poorer local routing; <strong>WhatsApp Business API</strong> — template approval and per-conversation fees, unnecessary while <span style="font-family: 'IBM Plex Mono', monospace; font-size: 8pt;">wa.me</span> costs nothing.</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 600;">Hosting</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Vercel (app) + Supabase in <span style="font-family: 'IBM Plex Mono', monospace; font-size: 8pt;">af-south-1</span> Cape Town</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">The nearest region to Morogoro — roughly 40–70 ms instead of 200 ms+ via Europe, which is felt on every save.</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;"><strong>EU region</strong> — slower and raises avoidable data-residency questions.</td>
+        </tr>
+        <tr style="background: #f7faf9;">
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 600;">Testing</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Vitest (rules), Playwright (offline journeys), pgTAP (RLS)</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">pgTAP is the one that matters: it proves in CI that a Coordinator token genuinely cannot write a mark.</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;"><strong>Manual testing only</strong> — grading rules silently drift with every change.</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 8px; font-weight: 600;">Monitoring</td>
+          <td style="padding: 6px 8px;">Sentry (errors), Supabase logs, Better Stack uptime</td>
+          <td style="padding: 6px 8px;">A supervisor in the field will not file a bug report. The system has to report its own failures.</td>
+          <td style="padding: 6px 8px;"><strong>Nothing</strong> — the default, and the reason pilots quietly fail.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2 style="font-family: 'IBM Plex Sans', sans-serif; font-size: 14pt; font-weight: 700; letter-spacing: -0.3px; margin: 26px 0 4px 0; padding-bottom: 6px; border-bottom: 2px solid #0d4a43;">3 · Security architecture</h2>
+    <p style="margin: 10px 0 12px 0; color: #3c4c58;">Tathmini holds the record that decides whether a person qualifies to teach. The threat is not a stranger on the internet; it is a plausible internal edit that nobody can later disprove. The design answers that first.</p>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px;">
+      <div style="border: 1px solid #d8e2df; border-radius: 4px; padding: 12px 14px;">
+        <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 8.5pt; font-weight: 700; letter-spacing: 0.8px; color: #12665b; margin-bottom: 6px;">IDENTITY</div>
+        <ul style="margin: 0; padding-left: 16px;">
+          <li>Accounts created by Super Admin only; no public sign-up route exists in the codebase.</li>
+          <li>Argon2id password hashing; forced change on first sign-in; 12-character minimum with a blocked-common-password list.</li>
+          <li>TOTP second factor mandatory for both Super Admin accounts, optional for Coordinator.</li>
+          <li>Sessions are httpOnly, Secure, SameSite=Lax cookies; 12-hour supervisor lifetime, 1-hour admin idle timeout.</li>
+          <li>Sign-out revokes server-side, and wipes the local Dexie cache of any trainee data.</li>
+        </ul>
+      </div>
+      <div style="border: 1px solid #d8e2df; border-radius: 4px; padding: 12px 14px;">
+        <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 8.5pt; font-weight: 700; letter-spacing: 0.8px; color: #12665b; margin-bottom: 6px;">AUTHORISATION</div>
+        <ul style="margin: 0; padding-left: 16px;">
+          <li>RLS enabled on every table; the default is deny.</li>
+          <li>Supervisor: read and write only their own assessor slot, only for trainees on their assigned route.</li>
+          <li>Coordinator: <span style="font-family: 'IBM Plex Mono', monospace; font-size: 8pt;">SELECT</span> and export. No <span style="font-family: 'IBM Plex Mono', monospace; font-size: 8pt;">INSERT</span>, <span style="font-family: 'IBM Plex Mono', monospace; font-size: 8pt;">UPDATE</span> or <span style="font-family: 'IBM Plex Mono', monospace; font-size: 8pt;">DELETE</span> grant exists for that role.</li>
+          <li>Super Admin: full access, but every write is attributed and logged.</li>
+          <li>The service-role key never reaches the browser and is stored only as a server environment secret.</li>
+        </ul>
+      </div>
+      <div style="border: 1px solid #d8e2df; border-radius: 4px; padding: 12px 14px;">
+        <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 8.5pt; font-weight: 700; letter-spacing: 0.8px; color: #12665b; margin-bottom: 6px;">RECORD INTEGRITY</div>
+        <ul style="margin: 0; padding-left: 16px;">
+          <li>Submitted marks are append-only: no <span style="font-family: 'IBM Plex Mono', monospace; font-size: 8pt;">UPDATE</span> grant on <span style="font-family: 'IBM Plex Mono', monospace; font-size: 8pt;">assessment_marks</span> for any role.</li>
+          <li>Corrections create a superseding revision; the original stays visible with its reason.</li>
+          <li>Totals, grade, GPA and the competency verdict are computed in Postgres, not accepted from the client.</li>
+          <li>Each generated PDF is SHA-256 hashed and the hash stored with the result, so tampering is detectable.</li>
+          <li>Append-only audit log with a hash chain: actor, action, target, timestamp, device, IP.</li>
+        </ul>
+      </div>
+      <div style="border: 1px solid #d8e2df; border-radius: 4px; padding: 12px 14px;">
+        <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 8.5pt; font-weight: 700; letter-spacing: 0.8px; color: #12665b; margin-bottom: 6px;">TRANSPORT &amp; DATA</div>
+        <ul style="margin: 0; padding-left: 16px;">
+          <li>TLS 1.3 everywhere with HSTS; the app refuses to run over plain HTTP.</li>
+          <li>AES-256 encryption at rest for database and storage.</li>
+          <li>Strict Content-Security-Policy, no inline scripts, no third-party analytics.</li>
+          <li>Report files served only through short-lived signed URLs (5 minutes), never public paths.</li>
+          <li>Rate limiting on sign-in and export routes; lockout after five failed attempts.</li>
+          <li>Trainee phone numbers and e-mail addresses are never written to application logs.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div style="background: #fdf1ee; border: 1px solid #f0d3ca; border-left: 4px solid #8a3a2a; border-radius: 4px; padding: 12px 15px; margin-bottom: 8px;">
+      <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 8.5pt; font-weight: 700; letter-spacing: 0.8px; color: #8a3a2a; margin-bottom: 5px;">THE RULE I WOULD NOT NEGOTIATE</div>
+      <p style="margin: 0;">Authorisation belongs in the database, not in the interface. Hiding a button is a courtesy to the user; a row-level security policy is what stops the write. Every prototype I have seen fail an audit failed because those two were confused. If the College later asks for a feature that can only work by relaxing RLS, the honest answer is that the feature needs redesigning — not the policy.</p>
+    </div>
+
+    <h2 style="font-family: 'IBM Plex Sans', sans-serif; font-size: 14pt; font-weight: 700; letter-spacing: -0.3px; margin: 26px 0 4px 0; padding-bottom: 6px; border-bottom: 2px solid #0d4a43;">4 · Data model and the rules the database enforces</h2>
+    <p style="margin: 10px 0 12px 0; color: #3c4c58;">Eleven tables carry the whole system. The four constraints below are the ones that make the record defensible; they are written as database constraints precisely so that no future developer can accidentally remove them from a React component.</p>
+
+    <table style="width: 100%; border-collapse: collapse; font-size: 8.8pt; font-family: 'IBM Plex Sans', sans-serif; margin-bottom: 14px;">
+      <thead>
+        <tr style="background: #0d4a43; color: #fff;">
+          <th style="text-align: left; padding: 6px 8px; font-weight: 600; width: 26%;">Table</th>
+          <th style="text-align: left; padding: 6px 8px; font-weight: 600;">Holds</th>
+          <th style="text-align: left; padding: 6px 8px; font-weight: 600; width: 30%;">Guard</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="background: #f7faf9;"><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6; font-family: 'IBM Plex Mono', monospace; font-size: 8pt;">users</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Account, role, assessor slot, active flag</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Role is an enum; only Super Admin may insert</td></tr>
+        <tr><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6; font-family: 'IBM Plex Mono', monospace; font-size: 8pt;">trainees</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Particulars pre-loaded from the College register</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Registration number unique per cohort</td></tr>
+        <tr style="background: #f7faf9;"><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6; font-family: 'IBM Plex Mono', monospace; font-size: 8pt;">instruments</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">TP Theory, TP Practical, IPT — versioned</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">A result keeps the instrument version it was marked on</td></tr>
+        <tr><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6; font-family: 'IBM Plex Mono', monospace; font-size: 8pt;">criteria</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Verbatim VETA wording, maxima, order</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Section maxima must sum to the instrument total</td></tr>
+        <tr style="background: #f7faf9;"><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6; font-family: 'IBM Plex Mono', monospace; font-size: 8pt;">assignments</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Which supervisor assesses which trainee, in which slot</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">One supervisor cannot hold both slots for one trainee</td></tr>
+        <tr><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6; font-family: 'IBM Plex Mono', monospace; font-size: 8pt;">assessment_marks</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">One submitted assessor slot, with per-criterion scores</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Append-only; complete-form check; unique per trainee+slot</td></tr>
+        <tr style="background: #f7faf9;"><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6; font-family: 'IBM Plex Mono', monospace; font-size: 8pt;">results</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">The official average, grade, GPA, verdict</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Generated columns — cannot be written by any client</td></tr>
+        <tr><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6; font-family: 'IBM Plex Mono', monospace; font-size: 8pt;">result_revisions</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Super Admin overrides with typed reason</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Insert only; reason may not be empty</td></tr>
+        <tr style="background: #f7faf9;"><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6; font-family: 'IBM Plex Mono', monospace; font-size: 8pt;">reassignments</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Request state machine and its history</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Transitions validated by trigger</td></tr>
+        <tr><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6; font-family: 'IBM Plex Mono', monospace; font-size: 8pt;">notifications</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Every notice sent to a trainee, per channel</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Insert only; provider message id retained</td></tr>
+        <tr style="background: #f7faf9;"><td style="padding: 5px 8px; font-family: 'IBM Plex Mono', monospace; font-size: 8pt;">audit_log</td><td style="padding: 5px 8px;">Actor, action, target, time, device, IP</td><td style="padding: 5px 8px;">Append-only, hash-chained, no delete grant at all</td></tr>
+      </tbody>
+    </table>
+
+    <h2 style="font-family: 'IBM Plex Sans', sans-serif; font-size: 14pt; font-weight: 700; letter-spacing: -0.3px; margin: 26px 0 4px 0; padding-bottom: 6px; border-bottom: 2px solid #0d4a43;">5 · Daily automatic backup and recovery</h2>
+    <p style="margin: 10px 0 12px 0; color: #3c4c58;">A backup nobody has restored is a rumour. This is specified as a working capability with a visible status, not a checkbox in a hosting console.</p>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+      <div style="border: 1px solid #d8e2df; border-radius: 4px; padding: 12px 14px;">
+        <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 8.5pt; font-weight: 700; letter-spacing: 0.8px; color: #12665b; margin-bottom: 6px;">WHAT RUNS, AND WHEN</div>
+        <ul style="margin: 0; padding-left: 16px;">
+          <li><strong>02:00 EAT daily</strong> — full logical dump of the database plus the report-file manifest, compressed and encrypted with <span style="font-family: 'IBM Plex Mono', monospace; font-size: 8pt;">age</span> before it leaves the server.</li>
+          <li><strong>Continuous</strong> — Supabase point-in-time recovery for the last 7 days, so a mistake at 14:10 can be undone to 14:09.</li>
+          <li><strong>Weekly</strong> — a copy written to a second provider in a different account, so a compromised console cannot delete every copy.</li>
+          <li><strong>Monthly</strong> — an archive snapshot retained for 24 months for VETA audit.</li>
+          <li><strong>Quarterly</strong> — an automated restore into a scratch database that verifies row counts and checksums, then reports pass or fail.</li>
+        </ul>
+      </div>
+      <div style="border: 1px solid #d8e2df; border-radius: 4px; padding: 12px 14px;">
+        <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 8.5pt; font-weight: 700; letter-spacing: 0.8px; color: #12665b; margin-bottom: 6px;">WHAT THE SUPER ADMIN SEES</div>
+        <ul style="margin: 0; padding-left: 16px;">
+          <li>Last successful backup, its size, duration and checksum — green, amber after 26 hours, red after 48.</li>
+          <li>A 30-day calendar of backup outcomes, so a silent run of failures is impossible to miss.</li>
+          <li>Download of any retained backup, gated behind re-authentication and TOTP, and itself written to the audit log.</li>
+          <li>"Run backup now" before any risky operation.</li>
+          <li>Result of the last restore rehearsal, with its date.</li>
+          <li>E-mail alert to both Super Admins the moment a backup fails.</li>
+        </ul>
+      </div>
+    </div>
+
+    <table style="width: 100%; border-collapse: collapse; font-size: 8.8pt; font-family: 'IBM Plex Sans', sans-serif; margin-bottom: 8px;">
+      <thead>
+        <tr style="background: #0d4a43; color: #fff;">
+          <th style="text-align: left; padding: 6px 8px; font-weight: 600; width: 34%;">Scenario</th>
+          <th style="text-align: left; padding: 6px 8px; font-weight: 600; width: 22%;">Recovery point (RPO)</th>
+          <th style="text-align: left; padding: 6px 8px; font-weight: 600; width: 22%;">Recovery time (RTO)</th>
+          <th style="text-align: left; padding: 6px 8px; font-weight: 600;">Mechanism</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="background: #f7faf9;"><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">A record deleted or edited in error</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Under 1 minute</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Minutes</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Point-in-time recovery; usually the audit log alone is enough</td></tr>
+        <tr><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">A bad migration corrupts a table</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Under 1 minute</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Under 1 hour</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">PITR to the moment before the migration ran</td></tr>
+        <tr style="background: #f7faf9;"><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Total loss of the hosting account</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Up to 24 hours</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Under 8 hours</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Restore the nightly encrypted dump onto a fresh project</td></tr>
+        <tr><td style="padding: 5px 8px;">A supervisor's phone is lost mid-route</td><td style="padding: 5px 8px;">Unsubmitted drafts only</td><td style="padding: 5px 8px;">Immediate</td><td style="padding: 5px 8px;">Everything submitted is already server-side; the route is reassigned</td></tr>
+      </tbody>
+    </table>
+    <p style="margin: 8px 0 0 0; font-size: 9pt; color: #5b6b78;">The encryption key for the nightly dumps is held by the College, not by the developer, and is kept in two sealed copies in the Principal's office and with the ICT Unit. A backup the developer alone can decrypt is not a College backup.</p>
+
+    <h2 style="font-family: 'IBM Plex Sans', sans-serif; font-size: 14pt; font-weight: 700; letter-spacing: -0.3px; margin: 26px 0 4px 0; padding-bottom: 6px; border-bottom: 2px solid #0d4a43;">6 · Experience and performance targets</h2>
+    <p style="margin: 10px 0 12px 0; color: #3c4c58;">The device that matters is a mid-range Android on 3G, held in one hand, in a noisy workshop, sometimes in bright sun. Every budget below is measured on that device in CI, not on a laptop.</p>
+
+    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px;">
+      <div style="border: 1px solid #d8e2df; border-radius: 4px; padding: 10px 12px; text-align: center;">
+        <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 17pt; font-weight: 700; color: #0d4a43; line-height: 1;">&lt; 2.5s</div>
+        <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 8pt; color: #5b6b78; margin-top: 4px;">Largest Contentful Paint, 3G, cold</div>
+      </div>
+      <div style="border: 1px solid #d8e2df; border-radius: 4px; padding: 10px 12px; text-align: center;">
+        <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 17pt; font-weight: 700; color: #0d4a43; line-height: 1;">&lt; 180 KB</div>
+        <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 8pt; color: #5b6b78; margin-top: 4px;">First-load JavaScript, gzipped</div>
+      </div>
+      <div style="border: 1px solid #d8e2df; border-radius: 4px; padding: 10px 12px; text-align: center;">
+        <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 17pt; font-weight: 700; color: #0d4a43; line-height: 1;">&lt; 50 ms</div>
+        <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 8pt; color: #5b6b78; margin-top: 4px;">Tap to score persisted locally</div>
+      </div>
+      <div style="border: 1px solid #d8e2df; border-radius: 4px; padding: 10px 12px; text-align: center;">
+        <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 17pt; font-weight: 700; color: #0d4a43; line-height: 1;">100%</div>
+        <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 8pt; color: #5b6b78; margin-top: 4px;">Marking flow usable with the radio off</div>
+      </div>
+    </div>
+
+    <p style="margin: 0 0 8px 0;">Beyond the numbers, four things carry the field experience: touch targets never below 44&nbsp;px and score buttons deliberately larger; a contrast ratio of at least 7:1 so the screen survives direct sunlight; the entire assessment reachable one-handed with the thumb; and no destructive action without an explicit confirmation, because a mis-tap in a workshop is not the user's fault. Swahili is a first-class interface language, not a translation layer bolted on at the end — the notification templates already are, and the interface strings should follow before pilot.</p>
+
+    <h2 style="font-family: 'IBM Plex Sans', sans-serif; font-size: 14pt; font-weight: 700; letter-spacing: -0.3px; margin: 26px 0 4px 0; padding-bottom: 6px; border-bottom: 2px solid #0d4a43;">7 · Delivery plan</h2>
+    <p style="margin: 10px 0 12px 0; color: #3c4c58;">Fourteen weeks to a supervised pilot, twenty to institutional handover. The sequence is deliberate: the record-keeping guarantees are built before the features that depend on them, because retrofitting an audit trail is how projects lose a term.</p>
+
+    <table style="width: 100%; border-collapse: collapse; font-size: 8.8pt; font-family: 'IBM Plex Sans', sans-serif; margin-bottom: 14px;">
+      <thead>
+        <tr style="background: #0d4a43; color: #fff;">
+          <th style="text-align: left; padding: 6px 8px; font-weight: 600; width: 9%;">Phase</th>
+          <th style="text-align: left; padding: 6px 8px; font-weight: 600; width: 11%;">Weeks</th>
+          <th style="text-align: left; padding: 6px 8px; font-weight: 600;">Delivered</th>
+          <th style="text-align: left; padding: 6px 8px; font-weight: 600; width: 30%;">Gate before the next phase starts</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="background: #f7faf9;">
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 700;">0</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">1–2</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Repository, CI, environments, Supabase project in Cape Town, schema and RLS policies, seeded criteria from the verbatim VETA forms.</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">pgTAP proves a Coordinator token cannot write a mark.</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 700;">1</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">3–6</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Supervisor PWA: sign-in, route, offline marking for all three instruments, gating, auto-comments, draft recovery, outbox sync.</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">A complete assessment survives airplane mode, a force-quit and a reboot.</td>
+        </tr>
+        <tr style="background: #f7faf9;">
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 700;">2</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">7–9</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Two-assessor independence, server-side scoring, PDF generation matching the VETA sheet, e-mail delivery, notification history.</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Two supervisors mark one trainee; neither sees the other; the average is correct to the decimal.</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 700;">3</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">10–12</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Admin console: accounts, routes, reassignment approvals, overrides with reasons, Excel export, audit log viewer, backup panel.</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">A restore rehearsal completes and the panel reports it.</td>
+        </tr>
+        <tr style="background: #f7faf9;">
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 700;">4</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">13–14</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Hardening, penetration test, accessibility audit, Swahili interface strings, supervisor training, pilot on one route.</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">No high or critical finding open; pilot supervisors sign off.</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 8px; font-weight: 700;">5</td>
+          <td style="padding: 6px 8px;">15–20</td>
+          <td style="padding: 6px 8px;">Full cohort rollout, parallel paper run for one term, handover documentation, source and credential transfer to the College.</td>
+          <td style="padding: 6px 8px;">Paper and digital results agree for every trainee in the parallel run.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2 style="font-family: 'IBM Plex Sans', sans-serif; font-size: 14pt; font-weight: 700; letter-spacing: -0.3px; margin: 26px 0 4px 0; padding-bottom: 6px; border-bottom: 2px solid #0d4a43;">8 · Risk register</h2>
+
+    <table style="width: 100%; border-collapse: collapse; font-size: 8.8pt; font-family: 'IBM Plex Sans', sans-serif; margin-bottom: 14px;">
+      <thead>
+        <tr style="background: #0d4a43; color: #fff;">
+          <th style="text-align: left; padding: 6px 8px; font-weight: 600; width: 30%;">Risk</th>
+          <th style="text-align: left; padding: 6px 8px; font-weight: 600; width: 13%;">Likelihood</th>
+          <th style="text-align: left; padding: 6px 8px; font-weight: 600; width: 12%;">Impact</th>
+          <th style="text-align: left; padding: 6px 8px; font-weight: 600;">Mitigation already designed in</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="background: #f7faf9;"><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 600;">VETA revises the criteria or the grading key</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">High</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Medium</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Instruments are versioned data, not code; historical results keep the version they were marked on.</td></tr>
+        <tr><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 600;">Supervisors resist a digital form</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Medium</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">High</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">One screen at a time, no typing of particulars in the field, and a parallel paper term so nobody is forced to trust it blind.</td></tr>
+        <tr style="background: #f7faf9;"><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 600;">Prolonged loss of connectivity on a route</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">High</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Low</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">The outbox holds indefinitely and replays; nothing expires while it waits.</td></tr>
+        <tr><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 600;">Dispute over a mark after publication</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Medium</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">High</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Both assessors' original sheets, the hash-stamped PDF and the full audit trail are producible in minutes.</td></tr>
+        <tr style="background: #f7faf9;"><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 600;">SMS not delivered to a trainee</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Medium</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Low</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Three channels, delivery receipts stored, and the supervisor can see what was sent and when.</td></tr>
+        <tr><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 600;">The developer becomes unavailable</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Medium</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">High</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Mainstream stack, College-owned repository and credentials, handover documentation as a phase-5 deliverable.</td></tr>
+        <tr style="background: #f7faf9;"><td style="padding: 5px 8px; font-weight: 600;">Vendor price change or shutdown</td><td style="padding: 5px 8px;">Low</td><td style="padding: 5px 8px;">Medium</td><td style="padding: 5px 8px;">Supabase is Postgres and can be self-hosted; nightly dumps are portable to any Postgres host.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 style="font-family: 'IBM Plex Sans', sans-serif; font-size: 14pt; font-weight: 700; letter-spacing: -0.3px; margin: 26px 0 4px 0; padding-bottom: 6px; border-bottom: 2px solid #0d4a43;">9 · Cost of ownership</h2>
+    <p style="margin: 10px 0 12px 0; color: #3c4c58;">Indicative annual running cost at the College's expected volume — roughly 300 trainees, 20 supervisors, two assessments each per cohort. No per-device licence, no app-store fee, no per-supervisor seat.</p>
+    <table style="width: 100%; border-collapse: collapse; font-size: 8.8pt; font-family: 'IBM Plex Sans', sans-serif; margin-bottom: 14px;">
+      <thead>
+        <tr style="background: #0d4a43; color: #fff;">
+          <th style="text-align: left; padding: 6px 8px; font-weight: 600; width: 24%;">Item</th>
+          <th style="text-align: left; padding: 6px 8px; font-weight: 600; width: 20%;">Tier</th>
+          <th style="text-align: left; padding: 6px 8px; font-weight: 600;">Note</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="background: #f7faf9;"><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Database, auth, storage</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Supabase Pro</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Required for point-in-time recovery and daily backups — not an optional upgrade</td></tr>
+        <tr><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Application hosting</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Vercel Pro</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Or any Node host; the app is not tied to Vercel features</td></tr>
+        <tr style="background: #f7faf9;"><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Transactional e-mail</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Brevo</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Well inside the free tier at this volume</td></tr>
+        <tr><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">SMS</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Beem Africa, pay as you go</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Per message in TZS; zero if supervisors keep using the device's own SMS app</td></tr>
+        <tr style="background: #f7faf9;"><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Off-site backup storage</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Backblaze B2 or Cloudflare R2</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">A few gigabytes; negligible</td></tr>
+        <tr><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Error monitoring</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Sentry, free tier</td><td style="padding: 5px 8px; border-bottom: 1px solid #e1e9e6;">Sufficient at this scale</td></tr>
+        <tr style="background: #f7faf9;"><td style="padding: 5px 8px;">Domain and TLS</td><td style="padding: 5px 8px;">College domain</td><td style="padding: 5px 8px;">TLS certificates issued and renewed automatically</td></tr>
+      </tbody>
+    </table>
+    <p style="margin: 0 0 8px 0; font-size: 9pt; color: #5b6b78;">The dominant cost of this system is not hosting. It is the maintenance retainer — someone answering when VETA changes a form two weeks before assessments begin. Budget for that explicitly rather than discovering it.</p>
+
+    <h2 style="font-family: 'IBM Plex Sans', sans-serif; font-size: 14pt; font-weight: 700; letter-spacing: -0.3px; margin: 26px 0 4px 0; padding-bottom: 6px; border-bottom: 2px solid #0d4a43;">10 · Decisions needed from the College before Phase 0</h2>
+    <p style="margin: 10px 0 12px 0; color: #3c4c58;">Seven answers. Each one blocks something concrete, and each is a decision only the College can make.</p>
+    <table style="width: 100%; border-collapse: collapse; font-size: 8.8pt; font-family: 'IBM Plex Sans', sans-serif;">
+      <tbody>
+        <tr style="background: #f7faf9;"><td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; width: 5%; font-weight: 700; color: #12665b;">1</td><td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 600; width: 34%;">Does the data have to remain in Tanzania?</td><td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">If yes, self-hosted Supabase on a local provider replaces the managed service and adds roughly three weeks plus an ICT operations burden.</td></tr>
+        <tr><td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 700; color: #12665b;">2</td><td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 600;">Who are the three e-mail recipients of every result?</td><td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Named roles, not individuals, so the list survives staff changes.</td></tr>
+        <tr style="background: #f7faf9;"><td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 700; color: #12665b;">3</td><td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 600;">May a Super Admin override a submitted mark at all?</td><td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">My recommendation is yes, with a mandatory reason and full visibility — but the Academic Board should decide, not the developer.</td></tr>
+        <tr><td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 700; color: #12665b;">4</td><td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 600;">What happens when the two assessors differ widely?</td><td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">A threshold — say 15 marks — could flag the pair for Coordinator review before the average is published. Currently the system just averages.</td></tr>
+        <tr style="background: #f7faf9;"><td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 700; color: #12665b;">5</td><td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 600;">Should the trainee receive their own result automatically?</td><td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">Affects whether trainees need accounts at all, and what a trainee may see.</td></tr>
+        <tr><td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 700; color: #12665b;">6</td><td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6; font-weight: 600;">GPS stamping at submission — on or off?</td><td style="padding: 6px 8px; border-bottom: 1px solid #e1e9e6;">It answers "did the supervisor visit?" but it also monitors staff. A governance decision, not a technical one.</td></tr>
+        <tr style="background: #f7faf9;"><td style="padding: 6px 8px; font-weight: 700; color: #12665b;">7</td><td style="padding: 6px 8px; font-weight: 600;">How long must results be retained?</td><td style="padding: 6px 8px;">I have assumed 24 months of archives for VETA audit. Confirm against College policy.</td></tr>
+      </tbody>
+    </table>
+
+    <div style="background: #f1f6f4; border: 1px solid #cfe0d9; border-radius: 4px; padding: 14px 16px; margin-top: 22px;">
+      <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 8.5pt; font-weight: 700; letter-spacing: 1px; color: #12665b; margin-bottom: 6px;">WHAT I WOULD DO FIRST, IF ONLY ONE THING</div>
+      <p style="margin: 0;">Build the schema, the row-level security policies and the pgTAP tests that prove them — before a single screen is written. It is two weeks of work with nothing to demonstrate at the end, which is exactly why it gets skipped, and exactly why systems like this one fail their first audit. The interface can be rebuilt in a month. A record nobody can trust cannot be repaired at all.</p>
+    </div>
+
+  </div>
+</doc-page>
+</x-dc>
+</body>
+</html>
