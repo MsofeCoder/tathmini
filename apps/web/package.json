@@ -15,7 +15,7 @@
     "@supabase/supabase-js": "^2.115.0",
     "@tathmini/shared": "workspace:*",
     "dexie": "^4.4.5",
-    "next": "15.1.4",
+    "next": "15.5.25",
     "react": "19.0.0",
     "react-dom": "19.0.0"
   },
@@ -27,7 +27,7 @@
     "@types/react": "^19.0.4",
     "@types/react-dom": "^19.0.2",
     "eslint": "^9.17.0",
-    "eslint-config-next": "15.1.4",
+    "eslint-config-next": "15.5.25",
     "serwist": "^9.5.12",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.7.2",
