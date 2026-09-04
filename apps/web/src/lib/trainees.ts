@@ -132,3 +132,61 @@ export function trackPointsLabel(track: 'TP' | 'IPT', maxTotalByCode: Map<string
   const practical = maxTotalByCode.get('tp_practical') ?? 0;
   return `TP · Theory ${theory} + Practical ${practical}`;
 }
+
+export interface RouteProgressInput {
+  status: TraineeStatus;
+  /** How many of THIS supervisor's own assessment_marks are submitted for this trainee. */
+  ownSubmittedCount: number;
+  /** How many instruments this trainee's track requires (TP: 2, IPT: 1). */
+  requiredCount: number;
+  /** True if this device holds an unsubmitted local draft for this trainee. */
+  hasDraft: boolean;
+}
+
+export interface RouteProgress {
+  assessed: number;
+  inProgress: number;
+  notStarted: number;
+  /** Whole-percent completion, for the route list's progress bar. */
+  pct: number;
+}
+
+/**
+ * The route list's three summary counters, counted from THIS supervisor's
+ * point of view — which is the only view they can act on.
+ *
+ * 'partial' counts as assessed, not as outstanding. It means this
+ * supervisor has submitted every instrument their track requires and is
+ * waiting on the OTHER assessor, which is not work they can do anything
+ * about. Counting it as still-to-assess is what made the tiles read
+ * "0 of 5 assessed · 5 still to assess" on a route where three trainees
+ * were already marked — a supervisor who finished a whole route would
+ * have seen no progress at all.
+ *
+ * A trainee is in progress when the work is genuinely started but not
+ * finished, from either half of the split:
+ *   - part of a multi-instrument track submitted (TP theory in, practical
+ *     not) — deriveStatus() collapses that to 'pending', so the raw counts
+ *     are needed here to tell it apart from untouched;
+ *   - or an unsubmitted local draft on this device, which is the only
+ *     signal available for a single-instrument IPT trainee.
+ */
+export function routeProgress(trainees: RouteProgressInput[]): RouteProgress {
+  let assessed = 0;
+  let inProgress = 0;
+
+  for (const t of trainees) {
+    if (t.status === 'locked' || t.status === 'partial') {
+      assessed += 1;
+    } else if (t.hasDraft || (t.ownSubmittedCount > 0 && t.ownSubmittedCount < t.requiredCount)) {
+      inProgress += 1;
+    }
+  }
+
+  return {
+    assessed,
+    inProgress,
+    notStarted: trainees.length - assessed - inProgress,
+    pct: trainees.length === 0 ? 0 : Math.round((assessed / trainees.length) * 100),
+  };
+}

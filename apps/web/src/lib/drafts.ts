@@ -26,3 +26,19 @@ export async function saveDraft(key: string, marks: MarksByCriterion): Promise<v
 export async function clearDraft(key: string): Promise<void> {
   await db.drafts.delete(key);
 }
+
+/**
+ * Trainee ids with at least one unsubmitted draft on this device. Drives
+ * the route list's "in progress" counter — for an IPT trainee (a single
+ * instrument) a local draft is the only evidence that marking has started
+ * but not finished, since nothing reaches the server until submit.
+ */
+export async function traineeIdsWithDrafts(): Promise<Set<string>> {
+  const keys = (await db.drafts.toCollection().primaryKeys()) as string[];
+  const ids = new Set<string>();
+  for (const key of keys) {
+    const traineeId = key.split(':')[0];
+    if (traineeId) ids.add(traineeId);
+  }
+  return ids;
+}
