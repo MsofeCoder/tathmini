@@ -47,6 +47,157 @@ the diff. This file is for knowledge that would otherwise be lost.
 
 ---
 
+## 2026-09-04 · migration · Fixed validate_and_finalize_mark() — never had SECURITY DEFINER, so no real submission could ever finalize
+
+**Kind:** migration
+**Phase:** 1
+**Commit / PR:** (pending — see below)
+
+**What changed**
+`packages/db/migrations/0012_fix_finalize_mark_security_definer.sql` adds
+`security definer set search_path = public` to
+`validate_and_finalize_mark()` (0001_rls_and_functions.sql) — it was
+missing that attribute entirely. Applied live to `azlwxriyhdshfhklonrx`
+after showing the SQL and getting explicit approval (AGENTS.md).
+
+**Why this way**
+Found the hard way: the very first live end-to-end test of the new
+marking flow's two-insert submit contract (see the feature entry below)
+inserted a complete set of `assessment_mark_items` successfully, then
+failed with `42501 permission denied for table assessment_marks` —
+`validate_and_finalize_mark()`'s own `update assessment_marks set total
+= ..., submitted_at = ...` was running as the invoking `authenticated`
+role, which has `UPDATE` revoked on `assessment_marks` by design
+(AGENTS.md rule 2: marks are append-only). Its sibling function,
+`recompute_result()`, already has the correct `security definer set
+search_path = public` attribute — this one was simply missed when
+`0001` was written. Same fix pattern as `0004`'s `chain_audit_log()` fix.
+
+This is safe precisely because the function's own logic already gates
+the write correctly (rejects an already-submitted mark, rejects an
+incomplete item count) — `security definer` grants it the privilege to
+perform a write its own checks already control, not a new capability an
+authenticated client can reach directly.
+
+**Watch out for**
+This bug existed from the moment `0001` was first applied
+(2026-09-04, see the "Phase 0 migrations 0000–0004 applied" entry) and
+was never caught: the pgTAP suite's own complete-submission assertion
+(`phase0.sql` line ~99–107) inserts `assessment_mark_items` as the
+`postgres` superuser (only the RLS-specific assertions wrap themselves in
+`set role authenticated`), so it never actually exercised this trigger
+under the same role a real client uses. **No number of pgTAP passes
+proved a real submission could finalize** — only a live insert as the
+`authenticated` role, through the real login path, could have caught
+this. Worth remembering generally: a trigger that writes to a
+REVOKE-protected table needs its own explicit `authenticated`-role test,
+not just coverage via a superuser fixture.
+
+Caught by a one-off Node script (not part of the app, run then
+discarded) that signs in as `test.supervisor` via the Supabase Auth REST
+API and replays the exact insert sequence `submitAssessment()` performs
+— see the feature entry below for the three real submissions this
+produced against `TEST ROUTE`.
+
+**Verified by**
+Re-ran the same script immediately after applying the migration: TP
+Theory (41 items) and TP Practical (34 items) for `TEST TRAINEE 1`, and
+IPT (14 items) for `TEST TRAINEE 4`, each finalized correctly — `total`/
+`submitted_at` stamped, `results` recomputed with the right `pct`/
+`grade`/`gpa`/`class_of_award`/`competent`, `locked_at` correctly still
+null (these test trainees only have an `a1` assignment, no `a2`).
+
+---
+
+## 2026-09-04 · feature · Criterion-by-criterion marking built (TP Theory, TP Practical, IPT) and verified live
+
+**Kind:** feature
+**Phase:** 1
+**Commit / PR:** (pending — see below)
+
+**What changed**
+One reusable route, `/trainee/[id]/mark/[instrument]`, drives all three
+instruments entirely from what's live in `instruments`/`criteria` —
+never a hardcoded criteria list in the app. `apps/web/src/lib/marking.ts`
+(new, unit-tested) holds the pure scoring/gating rules: 0..max in 0.5-step
+score options for the points scale, the fixed 1–5 IPT scale, the same
+below-half / ≤3 flag thresholds `packages/shared/src/schemas.ts` already
+defines, section grouping/subtotals, and `computeGaps()` — the submit-time
+gate that reports both an unscored criterion and a scored-but-flagged one
+missing its required comment, each with a jump target.
+
+Per HANDOFF.md's agreed cut for this sprint: `apps/web/src/lib/drafts.ts`
+(Dexie, new dependency — already named in AGENTS.md's fixed stack) persists
+every score/comment to IndexedDB, keyed per (trainee, instrument), restored
+on mount — built in from the start of the marking UI, not bolted on after.
+This is local draft-only; the actual offline submit queue and service
+worker are still unbuilt (ROADMAP.md).
+
+`actions.ts`'s `submitAssessment()` implements HANDOFF.md's exact two-insert
+contract: re-validates completeness and every mark server-side against the
+same shared Zod schemas (never trusts the client's own gate), reuses an
+existing unfinished `assessment_marks` row rather than re-inserting if one
+exists (the documented orphaned-row scenario), then inserts every
+`assessment_mark_items` row in one call. `trainee/[id]/page.tsx` gained
+"Start"/"Submitted ✓" buttons per instrument for the trainee's track,
+scoped to only render when the signed-in supervisor actually holds an
+assignment for this trainee.
+
+**Why this way**
+Chose one scrollable page per instrument (sections top to bottom, each with
+a running subtotal, sticky progress header, gating banner) over the
+prototype's multi-step wizard with a separate jump-menu and a distinct
+merged "Comments" step — the prototype's `showAssess` (reference/
+Tathmini.dc.html lines 416+) is a considerably larger interaction than
+what HANDOFF.md's narrowed Saturday/Monday scope calls for, and the
+schema models a comment **per criterion**, not one merged per-instrument
+comment the auto-comment phrase bank writes into — that phrase bank
+(ROADMAP.md, still unchecked) is explicitly not part of this cut. Gating,
+the below-half/≤3 comment trigger, and "unscored counts as zero, never
+submit incomplete" are all preserved from the prototype; the step-wizard
+navigation chrome is the deliberate simplification, not the correctness
+rules.
+
+**Watch out for**
+See the migration entry above — the first live test of this exact
+contract caught a real bug in `validate_and_finalize_mark()`, now fixed.
+
+Building this is what produced three permanent live submissions against
+`TEST ROUTE`: `TEST TRAINEE 1` now has both `tp_theory` (50/50) and
+`tp_practical` (50/50) submitted by `test.supervisor`'s `a1` slot, and
+`TEST TRAINEE 4` has `ipt` (70/70) submitted the same way. All three show
+`locked_at` null (only `a1` exists for these test trainees, never `a2`) —
+expect the route list to now show these two as `partial`, not `pending`,
+when next viewed; this is real submitted data, not a bug, and per
+AGENTS.md rule 2 these rows cannot be un-submitted.
+
+Not built this round, deliberately: the Dexie **submit queue**
+(retry-on-reconnect) and the service worker (HANDOFF.md items 8–9) —
+today a submit attempted fully offline will just fail with a network
+error, caught and shown as `submitError`, not queued. The draft itself
+still survives (Dexie draft-save is independent of submit). This is the
+next unit of work before Monday.
+
+No browser-automation tool was available in this session (unlike prior
+entries' `claude-in-chrome` verification) — this feature was verified via
+`pnpm lint && pnpm test && pnpm typecheck` (35 web tests, +15 new for
+`marking.ts`), a clean `next build` (140 kB first-load JS for the marking
+route, under the 180 KB budget), and the live Node-script submissions
+above, which exercise the identical code path `actions.ts` uses. The
+actual React UI (score buttons, gating banner, draft restore-on-reload)
+has **not** been visually verified in a real browser — flagged directly
+so this isn't mistaken for the same level of proof prior entries have.
+
+**Verified by**
+`pnpm lint && pnpm test && pnpm typecheck` clean across all workspaces;
+`pnpm format:check` clean repo-wide; `pnpm --filter @tathmini/web build`
+clean. Three live submissions against `azlwxriyhdshfhklonrx` (see above),
+each producing the correct `results` row (grade/GPA/class/competent) —
+the strongest available proof of the actual insert contract, though not
+of the React UI itself (see "Watch out for").
+
+---
+
 ## 2026-09-04 · feature · Trainee profile (pre-loaded particulars) built and verified live
 
 **Kind:** feature
