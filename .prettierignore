@@ -4,6 +4,10 @@ dist
 build
 coverage
 pnpm-lock.yaml
+
+# Serwist build output, not source
+apps/web/public/sw.js
+apps/web/public/swe-worker-*.js
 reference/
 *.dc.html
 

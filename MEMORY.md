@@ -47,6 +47,115 @@ the diff. This file is for knowledge that would otherwise be lost.
 
 ---
 
+## 2026-09-04 · feature · Offline marking made real: route snapshot in IndexedDB, /offline entry point, submit outbox, service worker
+
+**Kind:** feature
+**Phase:** 1
+**Commit / PR:** (pending — see below)
+
+**What changed**
+Three ROADMAP.md Phase 1 lines' worth of offline work, plus the thing
+none of them named that turned out to be the actual requirement.
+
+1. **Submit outbox** (`apps/web/src/lib/outbox.ts`, `apps/web/src/app/
+   outbox-drainer.tsx`): a completed assessment that cannot reach the
+   server is queued in Dexie and replayed on the browser's `online`
+   event and on regaining focus. `submitAssessment()` moved to
+   `apps/web/src/app/actions/submit-assessment.ts` (two callers now) and
+   returns a machine-readable failure code; its contract types live in
+   `apps/web/src/lib/submission.ts` so a Server Action and a client
+   component can share them.
+2. **Offline route snapshot** (`apps/web/src/lib/offline-cache.ts`): one
+   online load of the route list writes the whole route — every trainee,
+   this supervisor's slot for each, which instruments they've already
+   submitted, and all three instruments' criteria — into IndexedDB, and
+   prefetches `/offline` so its JavaScript is in the service worker's
+   cache too.
+3. **`/offline`** (`apps/web/src/app/offline/page.tsx`): a public,
+   client-rendered, statically prerendered page that reads that snapshot
+   and renders the *same* `MarkingForm` the online route does (moved to
+   `apps/web/src/components/marking-form.tsx`, now shared). Marking there
+   is the real thing, not a degraded copy.
+4. **Service worker** (`apps/web/src/app/sw.ts`, Serwist per AGENTS.md's
+   fixed stack): precaches `/offline`, serves it as the fallback whenever
+   a navigation fails.
+
+**Why this way**
+The premise in HANDOFF.md item 9 — that "a basic service worker caching
+the app shell" would let a supervisor keep working at a remote VTC — is
+not achievable as written, and this is the important finding. Every
+screen except `/login` is server-rendered against Supabase, and
+`middleware.ts` calls `supabase.auth.getUser()` (a network call) on
+every request. With no connection the device cannot reach the Next.js
+server at all, so middleware never runs and no amount of asset caching
+produces those pages. Offline therefore has to be a client-rendered page
+fed from data the app deliberately cached — which is what `/offline` is.
+
+Caching the whole route on one online visit (rather than caching each
+trainee's marking screen as it's opened) is what makes this usable: a
+supervisor arms the entire route by opening the route list once in town,
+instead of having to pre-open all ~40 trainees.
+
+Deliberately **not** caching Supabase responses or server-rendered HTML
+in the service worker: those are per-user, RLS-scoped, often personal,
+and an opaque HTTP cache on a shared device is the wrong place for them.
+Everything offline comes from IndexedDB, written deliberately.
+
+**Watch out for**
+Three real bugs found by verifying rather than assuming, all of which
+would have shipped silently:
+
+1. **`/sw.js` was being redirected to `/login`.** `middleware.ts`'s
+   matcher didn't exclude it, and a service worker script served as a
+   redirect fails registration outright per spec — the entire offline
+   feature would have been dead on arrival, with no error anywhere
+   obvious. The matcher now excludes `sw.js` and `swe-worker-*.js`.
+2. **Serwist's `reloadOnOnline` defaults to `true`** — it reloads the
+   page whenever connectivity returns. In the field, where signal flaps
+   constantly, that means reloading a supervisor mid-assessment.
+   Disabled; `OutboxDrainer` already syncs on the same event and
+   refreshes only when something actually sent.
+3. **ESLint was linting the generated `public/sw.js`** (87 errors on
+   minified output). Added to `eslint.config.mjs` and `.prettierignore`
+   ignores; the file is gitignored.
+
+Also worth knowing: `@serwist/next`'s precache manifest only covers the
+`public/` directory — Next's own hashed chunks are handled by Serwist's
+default *runtime* caching, cache-first. That is why the route list
+prefetches `/offline`: without it, a supervisor who never opened
+`/offline` while online would have the cached data but not the
+JavaScript to render it.
+
+`/offline` is a public path in `middleware.ts`. That is deliberate and
+safe — it carries no server data of its own and everything it shows
+comes from the device's own IndexedDB — but it does mean the offline
+route snapshot lives unencrypted in IndexedDB on the supervisor's phone.
+That is a real (and previously implicit) consequence of offline-first
+worth raising with the College before wider rollout; RLS still governs
+every actual read and write.
+
+**Not verified in a browser.** No browser-automation tool was available
+this session. Everything below was proven by build/type/lint/test and by
+HTTP-level checks against a real production server; the actual offline
+journey (go offline → navigate → service worker serves `/offline` → mark
+→ queue → reconnect → sync) has NOT been exercised on a real device, and
+must be before Monday.
+
+**Verified by**
+`pnpm lint && pnpm test && pnpm typecheck` clean across all workspaces
+(38 web tests, +3 for the outbox drain classifier); `pnpm format:check`
+clean; `pnpm --filter @tathmini/web build` clean with every route under
+the 180 KB first-load budget (`/offline` 144 kB, marking route 142 kB).
+Against a real `next start` production server: `/sw.js` returns 200
+`application/javascript` (42 KB) after the matcher fix — it returned a
+307 redirect before it; `/offline` returns 200 without a session;
+`/home` and `/trainee/[id]` still return 307 to `/login` unauthenticated,
+confirming the new public path didn't widen the auth gate. Service
+worker registration confirmed present in the built `main-*.js`, and
+`/offline` confirmed present in the generated precache manifest.
+
+---
+
 ## 2026-09-04 · migration · Fixed validate_and_finalize_mark() — never had SECURITY DEFINER, so no real submission could ever finalize
 
 **Kind:** migration

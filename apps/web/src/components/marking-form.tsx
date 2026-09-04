@@ -26,6 +26,12 @@ export interface MarkingFormProps {
   instrumentLabel: string;
   slot: 'a1' | 'a2';
   criteria: CriterionRow[];
+  /**
+   * Where "Back" and a finished submission lead. Defaults to the trainee
+   * profile; /offline passes its own route, since the profile is a
+   * server-rendered page that cannot load without a connection.
+   */
+  returnHref?: string;
 }
 
 const criterionAnchor = (id: string) => `criterion-${id}`;
@@ -38,8 +44,10 @@ export function MarkingForm({
   instrumentLabel,
   slot,
   criteria,
+  returnHref,
 }: MarkingFormProps) {
   const router = useRouter();
+  const backHref = returnHref ?? `/trainee/${traineeId}`;
   const kind = criterionKindForInstrument(instrumentCode);
   const sections = useMemo(() => groupBySection(criteria), [criteria]);
   const key = useMemo(() => draftKey(traineeId, instrumentId), [traineeId, instrumentId]);
@@ -143,21 +151,18 @@ export function MarkingForm({
       return;
     }
     await clearDraft(key);
-    router.push(`/trainee/${traineeId}`);
+    router.push(backHref);
   }
 
   if (queued) {
-    return <QueuedConfirmation traineeId={traineeId} instrumentLabel={instrumentLabel} />;
+    return <QueuedConfirmation returnHref={backHref} instrumentLabel={instrumentLabel} />;
   }
 
   return (
     <main className="min-h-dvh bg-[#eceff0] pb-28">
       <div className="sticky top-0 z-10 border-b border-[#e1e9e6] bg-white px-4 pb-3 pt-3">
         <div className="flex items-center justify-between gap-3">
-          <a
-            href={`/trainee/${traineeId}`}
-            className="text-teal-mid min-h-11 text-[14px] font-semibold"
-          >
+          <a href={backHref} className="text-teal-mid min-h-11 text-[14px] font-semibold">
             ‹ Back
           </a>
           <div className="flex items-center gap-2">
@@ -324,10 +329,10 @@ export function MarkingForm({
  * who thinks their marks were lost will re-do them on paper.
  */
 function QueuedConfirmation({
-  traineeId,
+  returnHref,
   instrumentLabel,
 }: {
-  traineeId: string;
+  returnHref: string;
   instrumentLabel: string;
 }) {
   return (
@@ -345,7 +350,7 @@ function QueuedConfirmation({
           you do not need to mark this trainee again.
         </p>
         <a
-          href={`/trainee/${traineeId}`}
+          href={returnHref}
           className="focus:outline-accent mt-6 flex min-h-[52px] items-center justify-center rounded-xl bg-[#12665b] text-[15px] font-bold text-white focus:outline focus:outline-[3px] focus:outline-offset-2"
         >
           Back to trainee

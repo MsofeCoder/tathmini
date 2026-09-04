@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   initials,
   statusMeta,
@@ -8,6 +9,7 @@ import {
   trackChipStyle,
   type TraineeStatus,
 } from '@/lib/trainees';
+import { saveOfflineBundle, type OfflineBundleInput } from '@/lib/offline-cache';
 
 export interface RouteListTrainee {
   id: string;
@@ -22,6 +24,8 @@ export interface RouteListProps {
   routeCode: string;
   routeLabel: string | null;
   trainees: RouteListTrainee[];
+  /** Snapshot written to IndexedDB so the whole route can be marked with no signal. */
+  offlineBundle: OfflineBundleInput;
 }
 
 /** Highlights the first case-insensitive match of `query` inside `text`. */
@@ -41,15 +45,25 @@ function HighlightedName({ text, query }: { text: string; query: string }) {
 }
 
 // Layout/copy/colours ported from reference/Tathmini.dc.html's showList
-// screen (lines 130–221) — the behavioural spec, per AGENTS.md. Two
-// deliberate departures, both because the real system differs from the
-// prototype's fake one — see MEMORY.md:
-//   - no filter-pill row (that only exists on the coordinator's Phase 3
-//     per-route drill-down, not this supervisor screen)
-//   - the route summary line drops "stored on this device" (Dexie/
-//     offline cache isn't built yet, so that line would be a lie)
-export function RouteList({ routeCode, routeLabel, trainees }: RouteListProps) {
+// screen (lines 130–221) — the behavioural spec, per AGENTS.md. One
+// deliberate departure, because the real system differs from the
+// prototype's fake one — see MEMORY.md: no filter-pill row (that only
+// exists on the coordinator's Phase 3 per-route drill-down, not this
+// supervisor screen).
+export function RouteList({ routeCode, routeLabel, trainees, offlineBundle }: RouteListProps) {
+  const router = useRouter();
   const [search, setSearch] = useState('');
+
+  // Loading this screen with a connection is what arms the device for
+  // offline marking, in both halves: the route snapshot goes to IndexedDB,
+  // and prefetching /offline pulls that page's JavaScript into the service
+  // worker's cache. Without the prefetch a supervisor who never opened
+  // /offline while online would have the data but not the code to render
+  // it.
+  useEffect(() => {
+    void saveOfflineBundle(offlineBundle);
+    router.prefetch('/offline');
+  }, [offlineBundle, router]);
 
   const done = trainees.filter((t) => t.status === 'locked').length;
   // "In progress" is driven by local draft state in the prototype, which

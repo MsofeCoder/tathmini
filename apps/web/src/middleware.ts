@@ -1,7 +1,12 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
-const PUBLIC_PATHS = ['/login'];
+// /offline renders entirely from the device's own IndexedDB and carries no
+// server data, so it must stay reachable without a session check — the
+// service worker serves it precisely when the network (and therefore the
+// auth check itself) is unavailable. Gating it would make the offline
+// entry point require the very thing it exists to work without.
+const PUBLIC_PATHS = ['/login', '/offline'];
 
 /**
  * Refreshes the Supabase session cookie on every request (required by
@@ -53,5 +58,11 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
+  // sw.js and Serwist's worker chunks MUST be excluded: this middleware
+  // redirects anything unauthenticated to /login, and a service worker
+  // script served as a redirect fails registration outright (the spec
+  // disallows it), which would silently disable offline support entirely.
+  matcher: [
+    '/((?!_next/static|_next/image|favicon.ico|sw\\.js|swe-worker-.*\\.js|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+  ],
 };

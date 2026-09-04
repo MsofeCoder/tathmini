@@ -1,7 +1,7 @@
 import { notFound, redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import type { CriterionRow } from '@/lib/marking';
-import { MarkingForm } from './marking-form';
+import { MarkingForm } from '@/components/marking-form';
 
 const INSTRUMENT_LABELS: Record<string, string> = {
   tp_theory: 'Theory',

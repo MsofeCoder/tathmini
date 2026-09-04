@@ -1,6 +1,7 @@
 import Dexie, { type Table } from 'dexie';
-import type { MarksByCriterion } from './marking';
+import type { CriterionRow, MarksByCriterion } from './marking';
 import type { SubmitAssessmentInput } from './submission';
+import type { TraineeStatus } from './trainees';
 
 /**
  * The on-device store (Dexie/IndexedDB). Two tables, both keyed by the same
@@ -34,14 +35,56 @@ export interface OutboxRecord {
   lastError: string | null;
 }
 
+/**
+ * Everything needed to mark any trainee on the supervisor's route with no
+ * network at all, written whenever the route list loads online. Stored as a
+ * single record: the whole route is one consistent snapshot, and replacing
+ * it wholesale avoids a half-updated cache after a partial load.
+ *
+ * Criteria for every instrument are included (89 rows across all three) —
+ * cheap, and it means one online visit to the route list arms the entire
+ * route, rather than requiring the supervisor to pre-open each trainee.
+ */
+export interface OfflineTrainee {
+  id: string;
+  name: string;
+  occupation: string;
+  institution: string;
+  track: 'TP' | 'IPT';
+  status: TraineeStatus;
+  /** This supervisor's own slot for this trainee. Absent if unassigned. */
+  slot: 'a1' | 'a2' | null;
+  /** Instrument ids this supervisor has already submitted for this trainee. */
+  submittedInstrumentIds: string[];
+}
+
+export interface OfflineInstrument {
+  id: string;
+  code: string;
+  label: string;
+  track: 'TP' | 'IPT';
+  criteria: CriterionRow[];
+}
+
+export interface OfflineBundle {
+  key: 'route';
+  routeCode: string;
+  routeLabel: string | null;
+  trainees: OfflineTrainee[];
+  instruments: OfflineInstrument[];
+  cachedAt: number;
+}
+
 class TathminiDb extends Dexie {
   drafts!: Table<DraftRecord, string>;
   outbox!: Table<OutboxRecord, string>;
+  cache!: Table<OfflineBundle, string>;
 
   constructor() {
     super('tathmini-drafts');
     this.version(1).stores({ drafts: 'key' });
     this.version(2).stores({ drafts: 'key', outbox: 'key' });
+    this.version(3).stores({ drafts: 'key', outbox: 'key', cache: 'key' });
   }
 }
 

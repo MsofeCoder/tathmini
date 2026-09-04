@@ -1,5 +1,7 @@
 import { redirect } from 'next/navigation';
 import { deriveStatus, type TraineeStatus } from '@/lib/trainees';
+import type { CriterionRow } from '@/lib/marking';
+import type { OfflineBundleInput } from '@/lib/offline-cache';
 import { createClient } from '@/lib/supabase/server';
 import { signOut } from './actions';
 import { RouteList, type RouteListTrainee } from './route-list';
@@ -30,21 +32,38 @@ export default async function HomePage() {
   }
 
   // RLS scopes every one of these to exactly this signed-in supervisor —
-  // see MEMORY.md for the four-query status-derivation design.
-  const [traineesRes, ownMarksRes, resultsRes, instrumentsRes, routeRes] = await Promise.all([
+  // see MEMORY.md for the status-derivation design. The assignments and
+  // criteria reads exist so this one online visit can arm the whole route
+  // for offline marking (see buildOfflineBundle below).
+  const [
+    traineesRes,
+    ownMarksRes,
+    resultsRes,
+    instrumentsRes,
+    routeRes,
+    assignmentsRes,
+    criteriaRes,
+  ] = await Promise.all([
     supabase.from('trainees').select('id, name, occupation, institution, track, route_id'),
     supabase
       .from('assessment_marks')
-      .select('trainee_id')
+      .select('trainee_id, instrument_id')
       .eq('supervisor_id', user.id)
       .not('submitted_at', 'is', null),
     supabase.from('results').select('trainee_id, locked_at'),
-    supabase.from('instruments').select('track'),
+    supabase.from('instruments').select('id, code, label, track'),
     supabase
       .from('routes')
       .select('code, label')
       .or(`supervisor_a1_id.eq.${user.id},supervisor_a2_id.eq.${user.id}`)
       .maybeSingle(),
+    supabase.from('assignments').select('trainee_id, slot').eq('supervisor_id', user.id),
+    supabase
+      .from('criteria')
+      .select(
+        'id, instrument_id, section_code, section_label, section_max, item_code, item_label, item_max, order_index',
+      )
+      .order('order_index'),
   ]);
 
   const trainees = traineesRes.data ?? [];
@@ -80,12 +99,59 @@ export default async function HomePage() {
     };
   });
 
+  const slotByTrainee = new Map<string, 'a1' | 'a2'>();
+  for (const row of assignmentsRes.data ?? []) {
+    slotByTrainee.set(row.trainee_id, row.slot as 'a1' | 'a2');
+  }
+
+  const submittedInstrumentsByTrainee = new Map<string, string[]>();
+  for (const row of ownMarksRes.data ?? []) {
+    const existing = submittedInstrumentsByTrainee.get(row.trainee_id) ?? [];
+    existing.push(row.instrument_id);
+    submittedInstrumentsByTrainee.set(row.trainee_id, existing);
+  }
+
+  // Postgres numeric columns arrive from PostgREST as strings.
+  const criteriaByInstrument = new Map<string, CriterionRow[]>();
+  for (const row of criteriaRes.data ?? []) {
+    const list = criteriaByInstrument.get(row.instrument_id) ?? [];
+    list.push({
+      id: row.id,
+      sectionCode: row.section_code,
+      sectionLabel: row.section_label,
+      sectionMax: Number(row.section_max),
+      itemCode: row.item_code,
+      itemLabel: row.item_label,
+      itemMax: Number(row.item_max),
+      orderIndex: row.order_index,
+    });
+    criteriaByInstrument.set(row.instrument_id, list);
+  }
+
+  const offlineBundle: OfflineBundleInput = {
+    routeCode: routeRes.data?.code ?? 'MY ROUTE',
+    routeLabel: routeRes.data?.label ?? null,
+    trainees: routeListTrainees.map((t) => ({
+      ...t,
+      slot: slotByTrainee.get(t.id) ?? null,
+      submittedInstrumentIds: submittedInstrumentsByTrainee.get(t.id) ?? [],
+    })),
+    instruments: (instrumentsRes.data ?? []).map((i) => ({
+      id: i.id,
+      code: i.code,
+      label: i.label,
+      track: i.track as 'TP' | 'IPT',
+      criteria: criteriaByInstrument.get(i.id) ?? [],
+    })),
+  };
+
   return (
     <div>
       <RouteList
         routeCode={routeRes.data?.code ?? 'MY ROUTE'}
         routeLabel={routeRes.data?.label ?? null}
         trainees={routeListTrainees}
+        offlineBundle={offlineBundle}
       />
       <div className="p-4">
         <form action={signOut}>
