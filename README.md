@@ -54,10 +54,17 @@ including how to run the pgTAP suite without touching the real project.
 
 ## Deployment (Vercel)
 
-`vercel.json` at the repo root already tells Vercel how to build this
-pnpm workspace, so **leave the project's Root Directory as the repo
-root** — do not set it to `apps/web`, or the workspace packages
-(`@tathmini/shared`) will not resolve.
+Set the project's **Root Directory to `apps/web`** (Settings → General).
+This is a Vercel dashboard setting and cannot be configured from the
+repo — a root `vercel.json` does not work, because Vercel detects the
+Next.js version from the `package.json` in the Root Directory, and the
+repo root has no `next` dependency. Leaving it at the repo root fails
+the build with `No Next.js version detected`.
+
+With the Root Directory set, Vercel still installs from the workspace
+root (it detects the pnpm workspace), so `@tathmini/shared` resolves
+normally, and `apps/web/public/` — including the generated `sw.js` — is
+served natively.
 
 Set these in the Vercel project (Production _and_ Preview):
 
