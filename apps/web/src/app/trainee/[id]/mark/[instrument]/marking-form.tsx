@@ -14,7 +14,9 @@ import {
   type MarksByCriterion,
 } from '@/lib/marking';
 import { clearDraft, draftKey, loadDraft, saveDraft } from '@/lib/drafts';
-import { submitAssessment } from './actions';
+import { enqueueSubmission } from '@/lib/outbox';
+import type { SubmitAssessmentInput } from '@/lib/submission';
+import { submitAssessment } from '@/app/actions/submit-assessment';
 
 export interface MarkingFormProps {
   traineeId: string;
@@ -48,6 +50,7 @@ export function MarkingForm({
   const [gapsShown, setGapsShown] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [queued, setQueued] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Restore a local draft (crash/reload survival), then start autosaving.
@@ -107,7 +110,8 @@ export function MarkingForm({
     }
     setSubmitting(true);
     setSubmitError(null);
-    const result = await submitAssessment({
+
+    const payload: SubmitAssessmentInput = {
       traineeId,
       instrumentId,
       instrumentCode,
@@ -118,7 +122,21 @@ export function MarkingForm({
         score: marks[c.id]!.score!,
         comment: marks[c.id]!.comment ?? '',
       })),
-    });
+    };
+
+    let result;
+    try {
+      result = await submitAssessment(payload);
+    } catch {
+      // No usable connection — the marks are complete and valid, so queue
+      // them rather than making the supervisor stand in a dead zone. The
+      // draft deliberately stays until the outbox confirms it actually sent.
+      await enqueueSubmission({ key, payload, traineeName, instrumentLabel });
+      setSubmitting(false);
+      setQueued(true);
+      return;
+    }
+
     if (!result.ok) {
       setSubmitting(false);
       setSubmitError(result.error);
@@ -126,6 +144,10 @@ export function MarkingForm({
     }
     await clearDraft(key);
     router.push(`/trainee/${traineeId}`);
+  }
+
+  if (queued) {
+    return <QueuedConfirmation traineeId={traineeId} instrumentLabel={instrumentLabel} />;
   }
 
   return (
@@ -291,6 +313,43 @@ export function MarkingForm({
         >
           {submitting ? 'Submitting…' : 'Submit assessment'}
         </button>
+      </div>
+    </main>
+  );
+}
+
+/**
+ * Shown when the submission could not reach the server and was queued. The
+ * copy has to leave no doubt the work is safe — a supervisor in a dead zone
+ * who thinks their marks were lost will re-do them on paper.
+ */
+function QueuedConfirmation({
+  traineeId,
+  instrumentLabel,
+}: {
+  traineeId: string;
+  instrumentLabel: string;
+}) {
+  return (
+    <main className="flex min-h-dvh items-center justify-center bg-[#eceff0] p-6">
+      <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-sm">
+        <p className="text-[12px] font-extrabold tracking-[0.7px] text-[#6b4400]">
+          SAVED ON THIS DEVICE
+        </p>
+        <h1 className="mt-2 text-[22px] font-bold text-neutral-900">
+          There is no signal right now
+        </h1>
+        <p className="mt-3 text-[13.5px] leading-relaxed text-[#3c4c58]">
+          Your complete {instrumentLabel} assessment is stored safely on this phone. It will send
+          itself as soon as there is a connection — you do not need to keep this screen open, and
+          you do not need to mark this trainee again.
+        </p>
+        <a
+          href={`/trainee/${traineeId}`}
+          className="focus:outline-accent mt-6 flex min-h-[52px] items-center justify-center rounded-xl bg-[#12665b] text-[15px] font-bold text-white focus:outline focus:outline-[3px] focus:outline-offset-2"
+        >
+          Back to trainee
+        </a>
       </div>
     </main>
   );

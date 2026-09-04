@@ -7,23 +7,7 @@ import {
   pointsCriterionMarkSchema,
 } from '@tathmini/shared';
 import { createClient } from '@/lib/supabase/server';
-
-export interface SubmitItemInput {
-  criterionId: string;
-  score: number;
-  comment: string;
-}
-
-export interface SubmitAssessmentInput {
-  traineeId: string;
-  instrumentId: string;
-  instrumentCode: string;
-  slot: 'a1' | 'a2';
-  criteria: { id: string; itemMax: number }[];
-  items: SubmitItemInput[];
-}
-
-export type SubmitAssessmentResult = { ok: true } | { ok: false; error: string };
+import type { SubmitAssessmentInput, SubmitAssessmentResult } from '@/lib/submission';
 
 /**
  * The exact two-insert contract from HANDOFF.md: one assessment_marks row
@@ -36,6 +20,11 @@ export type SubmitAssessmentResult = { ok: true } | { ok: false; error: string }
  * never trust a client-computed total, and by extension never trust a
  * client's claim that a form is complete or that a score is in range) even
  * though the client already gates on the same rules.
+ *
+ * Called from two places — the marking form directly, and OutboxDrainer
+ * replaying a submission that was queued offline — so it must stay safe to
+ * call more than once for the same assessment. It is: a completed mark
+ * returns `already_submitted` rather than inserting anything.
  */
 export async function submitAssessment(
   input: SubmitAssessmentInput,
@@ -45,7 +34,11 @@ export async function submitAssessment(
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
-    return { ok: false, error: 'You have been signed out. Sign in again and retry.' };
+    return {
+      ok: false,
+      code: 'signed_out',
+      error: 'You have been signed out. Sign in again and retry.',
+    };
   }
 
   const expectedIds = input.criteria.map((c) => c.id);
@@ -54,6 +47,7 @@ export async function submitAssessment(
   if (!complete) {
     return {
       ok: false,
+      code: 'incomplete',
       error: `${missing.length} criterion${missing.length === 1 ? '' : 'a'} still unscored.`,
     };
   }
@@ -62,7 +56,11 @@ export async function submitAssessment(
   for (const item of input.items) {
     const max = maxById.get(item.criterionId);
     if (max == null) {
-      return { ok: false, error: 'That criterion does not belong to this instrument.' };
+      return {
+        ok: false,
+        code: 'invalid',
+        error: 'That criterion does not belong to this instrument.',
+      };
     }
     const schema =
       input.instrumentCode === 'ipt' ? iptCriterionMarkSchema : pointsCriterionMarkSchema(max);
@@ -72,7 +70,11 @@ export async function submitAssessment(
       comment: item.comment.trim() || undefined,
     });
     if (!parsed.success) {
-      return { ok: false, error: parsed.error.issues[0]?.message ?? 'A score is invalid.' };
+      return {
+        ok: false,
+        code: 'invalid',
+        error: parsed.error.issues[0]?.message ?? 'A score is invalid.',
+      };
     }
   }
 
@@ -90,7 +92,11 @@ export async function submitAssessment(
     .maybeSingle();
 
   if (existing?.submitted_at) {
-    return { ok: false, error: 'This assessment has already been submitted.' };
+    return {
+      ok: false,
+      code: 'already_submitted',
+      error: 'This assessment has already been submitted.',
+    };
   }
 
   let markId = existing?.id;
@@ -106,7 +112,11 @@ export async function submitAssessment(
       .select('id')
       .single();
     if (insertError || !inserted) {
-      return { ok: false, error: insertError?.message ?? 'Could not start the submission.' };
+      return {
+        ok: false,
+        code: 'server',
+        error: insertError?.message ?? 'Could not start the submission.',
+      };
     }
     markId = inserted.id;
   }
@@ -121,7 +131,7 @@ export async function submitAssessment(
   );
 
   if (itemsError) {
-    return { ok: false, error: itemsError.message };
+    return { ok: false, code: 'server', error: itemsError.message };
   }
 
   revalidatePath(`/trainee/${input.traineeId}`);
