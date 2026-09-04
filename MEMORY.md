@@ -47,6 +47,80 @@ the diff. This file is for knowledge that would otherwise be lost.
 
 ---
 
+## 2026-09-04 · feature · Phase 0 toolchain scaffold; grading engine ported to TypeScript
+
+**Kind:** feature
+**Phase:** 0
+**Commit / PR:** (pending — see below)
+
+**What changed**
+Repository initialised (`git init`) and the handoff pack committed as-is.
+pnpm workspace created: `apps/web` (Next.js 15 App Router, React 19, TS
+strict, Tailwind v4), `packages/shared` (Zod schemas, grading engine),
+`packages/db` (Drizzle/pgTAP tooling, no schema yet). ESLint 9 flat config,
+Prettier, commitlint + simple-git-hooks enforcing Conventional Commits, and
+a GitHub Actions CI workflow (lint/typecheck/unit/pgTAP jobs) are all wired
+and passing (`pnpm lint && pnpm test && pnpm typecheck`, plus a clean
+`next build`).
+
+The grading engine (`gradeFor`, `classOfAward`, `gpaFor`, `evaluate`,
+`averageTotals`) was ported from `reference/Tathmini.dc.html` into
+`packages/shared/src/grading.ts` with Vitest covering every boundary case
+named in `PLAN.md` 0.4 (39.9/40/49.9/50/64.9/65/79.9/80/100, and the
+(79.0, 76.0) → 77.5 averaging case). Generic Zod building blocks for a
+criterion mark — the points scale with its below-half comment trigger, the
+IPT 1–5 scale with its ≤3 comment trigger and no-zero constraint, and a
+completeness gate — landed in `packages/shared/src/schemas.ts`.
+
+**Why this way**
+`AGENTS.md` requires stopping before any migration, RLS change, or anything
+that could alter a stored mark or grade — so the actual Drizzle schema, RLS
+policies, and instrument/criteria seed were deliberately **not** written
+this session. Two open questions block them and are not guessed at:
+
+1. Where "route" lives. `CONTEXT.md` and the RLS policies sketched in
+   `PLAN.md` 0.3 treat a supervisor's route as load-bearing, but it is not
+   one of the eleven named tables. Left unresolved in `packages/db/src/schema.ts`
+   as a comment rather than assumed.
+2. The verbatim `reference/forms/TP Practical form.txt` has two numbering
+   defects: a repeated "vii." in section 2 ("Emphasized safely measure" /
+   "Practical performance intergraded with knowledge..."), and its final
+   section ("PERSONALITY ATRIBUTIES", 4 pts) has no section number at all
+   in the extracted text, though the totals (15+20+8+3+4=50) confirm it is
+   a real fifth section. `AGENTS.md` forbids renumbering a VETA section
+   without confirmation, so `criteria` is not seeded.
+
+Separately: I had flagged in review that `CONTEXT.md`'s "same COMPETENT /
+NOT COMPETENT tick boxes" non-negotiable appeared to contradict the
+verbatim paper form, which literally reads "Standard attained / Standard
+yet to be attained." Checking `reference/Tathmini Result Report.dc.html`
+resolved this — the prototype's printed report already deliberately prints
+"COMPETENT / NOT COMPETENT" (lines 87–92, 409, 499), diverging from the
+paper form's own tick-box label as a considered, already-built decision.
+Not a gap; retracted.
+
+The grading engine and the generic Zod pieces above were built anyway,
+without waiting on the two open questions, because they are pure functions
+fully specified by the verbatim grading key and the prototype's own
+`gradeFor`/`gpaFor`/`resultOf` — nothing about the route or numbering
+questions touches them.
+
+**Watch out for**
+`packages/db/src/schema.ts` is a stub with a comment explaining the block —
+do not fill it in without the route-table and TP-Practical answers landing
+in this file first. The CI `pgtap` job is a placeholder that currently
+exits 0 on nothing; when the schema lands it must actually run the pgTAP
+suite against the Postgres service container, not stay green by default.
+Supabase project creation, Sentry, and GitHub branch protection all need
+accounts/access only the user has — not something to attempt from here.
+
+**Verified by**
+`pnpm lint && pnpm test && pnpm typecheck` clean (27 Vitest cases in
+`packages/shared`); `pnpm --filter @tathmini/web build` produces a clean
+static build at 105 kB first-load JS (under the 180 KB budget).
+
+---
+
 ## 2026-09-04 · decision · Project specification frozen; handoff pack written
 
 **Kind:** decision

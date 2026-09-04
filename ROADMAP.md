@@ -14,16 +14,16 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 Nothing to demonstrate at the end of this phase. That is why it gets skipped,
 and why systems like this fail their first audit. Build it anyway.
 
-- [ ] Repo, pnpm workspace, TypeScript strict, ESLint + Prettier, CI
-- [ ] Next.js 15 App Router scaffold, Tailwind v4, Radix primitives
-- [ ] Supabase project in `af-south-1`; local dev via Supabase CLI
-- [ ] Drizzle schema — all 11 tables (see `CONTEXT.md` and `PLAN.md`)
-- [ ] RLS policies on every table, default deny
-- [ ] Seed the three instruments with **verbatim** criteria from `reference/forms/`
-- [ ] Zod schemas for a valid assessment, shared client/server
-- [ ] Grading functions in Postgres — total, %, grade, GPA, Class of Award, verdict
-- [ ] pgTAP suite wired into CI
-- [ ] Sentry, environment secrets, branch protection on `main`
+- [x] Repo, pnpm workspace, TypeScript strict, ESLint + Prettier, CI
+- [~] Next.js 15 App Router scaffold, Tailwind v4, Radix primitives — app scaffolded and building; Radix not yet added, no screen needs it yet
+- [ ] Supabase project in `af-south-1`; local dev via Supabase CLI — needs the College's/maintainer's Supabase account, not something an agent can provision
+- [ ] Drizzle schema — all 11 tables (see `CONTEXT.md` and `PLAN.md`) — blocked on the route-table and TP Practical numbering questions in `MEMORY.md`
+- [ ] RLS policies on every table, default deny — blocked on the schema above
+- [ ] Seed the three instruments with **verbatim** criteria from `reference/forms/` — blocked on the TP Practical numbering questions
+- [~] Zod schemas for a valid assessment, shared client/server — the generic points/IPT criterion-mark schemas and the completeness gate are built (`packages/shared/src/schemas.ts`); the concrete per-instrument schema is blocked with the schema above
+- [~] Grading functions — total, %, grade, GPA, Class of Award, verdict — TypeScript reference implementation done and tested (`packages/shared/src/grading.ts`); the Postgres generated columns still need writing and must agree with it
+- [~] pgTAP suite wired into CI — CI job scaffolded and running; no pgTAP suite exists yet because there is no schema
+- [ ] Sentry, environment secrets, branch protection on `main` — needs Sentry account and a GitHub remote with admin access, both the user's to provide
 
 **Exit gate:** pgTAP proves in CI that a Coordinator token cannot write a mark,
 a supervisor cannot read another assessor's slot, and a submitted mark cannot be

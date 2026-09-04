@@ -1,0 +1,17 @@
+node_modules
+.next
+dist
+build
+coverage
+pnpm-lock.yaml
+reference/
+*.dc.html
+
+# Hand-authored project docs — keep the maintainer's own markdown style
+/AGENTS.md
+/CLAUDE.md
+/CONTEXT.md
+/KICKOFF-PROMPT.md
+/MEMORY.md
+/PLAN.md
+/ROADMAP.md

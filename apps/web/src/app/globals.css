@@ -1,0 +1,11 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-teal-deep: #0d4a43;
+  --color-teal-mid: #12665b;
+  --color-accent: #a35c00;
+}
+
+body {
+  min-height: 100dvh;
+}
