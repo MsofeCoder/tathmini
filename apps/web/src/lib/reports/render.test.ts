@@ -72,12 +72,16 @@ function tpData(overrides: Partial<ReportData> = {}): ReportData {
             submittedAt: '2026-01-01T00:00:00Z',
             total: 1,
             itemsByCriterionId: marksMap({ c1: { score: 1 } }),
+            commentsBySectionCode: new Map(),
+            generalComment: null,
           },
           a2: {
             supervisorName: 'Assessor Two',
             submittedAt: '2026-01-01T00:00:00Z',
             total: 1,
             itemsByCriterionId: marksMap({ c1: { score: 1 } }),
+            commentsBySectionCode: new Map(),
+            generalComment: null,
           },
         },
       },
@@ -216,5 +220,61 @@ describe('renderReportHtml', () => {
     expect(html).not.toContain('Assessor Two');
     // Locked, so the official consolidated page is still carried.
     expect(html).toContain('CONSOLIDATED RESULT');
+  });
+});
+
+/**
+ * The comment surfaces moved from sub-criterion to criterion on 2026-09-05.
+ * These pin both halves of that: the new source is used when present, and the
+ * old one still renders when it is not — a report generated before the change
+ * must print exactly as it did then.
+ */
+describe('renderReportHtml — criterion and general comments', () => {
+  it('prints the criterion comment in the merged COMMENTS cell', () => {
+    const data = tpData();
+    data.instruments[0]!.bySlot.a1!.commentsBySectionCode = new Map([
+      ['1', 'Prepare the scheme of work before the lesson.'],
+    ]);
+    const html = renderReportHtml(data, 'TM-TEST');
+    expect(html).toContain('Prepare the scheme of work before the lesson.');
+  });
+
+  it('falls back to the old per-item comments when no criterion comment exists', () => {
+    const data = tpData();
+    data.instruments[0]!.bySlot.a1!.itemsByCriterionId.set('c1', {
+      score: 1,
+      comment: 'Legacy per-item advice.',
+    });
+    const html = renderReportHtml(data, 'TM-TEST');
+    expect(html).toContain('Legacy per-item advice.');
+  });
+
+  it('prefers the criterion comment over the legacy per-item ones', () => {
+    const data = tpData();
+    data.instruments[0]!.bySlot.a1!.itemsByCriterionId.set('c1', {
+      score: 1,
+      comment: 'Legacy per-item advice.',
+    });
+    data.instruments[0]!.bySlot.a1!.commentsBySectionCode = new Map([['1', 'Current advice.']]);
+    const html = renderReportHtml(data, 'TM-TEST');
+    expect(html).toContain('Current advice.');
+    expect(html).not.toContain('Legacy per-item advice.');
+  });
+
+  it('prints the general comment under SUPERVISOR’S GENERAL COMMENTS', () => {
+    const data = tpData();
+    data.instruments[0]!.bySlot.a1!.generalComment = 'Consult the trainee after the visit.';
+    const html = renderReportHtml(data, 'TM-TEST');
+    expect(html).toContain('Consult the trainee after the visit.');
+  });
+
+  it('escapes a criterion comment rather than injecting it', () => {
+    const data = tpData();
+    data.instruments[0]!.bySlot.a1!.commentsBySectionCode = new Map([
+      ['1', '<script>alert(1)</script>'],
+    ]);
+    const html = renderReportHtml(data, 'TM-TEST');
+    expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
   });
 });

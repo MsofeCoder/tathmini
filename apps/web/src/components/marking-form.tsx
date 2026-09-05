@@ -9,6 +9,7 @@ import {
   isFlagged,
   scoreOptionsFor,
   scoredCount,
+  sectionBelowHalf,
   sectionSubtotal,
   type CriterionRow,
   type MarksByCriterion,
@@ -53,6 +54,11 @@ export function MarkingForm({
   const key = useMemo(() => draftKey(traineeId, instrumentId), [traineeId, instrumentId]);
 
   const [marks, setMarks] = useState<MarksByCriterion>({});
+  // One comment per CRITERION, keyed by section code - the TP forms' merged
+  // COMMENTS cell. The IPT form has no such column, so these boxes are not
+  // rendered on IPT and nothing is ever written for it.
+  const [sectionComments, setSectionComments] = useState<Record<string, string>>({});
+  const [generalComment, setGeneralComment] = useState('');
   const [draftLoaded, setDraftLoaded] = useState(false);
   const [savedLabel, setSavedLabel] = useState('');
   const [gapsShown, setGapsShown] = useState(false);
@@ -65,7 +71,11 @@ export function MarkingForm({
   useEffect(() => {
     let cancelled = false;
     loadDraft(key).then((restored) => {
-      if (!cancelled && restored) setMarks(restored);
+      if (!cancelled && restored) {
+        setMarks(restored.marks);
+        setSectionComments(restored.sectionComments);
+        setGeneralComment(restored.generalComment);
+      }
       if (!cancelled) setDraftLoaded(true);
     });
     return () => {
@@ -77,16 +87,19 @@ export function MarkingForm({
     if (!draftLoaded) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      saveDraft(key, marks).then(() => setSavedLabel('Draft saved'));
+      saveDraft(key, { marks, sectionComments, generalComment }).then(() =>
+        setSavedLabel('Draft saved'),
+      );
     }, 400);
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
-  }, [marks, key, draftLoaded]);
+  }, [marks, sectionComments, generalComment, key, draftLoaded]);
 
   const total = scoredCount(criteria, marks);
   const progressPct = criteria.length === 0 ? 0 : Math.round((total / criteria.length) * 100);
-  const gaps = computeGaps(kind, criteria, marks);
+  const gaps = computeGaps(criteria, marks);
+  const isTp = kind !== 'ipt';
 
   function setScore(criterionId: string, score: number) {
     setMarks((prev) => ({
@@ -96,11 +109,8 @@ export function MarkingForm({
     setSavedLabel('');
   }
 
-  function setComment(criterionId: string, comment: string) {
-    setMarks((prev) => ({
-      ...prev,
-      [criterionId]: { score: prev[criterionId]?.score ?? null, comment },
-    }));
+  function setSectionComment(sectionCode: string, comment: string) {
+    setSectionComments((prev) => ({ ...prev, [sectionCode]: comment }));
     setSavedLabel('');
   }
 
@@ -130,6 +140,15 @@ export function MarkingForm({
         score: marks[c.id]!.score!,
         comment: marks[c.id]!.comment ?? '',
       })),
+      // TP only. Sending IPT section comments would store rows the IPT form
+      // has no column for, and nothing would ever print them.
+      sectionComments: isTp
+        ? sections.map((section) => ({
+            sectionCode: section.code,
+            comment: sectionComments[section.code] ?? '',
+          }))
+        : [],
+      generalComment,
     };
 
     let result;
@@ -198,7 +217,7 @@ export function MarkingForm({
             </p>
             <p className="mt-1.5 text-[13px] leading-relaxed text-[#7a3325]">
               An unscored criterion counts as zero, which would understate the trainee. Score every
-              criterion, and add a comment where one is required, before submitting.
+              criterion before submitting. Comments are yours to add or leave.
             </p>
             <div className="mt-3 flex flex-col gap-2">
               {gaps.map((g) => (
@@ -209,8 +228,7 @@ export function MarkingForm({
                   className="focus:outline-accent flex min-h-11 items-center justify-between gap-3 rounded-lg border border-[#f0d3ca] bg-white px-3 py-2.5 text-left focus:outline focus:outline-[3px] focus:outline-offset-2"
                 >
                   <span className="text-[13.5px] font-semibold text-[#7a3325]">
-                    {g.criterion.sectionLabel} {g.criterion.itemCode}
-                    {g.reason === 'comment' ? ' — needs a comment' : ' — not scored'}
+                    {g.criterion.sectionLabel} {g.criterion.itemCode} — not scored
                   </span>
                   <span className="text-[12.5px] font-bold text-[#8a3a2a]">Go ›</span>
                 </button>
@@ -287,26 +305,78 @@ export function MarkingForm({
                     {mark?.score == null ? (
                       <p className="mt-2.5 text-[12px] text-[#5b6b78]">Not yet scored</p>
                     ) : null}
+                    {/* A hint, not a box. The comment belongs to the whole
+                        criterion, below — the paper form's COMMENTS cell is
+                        merged across every sub-criterion row in the group. */}
                     {flagged ? (
-                      <div className="mt-3">
-                        <label className="text-[12.5px] font-semibold text-[#3c4c58]">
-                          Comment{' '}
-                          {kind === 'ipt' ? '(required at 3 or below)' : '(required below half)'}
-                        </label>
-                        <textarea
-                          value={mark?.comment ?? ''}
-                          onChange={(e) => setComment(c.id, e.target.value)}
-                          placeholder="Say what the trainee should improve — never a grade-word like 'fair' or 'good'"
-                          className="focus:outline-accent mt-1.5 min-h-[84px] w-full rounded-[10px] border border-[#ccd7d4] p-3 text-[14px] leading-relaxed focus:outline focus:outline-[3px] focus:outline-offset-1"
-                        />
+                      <div className="mt-2.5 rounded-lg bg-[#fff4e0] px-2.5 py-2 text-[12px] leading-snug text-[#6b4400]">
+                        {kind === 'ipt'
+                          ? 'Scored 3 or below — worth a note in the comments.'
+                          : 'Below half of this item’s marks — worth a note in the comments.'}
                       </div>
                     ) : null}
                   </div>
                 );
               })}
             </div>
+
+            {/* The merged COMMENTS cell, in its place on the form: directly
+                below the criterion's own questions. TP only — the IPT form
+                has no comments column, and its supervisor writes one note at
+                the end instead. Never required; the prompt appears when the
+                criterion as a whole lands below half. */}
+            {isTp ? (
+              <div className="mt-3 rounded-xl border border-[#e1e9e6] bg-white p-3.5">
+                <label
+                  htmlFor={`section-comment-${section.code}`}
+                  className="text-[12.5px] font-semibold text-[#3c4c58]"
+                >
+                  Comments on {section.code} · {section.label}
+                </label>
+                <p className="mt-1 text-[12px] leading-snug text-[#5b6b78]">
+                  {sectionBelowHalf(section, marks)
+                    ? 'This criterion scored below half. Say what the trainee should do differently — never a grade-word like “fair” or “good”.'
+                    : 'Optional. One comment for this criterion, as on the paper form.'}
+                </p>
+                <textarea
+                  id={`section-comment-${section.code}`}
+                  value={sectionComments[section.code] ?? ''}
+                  onChange={(e) => setSectionComment(section.code, e.target.value)}
+                  placeholder="Advice for this criterion"
+                  className="focus:outline-accent mt-2 min-h-[84px] w-full rounded-[10px] border border-[#ccd7d4] p-3 text-[14px] leading-relaxed focus:outline focus:outline-[3px] focus:outline-offset-1"
+                />
+              </div>
+            ) : null}
           </section>
         ))}
+
+        {/* SUPERVISOR'S GENERAL COMMENTS — on both TP forms and, as
+            "Supervisor's Comments", on the IPT form. The only comment surface
+            IPT has. */}
+        <section>
+          <div className="text-teal-mid text-[11.5px] font-extrabold tracking-[0.8px]">
+            SUPERVISOR’S GENERAL COMMENTS
+          </div>
+          <div className="mt-2 rounded-xl border border-[#e1e9e6] bg-white p-3.5">
+            <label htmlFor="general-comment" className="text-[12.5px] font-semibold text-[#3c4c58]">
+              Your comment to the trainee
+            </label>
+            <p className="mt-1 text-[12px] leading-snug text-[#5b6b78]">
+              Optional. After the assessment the trainee should be consulted and advised on all
+              matters arising.
+            </p>
+            <textarea
+              id="general-comment"
+              value={generalComment}
+              onChange={(e) => {
+                setGeneralComment(e.target.value);
+                setSavedLabel('');
+              }}
+              placeholder="Overall advice for the trainee"
+              className="focus:outline-accent mt-2 min-h-[120px] w-full rounded-[10px] border border-[#ccd7d4] p-3 text-[14px] leading-relaxed focus:outline focus:outline-[3px] focus:outline-offset-1"
+            />
+          </div>
+        </section>
       </div>
 
       <div className="fixed bottom-0 left-0 right-0 flex gap-2.5 border-t border-[#e1e9e6] bg-[#eceff0] p-4">

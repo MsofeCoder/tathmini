@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   computeGaps,
+  flaggedCriteria,
+  sectionBelowHalf,
   criterionKindForInstrument,
   gate,
   groupBySection,
@@ -132,27 +134,86 @@ describe('gate', () => {
 describe('computeGaps', () => {
   it('reports unscored criteria', () => {
     const marks: MarksByCriterion = { c1: { score: 1, comment: '' } };
-    const gaps = computeGaps('points', CRITERIA, marks);
+    const gaps = computeGaps(CRITERIA, marks);
     expect(gaps.map((g) => [g.criterion.id, g.reason])).toEqual([
       ['c2', 'unscored'],
       ['c3', 'unscored'],
     ]);
   });
-  it('reports a scored-but-flagged criterion missing its required comment', () => {
+
+  // The comment requirement was removed on 2026-09-05 - see the note on
+  // computeGaps. A flagged sub-criterion with no comment must NOT block.
+  it('does not block a below-half score that carries no comment', () => {
     const marks: MarksByCriterion = {
-      c1: { score: 0, comment: '' }, // itemMax 1, 0 < 0.5 -> flagged, no comment
-      c2: { score: 1, comment: '' }, // itemMax 1, at max -> not flagged
-      c3: { score: 3, comment: '' }, // itemMax 3, at max -> not flagged
+      c1: { score: 0, comment: '' }, // itemMax 1, 0 < 0.5 -> flagged
+      c2: { score: 1, comment: '' },
+      c3: { score: 3, comment: '' },
     };
-    const gaps = computeGaps('points', CRITERIA, marks);
-    expect(gaps).toEqual([{ criterion: CRITERIA[0], reason: 'comment' }]);
+    expect(computeGaps(CRITERIA, marks)).toEqual([]);
   });
-  it('is empty once every criterion is scored and flagged ones have comments', () => {
+
+  it('is empty once every criterion is scored', () => {
     const marks: MarksByCriterion = {
       c1: { score: 0, comment: 'weak' },
       c2: { score: 1, comment: '' },
       c3: { score: 3, comment: '' },
     };
-    expect(computeGaps('points', CRITERIA, marks)).toEqual([]);
+    expect(computeGaps(CRITERIA, marks)).toEqual([]);
+  });
+
+  it('still blocks a zero-scored form where nothing is marked', () => {
+    expect(computeGaps(CRITERIA, {})).toHaveLength(CRITERIA.length);
+  });
+});
+
+describe('sectionBelowHalf', () => {
+  const section = { code: '1', label: 'Lesson preparation', max: 5, criteria: CRITERIA };
+
+  it('is true when the criterion total falls under half its maximum', () => {
+    // 0 + 1 + 1 = 2 of 5
+    expect(
+      sectionBelowHalf(section, {
+        c1: { score: 0, comment: '' },
+        c2: { score: 1, comment: '' },
+        c3: { score: 1, comment: '' },
+      }),
+    ).toBe(true);
+  });
+
+  it('is false at exactly half - the form says LESS than half', () => {
+    // 1 + 1 + 0.5 = 2.5 of 5
+    expect(
+      sectionBelowHalf(section, {
+        c1: { score: 1, comment: '' },
+        c2: { score: 1, comment: '' },
+        c3: { score: 0.5, comment: '' },
+      }),
+    ).toBe(false);
+  });
+
+  it('judges the criterion as a whole, not its weakest sub-criterion', () => {
+    // c1 alone is flagged, but 0 + 1 + 3 = 4 of 5 is comfortably above half.
+    expect(
+      sectionBelowHalf(section, {
+        c1: { score: 0, comment: '' },
+        c2: { score: 1, comment: '' },
+        c3: { score: 3, comment: '' },
+      }),
+    ).toBe(false);
+  });
+});
+
+describe('flaggedCriteria', () => {
+  it('lists the sub-criteria a suggestion would be offered for', () => {
+    const flagged = flaggedCriteria('points', CRITERIA, {
+      c1: { score: 0, comment: '' },
+      c2: { score: 1, comment: '' },
+      c3: { score: 1, comment: '' },
+    });
+    expect(flagged.map((c) => c.id)).toEqual(['c1', 'c3']);
+  });
+
+  it('ignores unscored criteria - nothing to advise on yet', () => {
+    expect(flaggedCriteria('points', CRITERIA, {})).toEqual([]);
   });
 });

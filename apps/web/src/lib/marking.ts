@@ -99,29 +99,50 @@ export function gate(criteria: CriterionRow[], marks: MarksByCriterion): GatingR
 
 export interface Gap {
   criterion: CriterionRow;
-  reason: 'unscored' | 'comment';
+  reason: 'unscored';
 }
 
 /**
- * Everything that blocks submission: an unscored criterion, or a scored one
- * that's flagged (below half / IPT ≤3) with no comment yet — the server's
- * pointsCriterionMarkSchema()/iptCriterionMarkSchema() would reject the
- * whole insert on the latter, so the UI gates on it too rather than letting
- * a supervisor discover it only after tapping submit.
+ * Everything that blocks submission: an unscored criterion, and nothing else.
+ *
+ * A missing comment used to block too — one per sub-criterion scored below
+ * half. That requirement was removed on 2026-09-05: the VETA form gives each
+ * CRITERION a single merged COMMENTS cell rather than one per sub-criterion,
+ * the IPT form has no comments column at all, and the prototype gates only on
+ * every criterion being scored. A low score now raises a suggestion the
+ * supervisor may take or discard (see `isFlagged`), never a block.
+ *
+ * Scoring still gates absolutely: an unscored criterion is never treated as
+ * zero, and `validate_and_finalize_mark()` rejects an incomplete statement in
+ * the database regardless of what the client believes.
  */
-export function computeGaps(
+export function computeGaps(criteria: CriterionRow[], marks: MarksByCriterion): Gap[] {
+  return criteria
+    .filter((c) => marks[c.id]?.score == null)
+    .map((criterion) => ({ criterion, reason: 'unscored' as const }));
+}
+
+/**
+ * Whether a whole criterion came out below half its maximum — the trigger for
+ * prompting a comment on that criterion, replacing the old per-sub-criterion
+ * one. Unscored items count as nothing, so this only reads as "below half"
+ * once enough of the criterion is marked to make that true; the scoring gate
+ * is what ensures the rest gets filled in.
+ */
+export function sectionBelowHalf(section: Section, marks: MarksByCriterion): boolean {
+  return sectionSubtotal(section, marks) < section.max / 2;
+}
+
+/** Sub-criteria within a criterion that are individually below the flag
+ * threshold. Not a gate — this is what the auto-comment suggestion list is
+ * built from, and what the inline hint on a score row reports. */
+export function flaggedCriteria(
   kind: CriterionKind,
   criteria: CriterionRow[],
   marks: MarksByCriterion,
-): Gap[] {
-  const gaps: Gap[] = [];
-  for (const c of criteria) {
-    const mark = marks[c.id];
-    if (mark?.score == null) {
-      gaps.push({ criterion: c, reason: 'unscored' });
-    } else if (isFlagged(kind, mark.score, c.itemMax) && mark.comment.trim().length === 0) {
-      gaps.push({ criterion: c, reason: 'comment' });
-    }
-  }
-  return gaps;
+): CriterionRow[] {
+  return criteria.filter((c) => {
+    const score = marks[c.id]?.score;
+    return score != null && isFlagged(kind, score, c.itemMax);
+  });
 }

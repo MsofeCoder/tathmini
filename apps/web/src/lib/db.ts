@@ -21,6 +21,14 @@ import type { TraineeStatus } from './trainees';
 export interface DraftRecord {
   key: string;
   marks: MarksByCriterion;
+  /**
+   * Both optional because records written before 2026-09-05 do not have them,
+   * and a supervisor's half-finished draft must survive the deploy that
+   * introduced them. `loadDraft` fills the defaults; nothing else may assume
+   * these are present on a stored record.
+   */
+  sectionComments?: Record<string, string>;
+  generalComment?: string;
   updatedAt: number;
 }
 
