@@ -23,6 +23,17 @@ const withSerwist = withSerwistInit({
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // Report generation launches headless Chromium, and neither of these can be
+  // bundled. @sparticuz/chromium ships a Brotli-compressed Chromium binary in
+  // its own bin/ and resolves that path at runtime; webpack relocates the JS
+  // and leaves the binary behind, so on Vercel it threw
+  //   The input directory ".../@sparticuz/chromium/bin" does not exist.
+  // and every "Submit report" returned a 500. playwright-core is listed for
+  // the same reason — it resolves browser paths and does dynamic requires.
+  //
+  // This is exactly what the package's own docs mean by "you must externalize
+  // @sparticuz/chromium"; serverExternalPackages is Next's way of saying it.
+  serverExternalPackages: ['@sparticuz/chromium', 'playwright-core'],
 };
 
 export default withSerwist(nextConfig);
