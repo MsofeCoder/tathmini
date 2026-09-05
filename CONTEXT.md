@@ -68,6 +68,58 @@ explicit approval, not an agent's judgement.
 | Result retention | 24 months of archives for VETA audit. |
 | Assessor independence | Assessor 2 must not be able to see Assessor 1's marks before both submit. Enforce in the database. |
 
+## Where the facts live
+
+Three things that are **not** where an agent reading the database would expect,
+each of which has already caused a wrong diagnosis. Check here before
+concluding a feature is broken.
+
+### The Coordinator's address is configuration, not a user row
+
+`RESULT_COORDINATOR_EMAIL`, read by
+`apps/web/src/lib/notifications/recipients.ts`. There is deliberately **no
+coordinator account** to look up, and creating one would not help.
+
+`users_select` (migration 0001) is `id = auth.uid() or is_coordinator() or
+is_super_admin()`, so a supervisor cannot read any other user's row. Resolving
+the Coordinator from the database would need a `SECURITY DEFINER` lookup or a
+widened policy exposing every staff address to every supervisor — a large
+change to obtain one address. A role mailbox in configuration also survives a
+staff change without a redeploy, which is what the College asked for when they
+said roles rather than individuals.
+
+*An agent queried the database on 2026-09-05, found zero coordinators, and
+reported result e-mail as broken. It was not.*
+
+### `users.email` is a credential; `users.contact_email` is the mailbox
+
+`users.email` mirrors `auth.users.email` — it is the synthetic
+`firstname.lastname@tathmini.internal` identifier that `usernameToEmail()`
+builds and `signInWithPassword()` authenticates against. Nothing is ever sent
+to it, and it is UNIQUE.
+
+A supervisor's real, reachable address lives in `users.contact_email`
+(migration 0017), which is nullable and unconstrained: most accounts have none,
+and two people may share a family address.
+
+**Never write a real address to `users.email`.** Migration 0022 did, reached
+production, and 0027 undid it. Sign-in did not break — only the `public.users`
+mirror was touched, never `auth.users` — but the mirror disagreed with auth,
+and the UNIQUE constraint would have collided on the next account sync.
+
+### IPT results are e-mailed — to the assessor, not the trainee
+
+| Track | To | Cc | Bcc |
+|---|---|---|---|
+| TP | the trainee | the assessor | the Coordinator |
+| IPT | **the assessor** | **the Coordinator** | — |
+
+It is IPT *trainees* who are never e-mailed, because the IPT register holds a
+phone number and no address (see the trainee-accounts decision above). The
+report still goes out; it is filed with the people responsible for it. The
+Coordinator moves from Bcc to Cc on IPT because with no trainee on the message
+there is nothing to keep the copy blind from.
+
 ## Non-negotiables
 
 1. **The supervisor owns the assessment decision.** The system awards no marks.
