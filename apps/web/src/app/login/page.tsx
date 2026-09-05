@@ -87,12 +87,18 @@ export default function LoginPage() {
             {pending ? 'Signing in…' : 'Sign in'}
           </button>
 
-          <a
-            href="#"
-            className="text-teal-mid flex min-h-[44px] items-center justify-center text-[14px]"
-          >
-            Forgot password?
-          </a>
+          {/*
+            Static text, not a link. The prototype has `href="#forgot"`, but
+            no recovery flow exists or can exist: every account's e-mail is a
+            synthetic @tathmini.internal identifier that nothing is ever sent
+            to (see packages/db/src/data/ipt-accounts.ts), and passwords are
+            admin-assigned. A dead link here is worse than no link — a
+            supervisor who has forgotten their password is in the field, and
+            needs to be told what to actually do.
+          */}
+          <p className="flex min-h-[44px] items-center justify-center text-center text-[14px] text-[#5f6f7c]">
+            Forgotten your password? Contact the Administrator.
+          </p>
         </form>
 
         <p className="mt-6 text-[12px] leading-relaxed text-[#5f6f7c]">
