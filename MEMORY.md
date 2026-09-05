@@ -320,6 +320,311 @@ non-negotiable, "Assessor independence").
 **Verified by**
 `pnpm lint && pnpm test && pnpm typecheck` green (183 tests). **Not** verified
 end to end against production — see the migration warning above.
+## 2026-09-05 · feature · Reports are per-assessor; each supervisor submits their own without the other
+
+**Kind:** feature
+**Phase:** 2
+**Commit / PR:** #21, #18, #20, #26, migration `0015`
+
+**What changed**
+A supervisor finishes their own Theory and Practical, previews the full
+VETA report, and stores it — without waiting for the second assessor. A
+trainee now receives one report per assessor.
+
+Migration `0015` relaxed `reports_insert` from "the result is locked" to
+"this assessor's own half is finished" — every instrument in the track
+carries their submitted mark.
+
+**Why this way**
+The College's requirement, decided 2026-09-05: a colleague who is sick,
+travelling or unreachable would otherwise block their partner's
+submission outright, because a report needed a *locked* result (both
+assessors, every instrument). That is a real failure mode on a route
+where one assessor cannot travel.
+
+Each assessor page in the VETA form is already self-contained — its own
+TOTAL MARKS and its own COMPETENT / NOT COMPETENT box computed from that
+assessor's marks alone — so a single-slot report is a complete document,
+not a truncated one.
+
+`0015` widens **when you may store a report of your own work**, never
+what you can read. `reports_select` and every `assessment_marks` policy
+are untouched: `submitted_slot_count(...) >= 2` still withholds a
+colleague's marks until both submit, so passing `slot:'a2'` returns
+nothing rather than someone else's work.
+
+**Watch out for**
+The **consolidated page is omitted until the result is locked**. Before
+that, `recompute_result()` averages over whichever marks exist, so its
+grade/GPA/verdict are provisional and *will* change when the second
+assessor submits — printing them on a trainee's report would publish a
+verdict that later moves.
+
+**Verified by**
+183 tests at the time, including the unlocked and single-slot render
+paths. Migrations `0000`–`0015` on a throwaway `postgres:16` + pgTAP
+container, 18 ok / 0 not ok.
+
+---
+
+## 2026-09-05 · bugfix · headless Chromium never shipped to Vercel; every "Submit report" 500'd
+
+**Kind:** bugfix
+**Phase:** 2
+**Commit / PR:** #16, #17
+
+**What changed**
+`next.config.ts` gained `serverExternalPackages` for `@sparticuz/chromium`
+and `playwright-core`, then `outputFileTracingRoot` +
+`outputFileTracingIncludes` to carry the Chromium binary into the
+function. `maxDuration = 60` on the `/trainee/[id]` segment.
+
+**Why this way**
+Two separate faults, and the first fix was necessary but not sufficient —
+worth recording because the second is not obvious.
+
+Externalizing stopped webpack bundling the package. But the tracer follows
+`require`/`import`, and `@sparticuz/chromium` reads its `bin/` **from disk
+at runtime**. Nothing pointed at it, so Vercel dropped it: the JavaScript
+shipped and then looked for a Chromium that had never been deployed.
+
+Found by reading `.next/server/app/trainee/[id]/page.js.nft.json` rather
+than guessing a third time — 7 `@sparticuz` entries, every one
+`build/*.js`, not a single file from `bin/`. After the fix, four.
+
+`outputFileTracingRoot` is required alongside: this is a pnpm workspace,
+Vercel's Root Directory is `apps/web`, and dependencies hoist to the repo
+root, so tracing anchored at `apps/web` never reaches `../../node_modules`.
+
+**Watch out for**
+The preview path was unaffected throughout, because it renders HTML and
+never launches Chromium — which is exactly why half the feature stayed up
+while storing failed. Keep it that way.
+
+**Verified by**
+Vercel runtime logs gave the exact error and digest both times. Clean
+rebuild then re-reading the trace file. Live: a report generated, stored
+and downloaded on a supervisor's phone.
+
+---
+
+## 2026-09-05 · decision · Reports filed by route, named for humans, trainee id load-bearing
+
+**Kind:** decision
+**Phase:** 2
+**Commit / PR:** #20, #26, migration `0016`
+
+**What changed**
+Storage layout is now
+`<ROUTE>/<trainee_id>/<TRACK>-ASSESSOR<n>-<REG>-<YYYYMMDD>-<hash8>.pdf`,
+and the download name is
+`MVTTC-TP-Result-<NAME>-<REG>-Assessor1-2026-09-07.pdf` via
+`createSignedUrl`'s `download` option.
+
+**Why this way**
+Route first because that is how the College works — a supervisor owns a
+route, the Coordinator reviews by route.
+
+That forced migration `0016`: `0014`'s Storage policies read the trainee
+id from the **first** path segment, and it is now the second.
+`report_path_trainee_id()` reads segment 2, falls back to segment 1, and
+returns NULL instead of throwing. The fallback is not politeness — an
+object under the old layout has the *year* in second position, and
+`'2026'::uuid` does not deny access, it **raises**, and a cast error
+inside a policy surfaces as a failed query. One stale object could have
+broken listing for everyone.
+
+**The trainee's name is deliberately not in the storage key.** Bucket
+listings are visible to coordinators and super_admins and surface in
+tooling and logs; a registration number identifies the file just as well
+there. The name belongs in the download filename, which only reaches
+someone already authorised to open the document.
+
+The year folder was removed again in #26: the filename already carries
+the date and a trainee holds at most one report per assessor, so it
+wrapped one or two files. No migration was needed — the id stays in
+segment 2 either way, verified against the live function first.
+
+**Watch out for**
+The trainee id **must** stay the second segment. There is a test
+asserting it, because reordering those two makes every stored object
+unreadable.
+
+**Verified by**
+13 naming tests. The live `report_path_trainee_id()` against the new
+layout, the year layout, the old flat layout and a junk path — three
+resolve, junk returns NULL rather than raising.
+
+---
+
+## 2026-09-05 · feature · Offline reached parity with the online screens
+
+**Kind:** feature
+**Phase:** 1
+**Commit / PR:** #21, #22
+
+**What changed**
+Offline was a marking tool bolted to a bare list. The route snapshot now
+carries the register's full particulars and the per-trainee submitted
+counts, so the offline route list shows the same progress tiles,
+completion bar and status badges, and the offline trainee screen prints
+the same pre-loaded particulars as `/trainee/[id]`.
+
+Connectivity is now automatic — `ConnectionWatcher` follows the browser's
+`online`/`offline` events and moves between the live screens and
+`/offline` itself, with a persistent "NO SIGNAL" banner. The prototype's
+bottom navigation landed with it: Trainees · Moves · Pending · Account.
+
+**Why this way**
+The parity is structural, not copied: the offline screens call
+`routeProgress()`, `statusMeta()` and `traineeParticulars()` — literally
+the functions the online screens call. There is no second implementation
+to drift.
+
+`ownSubmittedCount`/`requiredCount` had to travel in the snapshot because
+`deriveStatus()` collapses a part-finished TP trainee to `'pending'`.
+Without them the offline tiles would disagree with the online ones on
+exactly the trainees a supervisor is midway through, and someone losing
+signal mid-route must not watch their progress change underneath them.
+
+**Watch out for**
+`ConnectionWatcher` deliberately does **nothing** on `/trainee/*` and the
+sign-in screens. The marking form is client-rendered and keeps working
+with no signal; navigating away to "helpfully" show the offline screen
+would throw away a half-finished assessment, and signal flaps constantly
+in the field. Nine tests in `lib/navigation.ts` pin that guard — do not
+"simplify" it.
+
+Two things cannot work offline and are not bugs: **sign-in** is a network
+call, and **storing a report** needs the server's Chromium and the
+network. Offline *preview* is possible and is not built yet.
+
+**Verified by**
+`/offline` 142 kB, `/pending` 136 kB against the 180 kB budget. Contract
+tests pinning the cached shape against the helpers that consume it — a
+field dropped from `OfflineTrainee` does not fail the build, it blanks a
+row of a trainee's particulars where a supervisor cannot recover it.
+
+---
+
+## 2026-09-05 · feature · TP report rebuilt to the paper form's merged columns
+
+**Kind:** feature
+**Phase:** 2
+**Commit / PR:** #19
+
+**What changed**
+The assessor sheet is now a real `<table>` with `rowspan`, carrying the
+paper form's six columns — S/N · ITEM DESCRIPTION · TOTAL POINTS · POINTS
+DISTRIBUTION · POINTS AWARDED · COMMENTS — with S/N merged down each
+section and one merged COMMENTS cell per section.
+
+**Why this way**
+We were rendering a **different document**. It collapsed TOTAL POINTS and
+POINTS DISTRIBUTION into one "MAX", invented an "AWARDED %" the form does
+not have, repeated a blank S/N on every row and gave each item its own
+comment cell. `CONTEXT.md` non-negotiable #6 asks for the VETA form field
+for field.
+
+CSS grid cannot express a vertical merge; `rowspan` is what the paper
+form is doing. Each section is its own `<tbody>` with
+`break-inside: avoid`, because a rowspan split across two sheets renders
+as a detached fragment.
+
+Per-criterion comments are gathered back into the section's single merged
+cell — the form has one comment area per section, the app captures them
+per item.
+
+Also dropped "(Assessor 1)" from the supervisor line: the paper form
+carries only SUPERVISOR'S NAME / SIGNATURE / DATE, and each assessor's
+report is now a standalone document.
+
+**Watch out for**
+The **consolidated page keeps the two-assessor comparison** and was
+deliberately not touched. It only renders once both assessors are in, and
+comparing the slots is its entire purpose — removing it would overturn
+`CONTEXT.md`'s "the official mark is the average of both".
+
+**Verified by**
+Printed through headless Chromium at the true TP Theory shape (41
+criteria over 10 sections): rowspans of 4–8 matching each section, 2
+pages unlocked and 3 locked with no trailing blank, page heights 255.8mm
+and 230.4mm against A4's 297mm.
+
+---
+
+## 2026-09-05 · bugfix · the pgTAP suite had silently stopped running in CI
+
+**Kind:** bugfix
+**Phase:** 0
+**Commit / PR:** #13
+
+**What changed**
+`packages/db/scripts/local-auth-stub.sql` gained `auth.users.email`, and
+later a `storage` stand-in for migration `0014`'s bucket and policies.
+
+**Why this way**
+`main` had been red since 2026-09-04 — PRs #6, #7, #9, #10 and #11 all
+merged with a failing pgTAP job. Not flaky, and not assertions failing:
+**the suite had not executed at all.** The stub declared only
+`auth.users(id)`, and `0007`/`0008`/`0010` link accounts with
+`join auth.users au on au.email = v.email`, so the job died in its "apply
+every migration" step before reaching a single test.
+
+That matters more than an ordinary red build. `AGENTS.md` calls pgTAP the
+priority suite and Phase 0's exit gate is stated entirely in terms of it,
+so those guarantees went unverified for two days.
+
+Fixed the stub, not the migrations: the migrations are correct and
+already applied against real Supabase where `auth.users.email` exists.
+The stub is what had drifted.
+
+**Watch out for**
+The stub's tables are **empty in CI**, so the import migrations join
+nothing and no-op. CI therefore never exercises the roster data itself.
+The same drift recurs for every hand-written migration — `0014` needed a
+`storage` schema next, exactly as predicted.
+
+**Verified by**
+Reproduced and fixed on a throwaway `postgres:16` + pgTAP container,
+mirroring the CI job step for step. 18 ok / 0 not ok, matching the 18/18
+last seen on PR #2.
+
+---
+
+## 2026-09-05 · feature · outbox exponential backoff
+
+**Kind:** feature
+**Phase:** 1
+**Commit / PR:** #27
+
+**What changed**
+`backoffDelayMs()` and `isDue()` in `apps/web/src/lib/outbox.ts`; the
+drainer now takes only entries whose delay has elapsed. 10s → 20s → 40s,
+capped at 5 minutes, jittered ±20%.
+
+**Why this way**
+`ROADMAP.md` asks for exponential backoff and it was the unbuilt half:
+the drainer retried every queued submission on every `online` event and
+every focus change, with no delay. Signal flaps constantly in the field,
+each flap fires `online`, and a submission failing for a reason no retry
+can fix — a validation error, a revoked session — was re-sent on every
+flap for as long as the supervisor kept working.
+
+Capped low on purpose: someone walking back into coverage must not wait a
+quarter of an hour for their marks to leave the phone. Jittered so thirty
+supervisors returning to the same roadside do not retry in lockstep. A
+submission that has never failed is never delayed.
+
+**Watch out for**
+`nextAttemptAt` is **optional**. Dexie keeps whatever shape was written,
+so entries queued before this change lack it; `isDue()` treats those as
+due immediately rather than stranding already-marked work forever. There
+is a test for exactly that.
+
+**Verified by**
+8 tests over the cap boundary, both jitter extremes and the
+undefined-field case. lint, typecheck, 219 tests, and Vercel's build.
 
 ---
 

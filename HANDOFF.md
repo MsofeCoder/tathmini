@@ -1,223 +1,154 @@
-# HANDOFF — Saturday 2026-09-05, afternoon. Real use starts Monday.
+# HANDOFF — Saturday 2026-09-05, evening. Real use starts Monday 2026-09-07.
 
-For a fresh Claude Code agent picking this up **on a different Anthropic
-Pro account, same machine**. Replaces every earlier handoff.
+Replaces every earlier handoff. **Disposable** — rewrite or delete it the
+moment it stops being true. The previous one was left in place after it went
+stale and actively misled a later session into re-deriving work that had
+already shipped, which is why this file says less and dates everything.
 
-Read the normal session-start order first (`AGENTS.md` → `CONTEXT.md` →
-`ROADMAP.md` → `MEMORY.md`, newest 3–4 entries). This file says only
-where to start and what not to re-derive. **Disposable** — delete it once
-stale.
-
-**Another session is working in this repo right now** (Phase 2 PDF
-reports). See "Concurrent session" below before touching anything.
-Re-read files before editing; do not commit their work.
+Read the normal order first: `AGENTS.md` → `CONTEXT.md` → `ROADMAP.md` →
+`MEMORY.md` (newest 4). This says only what those cannot.
 
 ---
 
-## The one thing that matters most
+## Do not trust a summary of state, including this one
 
-**Nothing from today is deployed, and the live app has a visible bug that
-is already fixed in this branch.**
+Verify it. The state moved several times an hour on 2026-09-05:
 
-- `tathmini-web.vercel.app` serves **`main`** (`origin/HEAD → origin/main`).
-- This branch, `phase-0/ipt-roster-support`, is **20 commits unpushed**
-  and **9 commits ahead of `main`**.
-- One of them, `61abe0c`, fixes the route-list counters. On the deployed
-  build a supervisor who has finished a trainee still sees **0% / 0
-  ASSESSED / all NOT STARTED**, while the per-row badges correctly read
-  "1 of 2 assessors". Confirmed against the live site today.
+```
+git fetch origin && git log --oneline origin/main -1
+pnpm lint && pnpm typecheck && pnpm test && pnpm build
+```
 
-**On Monday every supervisor's progress reads 0% regardless of work
-done.** The fix exists. It is not deployed.
+**Two sessions have been working in this repo at once, on different Anthropic
+accounts.** Assume the working tree contains somebody else's uncommitted work.
+Stage files by name, never `git add -A`, and re-read a file before editing it.
 
-**Action, and it is the user's call:** push the branch, open a PR into
-`main`, merge, let Vercel redeploy, re-check the counters live. Do not
-push or merge unless asked.
+If you need a clean base and the checkout sits on somebody else's branch, use a
+worktree rather than switching theirs:
+
+```
+git worktree add --detach /tmp/wt origin/main
+```
+
+pnpm's store symlinks do not survive a Windows junction into a worktree.
+`vitest`, `eslint` and `tsc` work if you junction all four `node_modules`
+(root plus the three workspaces), but `next build` still resolves Next's client
+entry to a mangled cross-drive path and fails. Let CI and Vercel's preview
+build be the authority for the build.
 
 ---
 
-## Where things stand
+## The two things that actually matter before Monday
 
-### Verified live today (2026-09-05)
+### 1. The outbox has never been proven in a browser
 
-- **All 30 real passwords are assigned and working.** The user ran
-  `assign:passwords` against `azlwxriyhdshfhklonrx`. Passwords are
-  **permanent** — see the decision below.
-- **A real supervisor signed in for the first time ever** —
-  `denis.michael`, TP ROUTE 6. Checked in a real browser:
-  - RLS scoping: 43 trainees, not all 482
-  - Route list: 43 rows, real names / trades / centres
-  - Trainee profile: real registration number, e-mail, region, district
-  - Assessor slot resolves from real `assignments` ("Assessor 1 of 2")
-  - Marking form: all 41 TP Theory criteria, 0.5 steps, subtotals
-  - Offline cache: whole route written to IndexedDB
-- **Draft autosave — `ROADMAP.md` line moved to `[x]`.** Scoring one
-  criterion wrote a `drafts` row keyed `<traineeId>:<instrumentId>`; a
-  full reload restored the score, the section subtotal and the pressed
-  button. The injected score was cleared; nothing reached the database.
+Phase 1's exit gate, and the last `[~]` on it. Go offline, submit, reconnect,
+confirm it drains to **exactly one** row — never two, never zero.
 
-### The next task, and it is small
+Everything now leans on it: the Pending tab, the queue view, the automatic
+online/offline switch, and the new exponential backoff. It is the largest
+unverified risk in the system, and an agent cannot do it — it needs a person
+signed in, in a real browser. Run it as `test.supervisor` on `TEST ROUTE`.
 
-**Browser-verify the outbox.** Last `[~]` on Phase 1 and its exit gate:
-go offline, submit, confirm it queues; reconnect, confirm it drains to
-**exactly one** row, never two.
+### 2. Test marks exist against real trainees
 
-Run it as `test.supervisor` on `TEST ROUTE` — never a real trainee. The
-user was signed in as `test.supervisor` when this was written.
-
-### Then, and only then
-
-Apply `packages/db/migrations/0013_remove_test_route_and_account.sql`.
-Written, committed, **deliberately not applied**. It deletes `TEST
-ROUTE`, its 5 trainees and `test.supervisor` — the only safe place to
-exercise the submit path. Not before the outbox test.
+`TP ROUTE 3` accumulated submitted marks on real trainees during testing — 20
+marks across 11 trainees when last counted, and the number moved several times
+that day. `assessment_marks` is append-only with no `UPDATE` grant and the
+revision UI is Phase 3, so on Monday those trainees show as assessed with marks
+nobody awarded. What to do about them is the user's call; it has been raised
+repeatedly and not yet actioned.
 
 ---
 
 ## Hard rule: never submit a mark against a real trainee
 
-`assessment_marks` is append-only — no role has an `UPDATE` grant. A
-"just testing" submission against a real trainee is **permanent**; the
-only way to supersede one is `result_revisions`, which is Phase 3 and
-unbuilt. It would sit in the College's records forever.
+A "just testing" submission is permanent. Read-only checks against real data
+are fine, and draft autosave is fine (pure IndexedDB). Submitting is not.
 
-Read-only checks against real data are fine. Draft autosave is fine — it
-is pure IndexedDB and never touches the database. **Submitting is not.**
-
----
-
-## The password system — three scripts, do not confuse them
-
-In `packages/db/src/scripts/`, documented in `packages/db/README.md`.
-All need the service-role key. **The user runs them, never you**
-(`AGENTS.md`).
-
-|                  | `create:accounts`      | `assign:passwords`                 | `reset:passwords` |
-| ---------------- | ---------------------- | ---------------------------------- | ----------------- |
-| For              | Account does not exist | The College's chosen passwords     | "These leaked"    |
-| Existing account | **Skipped**            | Updated                            | Updated           |
-| Password         | Random                 | From the sheet, generated if blank | Random            |
-| Afterwards       | Must change            | **Permanent**                      | Must change       |
-
-`assign:passwords` is the one in use: `--template=<x.xlsx>` writes a
-workbook pre-filled with all 30 usernames, the admin types a password
-beside each person, `--file=` applies it. Any problem aborts the whole
-run before a single write.
-
-**The permanent-password decision was the user's**, made explicitly on
-2026-09-05 with the cost spelled out first. Do not re-litigate it. The
-cost, recorded so nobody rediscovers it: the College holds a spreadsheet
-of live credentials, and `assessment_marks` is attributable to a named
-assessor, so "who awarded this mark" is only as strong as that file's
-privacy. Mitigations built in: 8-character minimum, and two accounts
-sharing a password is a hard error.
-
-**Write order differs between the two password scripts on purpose**, and
-both orders are locked in by tests. In each, the order is chosen so a
-partial failure never leaves a known-to-others password permanently
-valid. Do not "tidy" them into agreement.
-
-**`packages/db/passwords.xlsx` holds 30 live permanent credentials.**
-Spreadsheets are gitignored repo-wide (`202f2a9`) and none has ever been
-tracked, so history is clean. Never `git add -f` one.
+Use `test.supervisor` on `TEST ROUTE`, which now holds four IPT trainees — two
+placeholder ones from `0011` and two with realistic particulars from `0018`,
+added so the IPT form and its printed report can be judged honestly.
 
 ---
 
-## Concurrent session — Phase 2 PDF reports, in flight
+## Migration state — read this before applying anything
 
-A second session is building reports/PDF **right now**. Uncommitted and
-**not yours to commit**:
+Applied live to `azlwxriyhdshfhklonrx`: `0000`–`0012`, `0014`, `0015`, `0016`,
+`0017`, `0018`.
 
-```
- M apps/web/package.json
- M apps/web/src/app/trainee/[id]/page.tsx
- M packages/db/src/schema.ts
- M packages/db/migrations/meta/_journal.json
- M pnpm-lock.yaml
-?? apps/web/src/app/trainee/[id]/actions.ts
-?? apps/web/src/app/trainee/[id]/report-download-button.tsx
-?? apps/web/src/lib/reports/
-?? packages/db/migrations/0014_add_reports_table.sql
-?? packages/db/migrations/meta/0014_snapshot.json
-```
+**`0015` and `0016` were run by hand in the SQL editor, so Supabase's
+`list_migrations` does not list them.** They _are_ applied — confirmed by
+querying the `reports_insert` policy and calling `report_path_trainee_id()`
+directly. Do not re-run them on the strength of that listing.
 
-Two traps in that work — flag them to whoever owns it:
+`0013` (removes TEST ROUTE and `test.supervisor`) is written, reviewed and
+**deliberately not applied**. It deletes the only safe place to exercise the
+submit path. Not before the outbox test passes.
 
-1. **It first generated a migration numbered `0012`**, colliding with the
-   existing `0012_fix_finalize_mark_security_definer.sql`. It renumbered
-   to `0014` itself — verify before anything is applied.
-2. **Its generated SQL re-adds `must_change_password`**, which migration
-   `0009` already added and which is **live in production**. Applying it
-   as-is fails on a duplicate column. Drizzle regenerates it because
-   `0009` was hand-written and never captured in a snapshot. The same
-   trap recurs for every hand-written migration.
+The recurring trap, which has now bitten twice: the CI auth stub drifts behind
+whatever the newest migration reaches for. `0007` needed `auth.users.email`
+and the pgTAP suite silently stopped running for two days; `0014` then needed a
+whole `storage` schema. Check `packages/db/scripts/local-auth-stub.sql`
+whenever a migration touches something new. Drizzle also regenerates columns
+that hand-written migrations already added — `must_change_password` is the
+standing example.
 
 ---
 
-## Environment traps that have already cost hours
+## E-mail: mostly built, not merged, not configured
 
-- **Run `pnpm --filter` from the repo root.** Anywhere else gives the
-  useless `No projects matched the filters`. The path has spaces — quote
-  it.
-- **Only `admin-client.ts`'s `resolveEnv()` loads `.env` files.** There
-  is no dotenv here and `tsx` does not read them. Precedence: root
-  `.env` < root `.env.local` < `packages/db/.env.local` < **shell always
-  wins**.
-- **The service-role key lives in the gitignored root `.env.local`.**
-  Root `.env` has only `SUPABASE_URL` and `SUPABASE_ANON_KEY`.
-- **The git root is the `Header labels clip fix` directory**, not its
-  parent. A tool reporting "not a git repository" has resolved the
-  parent path — run `git rev-parse --show-toplevel` before repeating the
-  claim. An earlier handoff got this wrong.
-- **`pnpm format:check` fails locally on Windows and is a false alarm.**
-  `core.autocrlf=true` with no `.gitattributes`, so git checks out CRLF
-  while prettier wants LF. **CI on Linux is unaffected.** The proper fix
-  (`* text=auto eol=lf`) renormalises the whole repo — a large diff that
-  would collide with the concurrent session, deliberately deferred until
-  after Monday. Check single files with `npx prettier --check <path>`
-  instead of trusting the repo-wide run.
-- **An agent cannot type passwords into forms.** Browser-verifying a
-  signed-in flow needs the user to sign in and hand the tab over. Ask; do
-  not work around it.
+`feat/result-email-and-criterion-comments` already contains the send path —
+`apps/web/src/lib/notifications/` with `smtp.ts`, `brevo.ts`, `send.ts`,
+`templates.ts`, `recipients.ts` and roughly 30 tests. **Do not build it
+again.**
+
+It is blocked on two things:
+
+1. **Migration numbering collisions.** That branch carries a second `0016`,
+   two `0017`s and two `0018`s, because it was cut before `0017`/`0018` landed
+   on main. The pgTAP job applies `migrations/*.sql` in glob order, so they
+   would run in alphabetical accident. It cannot merge cleanly until they are
+   renumbered.
+2. **Credentials.** Gmail SMTP from the dedicated `mvttc.assessment@gmail.com`
+   with a Google App Password, set in Vercel's environment. The user holds
+   these; an agent never handles them.
+
+---
+
+## Environment traps that have each cost hours
+
+- **The git root is the `Header labels clip fix` directory**, not its parent.
+  Run `git rev-parse --show-toplevel` before claiming otherwise.
+- **Run `pnpm --filter` from the repo root.** The path has spaces — quote it.
+- **`pnpm format:check` fails locally on Windows** (`core.autocrlf=true`, no
+  `.gitattributes`) and is a false alarm. CI on Linux is unaffected. Check
+  single files with `npx prettier --check <path>`.
+- **Piping a build to `grep` hides its exit code.** A `pnpm build | grep …`
+  that appears to pass may have failed. Check the status separately.
+- **Only `admin-client.ts`'s `resolveEnv()` loads `.env` files.** Shell always
+  wins.
+- **The service-role key lives in the gitignored root `.env.local`.** The user
+  runs the scripts that need it.
+- **`packages/db/passwords.xlsx` holds 30 live permanent credentials.**
+  Spreadsheets are gitignored repo-wide; never `git add -f` one, never print
+  one.
 - **Commit subjects must be lowercase** (commitlint `subject-case`).
-  `feat(web): PWA manifest…` is rejected; `feat(web): add the manifest…`
-  passes.
+- **An agent cannot type passwords into forms.** Browser-verifying a signed-in
+  flow needs the user to sign in and hand the tab over.
 
 ---
 
-## Already done — do not rebuild or re-derive
+## Deliberately deferred — say so, do not half-build
 
-- **Schema, RLS, criteria, rosters.** 13 tables, RLS everywhere, 18/18
-  pgTAP live. All three instruments seeded **verbatim** and
-  arithmetic-verified. 30 accounts, 14 routes, 482 trainees, 964
-  assignments. Migrations `0000`–`0012` applied live; `0013` written, not
-  applied.
-- **The account list is fixed and correct** —
-  `packages/db/src/data/{ipt,tp}-accounts.ts`. Adam Msofe and Aron Franco
-  each hold two accounts (super_admin + `.supervisor`) by design.
-  "Osward" is verbatim from the roster, not a typo to fix.
-- **Marking works for all three instruments**, including the two-insert
-  submit contract and server-side re-validation of gating.
-- **Offline**: one online visit caches the whole route to IndexedDB;
-  `/offline` re-renders the same `MarkingForm` from that cache and
-  submits through the outbox.
-- **PWA**: manifest, icons, real MVTTC crest, install screen, and the
-  `middleware.ts` exclusion that makes them work.
-- **`Forgot password?` is intentionally not a link** (`0813d6c`). No
-  reset flow exists or can: every account e-mail is a synthetic
-  `@tathmini.internal` identifier nothing is sent to. It tells the user
-  to contact the Administrator. Do not "restore" the link.
+Admin console, TOTP, Excel export, audit-log viewer, backup panel, Swahili
+interface strings, SMS/WhatsApp, pentest, accessibility audit, rate limiting.
+All Phase 3/4 in `ROADMAP.md`, all weeks of work. None of them stops a
+supervisor marking a trainee on Monday.
 
----
-
-## Deferred deliberately — say so, do not half-build
-
-Admin console (Phase 3, including the in-app version of password
-assignment), Swahili review, e-mail/SMS, pentest, accessibility audit,
-rate limiting, backup panel. Building the in-app password screen means
-putting the **service-role key into Vercel's environment** — the web app
-holds only the anon key today. A real decision to make deliberately, not
-a detail to slip into a PR.
+Branch protection on `main` is off — the user declined it. That is why five red
+merges landed earlier in the week, and why `main` went red for two days without
+anyone being told.
 
 ---
 
