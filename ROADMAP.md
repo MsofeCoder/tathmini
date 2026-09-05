@@ -53,11 +53,11 @@ reboot; reconnecting produces exactly one submission, never two.
 
 ## Phase 2 — Two assessors, results, reports (weeks 7–9)
 
-- [ ] Assessor-slot independence enforced by RLS (a2 cannot see a1's marks)
-- [ ] Server-side scoring; official average of the two slots
-- [ ] Status derivation: pending → partial (1 of 2) → locked (both in)
-- [ ] PDF generation reproducing the VETA form, per assessor + consolidated page
-- [ ] SHA-256 hash stored with each generated report
+- [x] Assessor-slot independence enforced by RLS (a2 cannot see a1's marks) — already built in migration 0001 (`assessment_marks_select`/`assessment_mark_items_select`'s `submitted_slot_count(...) >= 2` gate); this checkbox was just stale, discovered while scoping PDF generation, see `MEMORY.md` 2026-09-05
+- [x] Server-side scoring; official average of the two slots — already built in migration 0001 (`recompute_result()` trigger, `veta_grade()`/`veta_gpa()`/`veta_class_of_award()`); same stale-checkbox discovery, see `MEMORY.md` 2026-09-05
+- [x] Status derivation: pending → partial (1 of 2) → locked (both in) — `results.locked_at` set once `submitted_marks >= expected_marks` in `recompute_result()`; surfaced client-side by `deriveStatus()` (`apps/web/src/lib/trainees.ts`, built Phase 1)
+- [x] PDF generation reproducing the VETA form, per assessor + consolidated page — `apps/web/src/lib/reports/{data,render,pdf}.ts`, both TP and IPT; migration 0014 (**not yet applied live** — see `MEMORY.md` 2026-09-05) adds the `reports` table and Storage bucket it needs
+- [x] SHA-256 hash stored with each generated report — `reports.sha256_hash`, migration 0014
 - [ ] PDF preview in-app before submit (the exact file that will be sent)
 - [ ] E-mail delivery to the three named recipient roles (Brevo)
 - [ ] Swahili notification: SMS / WhatsApp / e-mail deep links, personalised

@@ -111,6 +111,124 @@ aborts at `0007`, identical error to the CI log. After: every migration
 
 ---
 
+## 2026-09-05 · feature · PDF result report generation (ROADMAP.md Phase 2)
+
+**Kind:** feature
+**Phase:** 2
+**Commit / PR:** (pending) — migration 0014 NOT YET APPLIED to the live
+Supabase project; shown for approval, per AGENTS.md, before running it.
+
+**What changed**
+End-to-end generation of the VETA result PDF for a locked trainee result:
+`apps/web/src/lib/reports/{data,render,pdf}.ts` (data assembly through the
+caller's own authenticated client → HTML string, ported field-for-field
+from `reference/Tathmini Result Report.dc.html` → PDF via headless
+Chromium), a server action (`trainee/[id]/actions.ts`) that hashes the
+PDF (SHA-256), stores it, and returns a 5-minute signed URL, and a
+"Download Result PDF" button on the trainee profile page once
+`results.locked_at` is set. Both TP (4 assessor pages + 1 consolidated)
+and IPT (2 + 1, its own report never existed before — designed from
+`reference/forms/IPT assessment form.txt` by analogy, no prototype to
+port) are covered. New dependencies: `playwright-core` +
+`@sparticuz/chromium` (serverless-compatible; `@playwright/test` alone
+only provides a test runner). Migration 0014 adds a `reports` table
+(one row per generated PDF, append-only — a regenerated report is a new
+row, never an edit) and a private `reports` Storage bucket.
+
+**Why this way**
+*Discovered before building anything*: the "hard" Phase 2 items this
+task sounded like it needed — server-side two-assessor averaging,
+grade/GPA/verdict computation, assessor-blind RLS — were already fully
+built in migration 0001 (`recompute_result()`, `veta_grade()` etc.,
+`assessment_marks_select`'s `submitted_slot_count(...) >= 2` gate).
+ROADMAP.md's Phase 2 checkboxes for those were just stale, not
+unbuilt. The actual gap was narrow: no PDF pipeline, no file storage,
+no report template for IPT, and nowhere in the UI to trigger it.
+
+*No service-role key in the running app.* The obvious way to move a
+generated PDF into Storage and mint a signed URL is a service-role
+client bypassing RLS — rejected. Every other read/write in this app
+goes through the caller's own authenticated client with Postgres RLS as
+the actual gate (AGENTS.md rule 1); carving out an exception here would
+mean the web server's runtime environment holds a key that bypasses
+every RLS policy in the database, a materially larger blast radius than
+today's design (service-role key usage stays confined to
+`packages/db/src/scripts/*`, run by a human, never by this app). Instead,
+`storage.objects` gets its own RLS policies in migration 0014, keyed off
+`is_assigned_to_trainee((storage.foldername(name))[1]::uuid)` — the
+identical scoping `results_select` already uses. The authenticated
+caller's own Supabase client uploads and signs; a caller without RLS
+access to that trainee gets a rejected insert, not a client-side check.
+
+*HTML built from string templates, not JSX.* First attempt used React +
+`renderToStaticMarkup`, which is genuinely simpler to read — Next's build
+refuses it: any module reachable from a `'use server'` action's graph
+that imports `react-dom/server` fails to compile ("render or return the
+content directly as a Server Component instead"). Rewritten as plain
+string-building functions with a manual `esc()` escaper; a unit test
+asserts a `<script>` payload in a trainee name or a mark comment comes
+back HTML-escaped, not executed.
+
+*playwright-core + @sparticuz/chromium, not plain `playwright`.*
+Confirmed with the user before adding either: `playwright`'s bundled
+Chromium download is large enough to risk Vercel's serverless function
+size limit; `@sparticuz/chromium` ships a serverless-trimmed Linux build
+instead. Locally (Windows dev, and this session's sandbox) that binary
+cannot run at all, so `pdf.ts` branches on `process.env.VERCEL`: locally,
+`playwright-core`'s own browser resolution finds whatever
+`npx playwright install chromium` downloaded into the local cache
+(needed to be re-run once, to match `playwright-core`'s exact pinned
+version — a stale cached browser from an earlier ad hoc `npx playwright
+--version` was one revision off and failed to launch).
+
+*Per-assessor grade/GPA reused `@tathmini/shared`'s `evaluate()`*, not a
+re-implementation — that module already exists specifically so the
+Postgres functions and any TypeScript call site agree, and duplicating
+the VETA boundaries a second time here would be exactly the kind of
+drift risk the shared package exists to prevent.
+
+**Also fixed in passing**: `packages/db`'s drizzle-kit snapshot chain had
+drifted — several migrations (0009, 0012, 0013) were hand-written without
+running `drizzle-kit generate` afterward, so its snapshot history stopped
+matching schema.ts and `db:generate` proposed a phantom
+`users.must_change_password` column that already exists live. Fixed by
+building 0014's snapshot correctly and backfilling the missing 0012/0013
+journal entries; `db:generate` now reports "No schema changes" as
+expected. Not a schema change itself — a tooling-hygiene fix bundled in
+because it directly blocked generating this migration.
+
+**Watch out for**
+- Migration 0014 is **not yet applied** to the live Supabase project.
+  Nothing in this feature works until it is — `reports_select`/
+  `reports_insert` RLS and the `reports` Storage bucket don't exist yet.
+- IPT's report layout has no prototype or College sign-off to check
+  against — treat it as a first draft, not a settled spec, until someone
+  who knows the paper IPT form reviews a real generated copy.
+- No pgTAP coverage for migration 0014's new RLS (`reports_select`,
+  `reports_insert`, the two `storage.objects` policies) — this sandbox
+  has no live/local Postgres to run pgTAP against. AGENTS.md calls pgTAP
+  "the priority suite" for exactly this kind of policy; add it before or
+  shortly after this migration is applied, not skipped indefinitely.
+- `icon-512.png`-style file-size concerns don't apply here, but the
+  generated PDF is uncompressed Chromium output — no size measurement
+  taken yet against a real, full TP report (4 assessor pages of a real
+  50-criteria form, not this entry's 4-criterion test fixture).
+
+**Verified by**
+`pnpm lint && pnpm test && pnpm typecheck && pnpm build` green (52 web
+tests, 6 new — HTML escaping of both a trainee name and a mark comment,
+one-page-per-slot structure, IPT vs TP consolidated-page differences, a
+missing slot omitting its page, the verdict line reflecting `results.competent`
+rather than a page-level recomputation). End-to-end manual run outside
+the test suite: a synthetic `ReportData` fixture through
+`renderReportHtml()` → `renderPdf()` produced a valid 2-page PDF; the
+intermediate HTML, opened directly in a browser, showed both assessor
+pages and the consolidated page with correct per-assessor totals and
+official average, and confirmed a `<script>` tag planted in the trainee
+name rendered as inert text. Not yet verified: the actual signed-URL
+storage round trip, or a real database-backed `getReportData()` call —
+both need migration 0014 live first.
+
 ## 2026-09-05 · bugfix · swapped the placeholder "TM" icon for the real MVTTC crest
 
 **Kind:** bugfix
