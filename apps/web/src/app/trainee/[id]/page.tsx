@@ -3,6 +3,7 @@ import { AssessmentActions, type AssessmentAction } from '@/components/assessmen
 import { createClient } from '@/lib/supabase/server';
 import { traineeParticulars, trackChipStyle, trackPointsLabel } from '@/lib/trainees';
 import { ReportDownloadButton } from './report-download-button';
+import { ReportPreviewButton } from '@/components/report-preview';
 
 const ASSESSOR_SLOT_LABELS: Record<string, string> = {
   a1: 'Assessor 1',
@@ -202,14 +203,7 @@ export default async function TraineeProfilePage({ params }: { params: Promise<{
                 ? 'Both assessors have submitted, so this report also carries the consolidated official result.'
                 : 'You have finished your own assessment. Preview it, then submit it to be stored — you do not need to wait for the second assessor.'}
             </p>
-            <a
-              href={`/trainee/${id}/report/preview`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="focus:outline-accent mt-3 flex min-h-[48px] items-center justify-center rounded-xl border border-[#12665b] text-[15px] font-semibold text-[#12665b] focus:outline focus:outline-[3px] focus:outline-offset-2"
-            >
-              Preview report
-            </a>
+            <ReportPreviewButton traineeId={id} />
             <ReportDownloadButton
               traineeId={id}
               alreadySentAt={existingReport?.generated_at ?? null}
