@@ -1,6 +1,6 @@
 import { defaultCache } from '@serwist/next/worker';
 import type { PrecacheEntry } from 'serwist';
-import { Serwist } from 'serwist';
+import { NetworkOnly, Serwist } from 'serwist';
 
 /**
  * What makes marking possible with the radio off.
@@ -33,7 +33,30 @@ const serwist = new Serwist({
   skipWaiting: true,
   clientsClaim: true,
   navigationPreload: true,
-  runtimeCaching: defaultCache,
+  runtimeCaching: [
+    /**
+     * Anything that changes state goes straight to the network, before any
+     * caching rule gets a chance at it.
+     *
+     * `defaultCache` matches `/api/*`, and that quietly broke report sending:
+     * the drainer's POST never left the device. A GET on the POST-only report
+     * route returned 200 from the service worker where the server would have
+     * said 405 — proof the request was being answered locally — and the POST
+     * itself came back 405, because a cache cannot serve one.
+     *
+     * Every non-GET is excluded too, not just /api. A Server Action is a POST
+     * to a page URL, so a rule written only for /api would leave the same hole
+     * one route over. Nothing that mutates data should ever be answered from a
+     * cache, and offline data in this app comes from IndexedDB deliberately —
+     * never from an opaque HTTP cache on a shared device.
+     */
+    {
+      matcher: ({ url, request }: { url: URL; request: Request }) =>
+        url.pathname.startsWith('/api/') || request.method !== 'GET',
+      handler: new NetworkOnly(),
+    },
+    ...defaultCache,
+  ],
   fallbacks: {
     entries: [
       {
