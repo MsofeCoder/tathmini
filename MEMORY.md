@@ -47,6 +47,55 @@ the diff. This file is for knowledge that would otherwise be lost.
 
 ---
 
+## 2026-09-05 · feature · real install screen, wired to beforeinstallprompt
+
+**Kind:** feature
+**Phase:** 1
+**Commit / PR:** (pending)
+
+**What changed**
+`/` is now the prototype's `install` screen (`reference/Tathmini.dc.html`
+lines 70–90) instead of an unconditional `redirect('/home')` —
+`apps/web/src/app/install-gate.tsx` (client) renders it and
+`apps/web/src/app/page.tsx` (server) supplies `destination` (`/home` if
+signed in, else `/login`). Captures the real `beforeinstallprompt` event
+and calls `.prompt()` from the "Add to Home Screen" button; shows the
+prototype's static Safari instructions on iOS instead, since WebKit never
+fires that event. `middleware.ts` now treats `/` as public (exact-match
+only — see the comment there on why `startsWith` would have made every
+route public).
+
+**Why this way**
+The manifest/icon fix from the previous entry made the app *installable*,
+but installable and *visibly offering to install* are different things:
+Chrome dropped its automatic install mini-infobar in 2022, so meeting the
+manifest criteria now just adds a quiet address-bar icon — nothing a
+supervisor would notice unprompted. The prototype already designed for
+this (a dedicated install screen shown before login), so this builds
+that screen for real rather than inventing a different affordance.
+
+Shown once per browser, not on every visit like the prototype's demo
+state machine — persisted via a `localStorage` flag, and skipped
+immediately (no flash) when `matchMedia('(display-mode: standalone)')`
+or iOS's `navigator.standalone` says the app is already installed. A
+supervisor signing in daily should not see an onboarding splash every
+time.
+
+**Watch out for**
+`beforeinstallprompt` is gated by each browser's own engagement
+heuristics — it may simply never fire on a fresh profile's first visit,
+in which case the button silently falls back to just continuing (no
+error, nothing to fix). This is expected, not a bug: there is no
+API to force it. `localStorage` failing (private browsing) is handled
+the same way — the splash just reappears next visit instead of throwing.
+
+**Verified by**
+`pnpm lint && pnpm test && pnpm typecheck && pnpm build` green. Manually
+verified against `pnpm start` at mobile viewport: the splash renders
+matching the prototype, "Continue in browser" sets the flag and routes to
+`/login`, and a repeat visit to `/` then skips straight to `/login`
+without showing the splash again.
+
 ## 2026-09-05 · bugfix · site was never installable — no manifest, and middleware blocked the one added
 
 **Kind:** bugfix

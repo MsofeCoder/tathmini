@@ -6,7 +6,14 @@ import { NextResponse, type NextRequest } from 'next/server';
 // service worker serves it precisely when the network (and therefore the
 // auth check itself) is unavailable. Gating it would make the offline
 // entry point require the very thing it exists to work without.
+//
+// "/" is the install-prompt splash (reference/Tathmini.dc.html's `install`
+// screen) — it has to render before sign-in, for exactly the signed-out
+// first-time visitor the install prompt targets. Matched by exact equality
+// below, never startsWith: every path starts with "/", so a prefix match
+// here would make the whole app public.
 const PUBLIC_PATHS = ['/login', '/offline'];
+const PUBLIC_EXACT_PATHS = ['/'];
 
 /**
  * Refreshes the Supabase session cookie on every request (required by
@@ -42,7 +49,9 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const isPublicPath = PUBLIC_PATHS.some((path) => request.nextUrl.pathname.startsWith(path));
+  const isPublicPath =
+    PUBLIC_EXACT_PATHS.includes(request.nextUrl.pathname) ||
+    PUBLIC_PATHS.some((path) => request.nextUrl.pathname.startsWith(path));
 
   if (!user && !isPublicPath) {
     const url = request.nextUrl.clone();
