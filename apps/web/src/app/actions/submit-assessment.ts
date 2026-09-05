@@ -137,7 +137,7 @@ export async function submitAssessment(
 
   // BEFORE the items, and this order is load-bearing: inserting the items
   // fires assessment_mark_items_finalize, which stamps submitted_at, and
-  // assessment_mark_section_comments_insert (migration 0019) only admits a row
+  // assessment_mark_section_comments_insert (migration 0025) only admits a row
   // while the mark is still open. Written after the items it would be
   // rejected, and the supervisor would lose every criterion comment they
   // wrote with no error that named the cause.

@@ -35,7 +35,7 @@ export const COORDINATOR_ENV = 'RESULT_COORDINATOR_EMAIL';
  * is exactly what gets a consumer Gmail sending account rate-limited or
  * suspended. Treat these as "no address on file" rather than sending to them.
  *
- * Migration 0016 gives 18 accounts their real mailboxes. Ten assessors keep
+ * Migration 0022 gives 18 accounts their real mailboxes. Ten assessors keep
  * the placeholder until a Super Admin fills theirs in, and that is a safe
  * resting state precisely because this check exists: the address is inert
  * rather than bouncing.

@@ -31,7 +31,7 @@
 --         e-mailed on IPT, so an IPT test does not reach the addresses below
 --         at all; it lands in the supervisor's inbox instead. To receive one,
 --         sign in as Aron Franco's or Adam Msofe's supervisor account -
---         migration 0016 points both at these same test addresses.
+--         migration 0022 points both at these same test addresses.
 -- The e-mail column on the IPT rows is therefore deliberately unused by the
 -- send path. It is set anyway so the rows are uniform and so a regression that
 -- wrongly e-mailed an IPT trainee would be caught by a message arriving where

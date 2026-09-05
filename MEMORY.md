@@ -47,6 +47,63 @@ the diff. This file is for knowledge that would otherwise be lost.
 
 ---
 
+## 2026-09-05 · ops · renumbered six migrations to 0022–0027 after colliding with main
+
+**Kind:** ops
+**Phase:** 2
+**Commit / PR:** branch `feat/result-email-and-criterion-comments`
+
+**What changed**
+Six migrations written in this session collided with numbers `main` had taken
+in parallel (`0016_reports_grouped_by_route`, `0017_users_contact_email`,
+`0018_test_route_ipt_trainees`). They are renumbered, and every reference to
+them in code, SQL and the drizzle journal follows:
+
+| Was | Now |
+|---|---|
+| `0016_supervisor_real_email_addresses` | `0022_…` |
+| `0017_tp_roster_final_version` | `0023_…` |
+| `0018_test_trainees_for_email_test` | `0024_…` |
+| `0019_criterion_and_general_comments` | `0025_…` |
+| `0020_fix_tp_rows_missed_by_0017` | `0026_fix_tp_rows_missed_by_0023` |
+| `0021_restore_users_email_identity` | `0027_…` |
+
+The earlier entries in this file still cite the OLD numbers. They are left as
+written — this log is append-only — so read them against the table above.
+
+**Why this way**
+Renumbered as a block rather than filling 0019–0021, so the relative order of
+dependent pairs is preserved and obvious: 0022 sets the addresses that 0027
+moves, and 0023 imports the roster that 0026 repairs. Applying 0027 before
+0022, or 0026 before 0023, silently does nothing.
+
+Started at 0022 rather than 0019 deliberately: the parallel session was still
+working, and leaving a gap costs nothing while a race over 0019–0021 would
+cost another round of this.
+
+`main` was **merged in** rather than rebased onto. The branch had by then
+acquired a commit from the other session (`84ac89c`), and rebasing would have
+rewritten history that was no longer only mine.
+
+**Watch out for**
+- **These are already applied to production under their old numbers.** The
+  renumber is a repository-hygiene change, not a database one; nothing needs
+  re-running. A fresh rebuild from `migrations/` applies them in the new order,
+  which is the same order they actually ran in.
+- `apps/web/src/lib/reports/naming.ts` also says "migration 0016", and that one
+  is **main's** `0016_reports_grouped_by_route`. It was deliberately not
+  touched.
+- Root cause was two sessions writing migrations against the same base at the
+  same time. Numbering is first-come on merge, so a migration's number is not
+  safe to reference until its branch has landed.
+
+**Verified by**
+`pnpm lint && pnpm test && pnpm typecheck` green after the merge and renumber.
+No file under `migrations/` shares a number, and every `migration 00NN`
+reference in code resolves to the intended file.
+
+---
+
 ## 2026-09-05 · bugfix · migration 0016 put real addresses in the sign-in identifier column; 0021 undoes it
 
 **Kind:** bugfix

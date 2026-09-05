@@ -134,6 +134,48 @@
       "when": 1788590641380,
       "tag": "0018_test_route_ipt_trainees",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1788590701380,
+      "tag": "0022_supervisor_real_email_addresses",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1788590761380,
+      "tag": "0023_tp_roster_final_version",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1788590821380,
+      "tag": "0024_test_trainees_for_email_test",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1788590881380,
+      "tag": "0025_criterion_and_general_comments",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1788590941380,
+      "tag": "0026_fix_tp_rows_missed_by_0023",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1788591001380,
+      "tag": "0027_restore_users_email_identity",
+      "breakpoints": true
     }
   ]
 }

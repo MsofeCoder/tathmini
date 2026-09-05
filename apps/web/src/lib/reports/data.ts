@@ -8,7 +8,7 @@ export interface AssessorMarks {
   itemsByCriterionId: Map<string, { score: number; comment: string | null }>;
   /**
    * One comment per criterion, keyed by section code — the TP forms' merged
-   * COMMENTS cell (migration 0019). Empty for IPT, which has no such column,
+   * COMMENTS cell (migration 0025). Empty for IPT, which has no such column,
    * and empty for anything submitted before 2026-09-05, when the comment was
    * still attached to each sub-criterion. The renderer falls back to joining
    * `itemsByCriterionId` comments in that case, so older reports print

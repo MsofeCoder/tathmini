@@ -7,8 +7,8 @@
 -- parallel session for exactly this purpose while this file was being written.
 --
 -- It has already been applied to azlwxriyhdshfhklonrx, and
--- 0021_restore_users_email_identity.sql undoes it: it restores the synthetic
--- identity to users.email and moves each address to contact_email. Run 0021.
+-- 0027_restore_users_email_identity.sql undoes it: it restores the synthetic
+-- identity to users.email and moves each address to contact_email. Run 0027.
 -- Kept, not deleted, because the address list below is the data 0021 reuses.
 --
 -- Sign-in never broke: only the public.users mirror was touched, never

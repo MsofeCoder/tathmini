@@ -1,10 +1,10 @@
--- Fixes the six trainees migration 0017 silently skipped.
+-- Fixes the six trainees migration 0023 silently skipped.
 --
--- 0017 matched each row on (route code, current name). Its generator collapsed
+-- 0023 matched each row on (route code, current name). Its generator collapsed
 -- runs of whitespace when writing the key, but the names stored by 0008 keep
 -- the register's own double spaces - 'EMMANUEL  MAKANTA',
 -- 'CLEMENT  KUSEKWA  MASHURUBU' - so `t.name = f.old_name` matched nothing for
--- exactly these six. They received NONE of 0017's updates: not the phone
+-- exactly these six. They received NONE of 0023's updates: not the phone
 -- number, and not the occupation and institution corrections either. Every
 -- other TP trainee updated correctly.
 --
@@ -16,7 +16,7 @@
 -- provable rather than approximate. The new name is the register's own
 -- single-spaced form, so this also tidies the six names as it goes.
 --
--- Same guards as 0017: UPDATE only, no row inserted or deleted, and an
+-- Same guards as 0023: UPDATE only, no row inserted or deleted, and an
 -- `is distinct from` chain so re-running changes nothing.
 
 with fix_roster as (

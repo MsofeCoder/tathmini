@@ -217,7 +217,7 @@ export const assessmentMarks = pgTable(
     /**
      * The paper form's SUPERVISOR'S GENERAL COMMENTS block (both TP forms) and
      * the IPT form's Supervisor's Comments. Optional — never required of the
-     * supervisor (migration 0019). Settable only in the INSERT that creates
+     * supervisor (migration 0025). Settable only in the INSERT that creates
      * this row: `assessment_marks` has no UPDATE grant, so it is append-only
      * like everything else about a mark.
      */
@@ -258,7 +258,7 @@ export const assessmentMarkItems = pgTable(
 /**
  * One comment per CRITERION, which is what the TP forms' merged COMMENTS
  * column actually is — the cell spans every sub-criterion row in an S/N
- * group (migration 0019). TP only: the IPT form has no comments column, so an
+ * group (migration 0025). TP only: the IPT form has no comments column, so an
  * IPT assessment writes nothing here and uses `generalComment` alone.
  *
  * `sectionCode` is `criteria.section_code` ('1' on TP Theory, 'A' on IPT), not

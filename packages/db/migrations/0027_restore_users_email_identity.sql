@@ -1,14 +1,14 @@
--- Undoes the damage migration 0016 did to users.email, and puts the real
+-- Undoes the damage migration 0022 did to users.email, and puts the real
 -- addresses where they belong.
 --
--- 0016 overwrote users.email with each supervisor's real Gmail address. That
+-- 0022 overwrote users.email with each supervisor's real Gmail address. That
 -- column is the SIGN-IN IDENTIFIER: it mirrors auth.users.email, which is what
 -- usernameToEmail() builds and signInWithPassword() authenticates against
 -- (apps/web/src/app/login/actions.ts). Real addresses belong in
 -- users.contact_email, added for exactly this purpose by
 -- 0017_users_contact_email.sql.
 --
--- Sign-in did NOT break: 0016 touched only the public.users mirror, never
+-- Sign-in did NOT break: 0022 touched only the public.users mirror, never
 -- auth.users, so every supervisor can still sign in with their
 -- <firstname>.<lastname> username. What broke is the invariant that the mirror
 -- matches auth — and users.email is UNIQUE, so leaving real addresses there
