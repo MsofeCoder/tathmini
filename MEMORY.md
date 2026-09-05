@@ -47,6 +47,225 @@ the diff. This file is for knowledge that would otherwise be lost.
 
 ---
 
+## 2026-09-05 · bugfix · migration 0016 put real addresses in the sign-in identifier column; 0021 undoes it
+
+**Kind:** bugfix
+**Phase:** 2
+**Commit / PR:** (this branch) — fix is `0021_restore_users_email_identity.sql`
+
+**What changed**
+`0016_supervisor_real_email_addresses.sql` overwrote `users.email` with 18
+supervisors' real Gmail addresses so the result e-mail could Cc them. That
+column is the **sign-in identifier**: it mirrors `auth.users.email`, which
+`usernameToEmail()` builds and `signInWithPassword()` authenticates against
+(`apps/web/src/app/login/actions.ts`). In parallel another session added
+`users.contact_email` (`0017_users_contact_email.sql`) for precisely this
+purpose, and documented why `email` cannot hold it.
+
+`0021` restores the synthetic `<firstname>.<lastname>@tathmini.internal`
+identity to `users.email` and moves each real address to `contact_email`.
+`apps/web/src/lib/notifications/send.ts` now reads `contact_email`.
+
+**Why this way**
+0016 is kept rather than deleted — it carries the 18 name/address pairs that
+0021 reuses — but it is headed with a SUPERSEDED warning, because it has
+already been applied and re-running it would reintroduce the fault.
+
+**Watch out for**
+- **Sign-in never broke.** 0016 touched only the `public.users` mirror, never
+  `auth.users`, so every supervisor could still sign in throughout. What broke
+  was the mirror's agreement with auth — and `users.email` is UNIQUE, so real
+  addresses sitting there would collide the next time accounts are created or
+  synced by `create-accounts.ts`.
+- **Two migrations are numbered 0017.** `0017_tp_roster_final_version.sql`
+  (this session, already applied) and `0017_users_contact_email.sql` (parallel
+  session). Neither was committed when the collision happened. Renumbering an
+  already-applied migration would be worse than the collision, so both keep
+  their names; anyone applying from scratch must run the roster one first.
+- This is what a shared working tree costs. Two sessions solved the same
+  problem — a supervisor's reachable address — in incompatible ways on the same
+  afternoon. Worth agreeing file ownership before parallel work next time.
+
+**Verified by**
+`pnpm lint && pnpm test && pnpm typecheck` green. After running 0021, both must
+hold: `select count(*) from users where email not like '%@tathmini.internal'`
+returns 0, and `select count(*) from users where contact_email is not null`
+returns 18.
+
+---
+
+## 2026-09-05 · bugfix · migration 0017 silently skipped six trainees whose stored names contain double spaces
+
+**Kind:** bugfix
+**Phase:** 2
+**Commit / PR:** (uncommitted) — fix is `0020_fix_tp_rows_missed_by_0017.sql`
+
+**What changed**
+`0017_tp_roster_final_version.sql` updated 358 of the 364 TP trainees, not all
+364. Its generator normalised whitespace when writing the match key
+(`old_name`), but `0008` stored the register's own double spaces —
+`'EMMANUEL  MAKANTA'`, `'CLEMENT  KUSEKWA  MASHURUBU'`,
+`'FREDRICK AKIBA  BEATUS'`, `'KULWA MATHIAS  SOLO'`, `'MOHAMEDI  Y.  SALIM'`,
+`'MONICA  C. MWAMWAJA'` — so `t.name = f.old_name` matched nothing for those
+six. They received none of 0017's changes: no phone, and no occupation or
+institution correction either. Migration `0020` repairs them, keyed on the
+exact stored name.
+
+**Why this way**
+0020 keys on the double-spaced name verbatim rather than on a normalised
+comparison, so the match is provable by reading the file against `0008`. It
+also writes the register's single-spaced form as the new name, so the defect
+cannot recur on a future keyed update.
+
+**Watch out for**
+- **A whitespace-normalised key will not match this database.** Any future
+  migration that matches `trainees.name` must either use the stored form
+  verbatim or compare with `regexp_replace(name, '\s+', ' ', 'g')` on BOTH
+  sides. Six of 364 names carry double spaces.
+- **The defect was invisible in the dashboard.** The Supabase results grid
+  renders HTML, which collapses consecutive spaces, so the stored names look
+  identical to the corrected ones on screen. It surfaced only as a count:
+  `tp_with_phone` came back 394 where 400 was expected.
+- `delete from trainees where registration_number like 'TEST-%'` does not
+  remove migration 0011's `TEST TRAINEE 4` and `5` — they are IPT rows with a
+  null registration number. They sit on `TEST ROUTE` and are removed by 0013.
+
+**Verified by**
+The six rows 0020 emits are exactly the six rows in 0008 whose stored name
+contains a double space, and exactly the six the live query
+`track = 'TP' and phone is null and registration_number not like 'TEST-%'`
+returned. Confirm after running: that query must return 0.
+
+---
+
+## 2026-09-05 · feature · the comment moved from the sub-criterion to the criterion, and stopped being compulsory
+
+**Kind:** feature
+**Phase:** 2
+**Commit / PR:** (uncommitted at time of writing)
+
+**What changed**
+Marking no longer refuses to submit until every sub-criterion scored below
+half carries its own comment. Comments are now **never required**. A low score
+raises a prompt, not a block. Two comment surfaces replace the old per-item
+one, matching the paper forms: one comment per **criterion** (TP only, the
+merged `COMMENTS` cell) written directly beneath that criterion's questions,
+and one **SUPERVISOR'S GENERAL COMMENTS** box at the foot of the form (both
+tracks). IPT gets the general box only.
+
+Touched: `packages/shared/src/schemas.ts` (both `.refine()`s dropped),
+`apps/web/src/lib/marking.ts` (`computeGaps` now reports only `unscored`; new
+`sectionBelowHalf` / `flaggedCriteria`), `marking-form.tsx`, `drafts.ts`,
+`db.ts`, `submit-assessment.ts`, `reports/{data,render}.ts`, and migration
+`0019_criterion_and_general_comments.sql` (**drafted, not applied**).
+
+**Why this way**
+The forcing was never in the VETA forms. `reference/forms/TP Theory form.txt`
+puts `S/N 1 · LESSON PREPARATION (6 marks)` over sub-rows `i.`–`vii.` with the
+`COMMENTS` column **merged across the whole S/N group** — one comment per
+criterion. The IPT form has no comments column at all, only
+`Supervisor's Comments` at the end. And the prototype gates only on every
+criterion being *scored*: a below-half score there produces a suggestion the
+supervisor may discard, never a block. The old rule was stricter than the
+paper, the prototype and the College all asked for, and it made a supervisor
+write up to seven sentences for one weak criterion.
+
+The threshold did not disappear, it moved. It still decides which criteria
+prompt for a comment (`sectionBelowHalf`) and which sub-criteria will offer an
+auto-comment suggestion (`isFlagged`) once Phase 3 lands. What changed is who
+decides whether anything gets written — CONTEXT.md's first non-negotiable: the
+supervisor owns the assessment decision.
+
+**Worth knowing:** this needed no change in Postgres.
+`validate_and_finalize_mark()` has only ever checked that every criterion is
+scored — it never looked at a comment. The rule lived entirely in the Zod
+schemas, so relaxing it could not affect a stored mark.
+
+**Watch out for**
+- **Write order in `submit-assessment.ts` is load-bearing.** It is now three
+  inserts: mark (with `general_comment`) → section comments → items. The items
+  insert fires `assessment_mark_items_finalize`, which stamps `submitted_at`,
+  and `assessment_mark_section_comments_insert` only admits rows while the mark
+  is open. Comments written after the items are rejected, and the supervisor
+  would lose everything they typed with no error naming the cause.
+- **The report fallback is not optional.** Assessments submitted before today
+  hold comments on `assessment_mark_items`. `sectionCommentFor()` and
+  `generalCommentFor()` in `render.ts` fall back to joining them when a mark
+  carries no section comments, so a report generated last week still prints
+  identically. `generalCommentFor()` additionally refuses that fallback once
+  any section comment exists, or a current mark with an empty general box would
+  print its criterion comments twice on one page.
+- **Old drafts.** `DraftRecord.sectionComments` / `.generalComment` are
+  optional because records written before today lack them; `loadDraft()` fills
+  the defaults. A supervisor mid-assessment across the deploy keeps every score.
+- Migration `0019` is **drafted and not applied**. Until it runs, submitting
+  will fail on the missing table/column — apply it before deploying this code.
+
+**Verified by**
+`pnpm lint && pnpm test && pnpm typecheck` green — 255 tests (28 shared, 107
+db, 120 web), including new tests that a below-half score with no comment now
+submits, that `sectionBelowHalf` judges the criterion and not its weakest
+sub-criterion, and that a legacy per-item comment still renders in the merged
+cell. **Not yet exercised in a browser**, and the migration has not run.
+
+---
+
+## 2026-09-05 · feature · one report per assessor: preview route, storage action, migration 0015
+
+**Kind:** feature
+**Phase:** 2
+**Commit / PR:** #15 (`07ae03b`), #16 (`92a5aae`)
+
+**What changed**
+An assessor can now preview and store their OWN VETA result report without
+waiting for the other assessor. Three parts: `GET /trainee/[id]/report/preview`
+renders the report as HTML from the caller's own resolved slot;
+`generateReport()` (`apps/web/src/app/trainee/[id]/actions.ts`) renders the PDF,
+uploads it to the private `reports` bucket at
+`{trainee_id}/{slot}-{result_id}-{hash12}.pdf`, records the SHA-256, and returns
+a 300-second signed URL; migration `0015_reports_per_assessor.sql` replaces
+0014's insert policy. #16 then externalised `@sparticuz/chromium` /
+`playwright-core` so storing a report stopped returning 500 on Vercel.
+
+**Why this way**
+0014 required `results.locked_at` — both assessors in on every instrument —
+before a report could be inserted. The College's requirement (2026-09-05) is
+that a supervisor who is sick, travelling or unreachable must not block their
+colleague's submission, so a trainee now receives one report per assessor.
+0015 substitutes a narrower test for "locked": the caller must hold a
+*submitted* mark for every instrument in the trainee's track. That keeps the
+real invariant (a TP report missing its Practical half is not a VETA document)
+without coupling one assessor's output to the other's availability.
+
+Preview deliberately serves HTML, not a rendered PDF, from the same
+`renderReportHtml()` the PDF path uses. Preview is tapped repeatedly and
+casually; the PDF path costs a headless-Chromium cold start every call.
+Chromium is reserved for the one deliberate action that stores a file.
+
+0015 widens only INSERT. `reports_select` is untouched, and so is
+`assessment_marks_select`'s `submitted_slot_count(...) >= 2` gate — assessor 2
+still cannot read assessor 1's marks before both submit (CONTEXT.md
+non-negotiable, "Assessor independence").
+
+**Watch out for**
+- **Migration 0015 is not confirmed applied to `azlwxriyhdshfhklonrx`.** 0014 has
+  an "applied live" entry above; 0015 has none, and no one has verified it since.
+  If it is missing, production still enforces 0014's `locked_at` rule and every
+  "Submit report" tap by a single assessor is rejected by RLS.
+- The slot in the storage path is a convenience only. Storage RLS keys off
+  `(storage.foldername(name))[1]::uuid` — the first segment must stay the
+  trainee id or the policies stop matching.
+- `upload()` uses `upsert: false` and the code deliberately swallows an
+  "already exists" error: identical PDF bytes hash identically, so a repeat tap
+  re-signs the existing object rather than failing. Any change to the path
+  scheme must preserve that property or repeat taps start erroring.
+
+**Verified by**
+`pnpm lint && pnpm test && pnpm typecheck` green (183 tests). **Not** verified
+end to end against production — see the migration warning above.
+
+---
+
 ## 2026-09-05 · migration · 0014 applied live: reports table, private bucket, four RLS policies
 
 **Kind:** migration
