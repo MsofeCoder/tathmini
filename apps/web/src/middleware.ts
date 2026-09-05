@@ -58,7 +58,12 @@ export const config = {
   // redirects anything unauthenticated to /login, and a service worker
   // script served as a redirect fails registration outright (the spec
   // disallows it), which would silently disable offline support entirely.
+  //
+  // manifest.webmanifest needs the same treatment: a signed-out visitor is
+  // exactly who the install prompt targets, and a browser that fetches the
+  // manifest and gets a redirect body instead of JSON silently drops the
+  // install prompt rather than erroring loudly.
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|sw\\.js|swe-worker-.*\\.js|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|sw\\.js|swe-worker-.*\\.js|manifest\\.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 };

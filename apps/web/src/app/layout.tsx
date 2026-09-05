@@ -1,10 +1,19 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { OutboxDrainer } from './outbox-drainer';
 
 export const metadata: Metadata = {
   title: 'Tathmini',
   description: 'Digital assessment sheet for Morogoro Vocational Teachers’ Training College',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'Tathmini',
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: '#0d4a43',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
