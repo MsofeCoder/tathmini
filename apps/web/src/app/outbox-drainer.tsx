@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { clearDraft } from '@/lib/drafts';
-import { listQueued, recordAttempt, removeQueued } from '@/lib/outbox';
+import { listDue, recordAttempt, removeQueued } from '@/lib/outbox';
 import { drainOutcomeFor } from '@/lib/submission';
 import { submitAssessment } from './actions/submit-assessment';
 
@@ -13,10 +13,14 @@ import { submitAssessment } from './actions/submit-assessment';
  * should never have to return to a particular screen to make their marks
  * send.
  *
- * HANDOFF.md's agreed cut: retry on the browser's own `online` event and on
- * regaining focus, NOT the Background Sync API. Renders nothing — a
- * pending-sync badge/queue viewer is explicitly deferred; the supervisor is
- * told their work queued by the banner on the marking screen itself.
+ * Retries on the browser's own `online` event and on regaining focus, NOT the
+ * Background Sync API. Renders nothing; what is waiting is shown on the
+ * Pending tab and on the offline screen.
+ *
+ * Each pass takes only the entries whose exponential backoff has elapsed
+ * (see outbox.ts). Without that, a submission failing for a reason a retry
+ * cannot fix would be re-sent on every one of the many `online` events a
+ * flapping signal produces.
  */
 export function OutboxDrainer() {
   const router = useRouter();
@@ -29,7 +33,9 @@ export function OutboxDrainer() {
     draining.current = true;
     try {
       let submitted = 0;
-      for (const record of await listQueued()) {
+      // Only entries whose backoff has elapsed. A submission failing for a
+      // reason no retry can fix must not be re-sent on every signal flap.
+      for (const record of await listDue()) {
         let result;
         try {
           result = await submitAssessment(record.payload);
