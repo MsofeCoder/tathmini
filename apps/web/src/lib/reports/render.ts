@@ -24,8 +24,22 @@ import type { AssessorMarks, InstrumentReport, ReportData } from './data';
 const BORDER = '1px solid #000';
 const PAGE_STYLE =
   'padding: 6mm 8mm; box-sizing: border-box; font-family: "Times New Roman", Times, serif; ' +
-  'color: #000; display: flex; flex-direction: column; gap: 3px; page-break-after: always; ' +
+  'color: #000; display: flex; flex-direction: column; gap: 3px; ' +
   'width: 210mm; min-height: 297mm;';
+
+// Every page starts on a fresh sheet. Expressed as break-BEFORE on each page
+// that follows another, rather than break-after on every page: break-after on
+// the last one emits a trailing blank sheet, which matters more now that the
+// consolidated page is dropped for an unlocked result — the report would have
+// ended on an empty page. The adjacent-sibling selector applies it to every
+// page except the first, so there is nothing to keep in sync by hand.
+//
+// Both spellings are present deliberately: `break-before` is the current
+// property, `page-break-before` the legacy alias, and print engines are not
+// uniform about which they honour.
+const PAGE_BREAK_CSS =
+  'section[data-report-page] + section[data-report-page] ' +
+  '{ break-before: page; page-break-before: always; }';
 
 function esc(s: string | number | null | undefined): string {
   if (s === null || s === undefined) return '';
@@ -252,7 +266,7 @@ function assessorPage(
     '</div>';
 
   return `
-<section style="${PAGE_STYLE}">
+<section data-report-page style="${PAGE_STYLE}">
   <div style="text-align: center; line-height: 1.25;">
     <div style="font-size: 10pt; font-weight: 700;">VOCATIONAL EDUCATION AND TRAINING AUTHORITY</div>
     <div style="font-size: 9pt; font-weight: 700;">MOROGORO VOCATIONAL TEACHERS&rsquo; TRAINING COLLEGE (MVTTC)</div>
@@ -475,7 +489,7 @@ function consolidatedPage(data: ReportData, reportRef: string, generatedAt: stri
     .join('');
 
   return `
-<section style="padding: 14mm 12mm; box-sizing: border-box; font-family: 'Times New Roman', Times, serif; color: #000; display: flex; flex-direction: column; gap: 10px; width: 210mm; min-height: 297mm;">
+<section data-report-page style="padding: 14mm 12mm; box-sizing: border-box; font-family: 'Times New Roman', Times, serif; color: #000; display: flex; flex-direction: column; gap: 10px; width: 210mm; min-height: 297mm;">
   <div style="text-align: center; line-height: 1.3;">
     <div style="font-size: 12pt; font-weight: 700;">VOCATIONAL EDUCATION AND TRAINING AUTHORITY</div>
     <div style="font-size: 10.5pt; font-weight: 700;">MOROGORO VOCATIONAL TEACHERS&rsquo; TRAINING COLLEGE (MVTTC)</div>
@@ -549,7 +563,7 @@ export function renderReportHtml(data: ReportData, reportRef: string): string {
 <head>
 <meta charset="utf-8" />
 <title>${esc(data.trainee.name)} — Tathmini Result Report</title>
-<style>@page { size: A4; margin: 0; } body { margin: 0; }</style>
+<style>@page { size: A4; margin: 0; } body { margin: 0; } ${PAGE_BREAK_CSS}</style>
 </head>
 <body>
 ${assessorPages}

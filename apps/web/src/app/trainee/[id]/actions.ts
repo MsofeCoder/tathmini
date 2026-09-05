@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getReportData } from '@/lib/reports/data';
 import { renderReportHtml } from '@/lib/reports/render';
 import { renderPdf } from '@/lib/reports/pdf';
+import { reportFileNames } from '@/lib/reports/naming';
 
 export type GenerateReportResult = { url: string } | { error: string };
 
@@ -61,12 +62,13 @@ export async function generateReport(traineeId: string): Promise<GenerateReportR
   const html = renderReportHtml(data, reportRef);
   const pdf = await renderPdf(html);
   const hash = createHash('sha256').update(pdf).digest('hex');
-  // First segment must stay the trainee id — migration 0014's Storage
-  // policies scope on (storage.foldername(name))[1]::uuid. The slot makes the
-  // two assessors' reports distinguishable in the bucket without opening a
-  // file; the hash keeps a regenerated report from overwriting its
-  // predecessor, since reports are append-only like the marks behind them.
-  const storagePath = `${traineeId}/${assignment.slot}-${data.result.id}-${hash.slice(0, 12)}.pdf`;
+  const { storagePath, downloadName } = reportFileNames({
+    traineeId,
+    slot: assignment.slot as 'a1' | 'a2',
+    trainee: data.trainee,
+    resultId: data.result.id,
+    hash,
+  });
 
   const upload = await supabase.storage.from('reports').upload(storagePath, pdf, {
     contentType: 'application/pdf',
@@ -89,7 +91,11 @@ export async function generateReport(traineeId: string): Promise<GenerateReportR
     return { error: `Could not record the report: ${insertError.message}` };
   }
 
-  const signed = await supabase.storage.from('reports').createSignedUrl(storagePath, 300);
+  // `download` sets Content-Disposition, so the supervisor's phone saves the
+  // readable name rather than the storage key's hash-suffixed slug.
+  const signed = await supabase.storage
+    .from('reports')
+    .createSignedUrl(storagePath, 300, { download: downloadName });
   if (signed.error || !signed.data) {
     return {
       error: `Could not create a download link: ${signed.error?.message ?? 'unknown error'}`,
