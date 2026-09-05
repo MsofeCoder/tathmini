@@ -1,257 +1,160 @@
-# HANDOFF — account/session switch, internal-use sprint to Monday
+# HANDOFF — Saturday 2026-09-05, midday. Real use starts Monday.
 
-Written for a fresh Claude Code agent picking this project up on a **new
-Anthropic Pro account, same machine**. Nothing here overrides
-`AGENTS.md` — it's a fast-orientation layer on top of the normal
-session-start order `CLAUDE.md` already specifies (`AGENTS.md` →
-`CONTEXT.md` → `ROADMAP.md` → `MEMORY.md`). Read those in full; this
-file just tells you where to start and what not to re-derive. **This
-file is disposable** — once its contents are stale or absorbed into
-`MEMORY.md`, delete it.
+Written for a fresh Claude Code agent picking this project up **on a
+different Anthropic Pro account, same machine**, mid-sprint. This
+replaces the 2026-09-04 handoff entirely — that one is absorbed into
+`MEMORY.md` now.
 
-## The real deadline (superseded an earlier, narrower plan — read this,
+Nothing here overrides `AGENTS.md`. Read the normal session-start order
+(`AGENTS.md` → `CONTEXT.md` → `ROADMAP.md` → `MEMORY.md`, newest 3–4
+entries). This file only says where to start and what not to re-derive.
+**Disposable** — delete it once stale.
 
-not any prior 3-hour/IPT-only framing left in `MEMORY.md`)
+## Read this first: two things are true at once
 
-Two hard dates from the user, given 2026-09-04 (Friday):
+1. **The app is built and works.** Auth, route list, trainee profile,
+   all three marking instruments, the two-insert submit, gating, offline
+   caching and an outbox — all live against the College's real Supabase
+   project (`azlwxriyhdshfhklonrx`) and verified in a real browser.
+2. **No real supervisor has ever signed in.** Every end-to-end
+   verification so far used `test.supervisor` against `TEST ROUTE` and
+   its five synthetic trainees (migration `0011`). The 30 real accounts,
+   14 real routes and 482 real trainees are all in the database and have
+   never been exercised through the UI.
 
-- **Saturday 2026-09-05, evening: last training/demo.** The app needs
-  to be walked through live.
-- **Monday 2026-09-07: real internal use begins**, for both **IPT and
-  TP** assessment by actual supervisors in the field.
+Closing the gap between those two sentences is the whole job right now.
 
-Explicit user framing: **internal use only, for now** — full
-production polish (Swahili translation review, PDF/e-mail/SMS,
-full admin console, pentest, accessibility audit, rate limiting,
-backup panel) is deliberately **deferred to the next round**, not
-part of this sprint. What Monday genuinely needs: **simple, scalable,
-offline-first, both tracks working.**
+## The deadline
 
-## What "offline-first" means for THIS deadline — a deliberate, agreed cut
+- **Monday 2026-09-07: real internal use begins**, both IPT and TP, by
+  actual supervisors in the field.
+- The user asked for this "before lunch" on Saturday 2026-09-05 and is
+  switching accounts to keep working. Treat it as live.
 
-Full offline rigor (installable PWA, Background Sync API with
-exponential backoff, formal force-quit/reboot-in-airplane-mode
-survival testing) was originally sized as roughly a third of all of
-Phase 1 — not realistic before Monday. The user explicitly agreed to
-this narrower cut instead:
+Internal use only, for now. Full production polish (Swahili review,
+PDF/e-mail/SMS, admin console, pentest, accessibility, rate limiting,
+backups) is **deliberately deferred**, not forgotten — see `ROADMAP.md`
+Phases 2–4.
 
-1. **Local draft autosave** — every criterion score/comment saves to
-   IndexedDB (Dexie) as the supervisor works, not just on submit.
-   Reopening a trainee (even after a crash/reload) restores the draft.
-   Build this in from the start of the marking UI, not bolted on after
-   — it's cheap to include from day one and is most of what "never
-   lose typed marks in a dead zone" actually requires.
-2. **A Dexie-backed submit queue** — if the two-insert submit (below)
-   fails because there's no connectivity, queue it locally with an
-   idempotent key and retry when the browser's `online` event fires or
-   on next app focus. **Not** the Background Sync API (needs a
-   registered service worker event with browser support caveats) —
-   plain retry-on-reconnect is enough for this deadline and is much
-   less to get right.
-3. **A basic service worker** — caches the app shell (JS/CSS/fonts,
-   the login/home/trainee/marking routes) so the app still **loads**
-   with no connectivity. Not full precise asset-perfect offline, not
-   installability polish (manifest/maskable icons can follow later) —
-   just "a supervisor already at a remote VTC with a weak signal can
-   open what's already loaded and keep working."
+## The critical path, in order
 
-**Explicitly NOT this round**: Background Sync API, install
-prompts/maskable icons, a formal reboot-survival test suite, a
-pending-sync badge/queue viewer UI (nice-to-have, not blocking —
-a supervisor can tell it queued from a simple inline banner). Note
-these as real gaps in `ROADMAP.md`, don't silently mark that Phase 1
-line fully done until they're actually built later.
+**1. The user runs `assign:passwords` against the live project.**
+Blocking, and only they can do it — it needs the service-role key, which
+an agent must never hold (`AGENTS.md`). If they have not done it yet,
+say so plainly and give them the command; do not work around it.
 
-## Build order to hit both dates
+```powershell
+$env:SUPABASE_SERVICE_ROLE_KEY = "<service_role secret>"
+pnpm --filter @tathmini/db assign:passwords -- --template=passwords.xlsx
+# fill in passwords, then:
+pnpm --filter @tathmini/db assign:passwords -- --file=passwords.xlsx --dry-run
+pnpm --filter @tathmini/db assign:passwords -- --file=passwords.xlsx
+```
 
-**For the Saturday evening demo** (needs: both tracks marking
-end-to-end, gating, draft autosave — offline queueing is nice but not
-demo-critical, a demo can reasonably run on a real connection):
+**2. A real supervisor signs in and submits one real assessment.**
+The single highest-value unknown. Until it happens, RLS scoping against
+real `assignments` rows, the real route list, and real trainee
+particulars are all unproven. `denis.michael` (TP Route 6) or any IPT
+supervisor will do.
 
-1. TP Theory marking form — points-scale (0..max in 0.5 steps, comment
-   required below half), reuses `pointsCriterionMarkSchema()` in
-   `packages/shared/src/schemas.ts` (already built, already tested).
-2. TP Practical marking form — same schema, different criteria set
-   (34 items, 5 sections — remember the vii/viii transcription note in
-   `MEMORY.md`, don't re-derive the numbering from the source docx).
-3. IPT marking form — 1–5 rating scale, comment required at ≤3, no
-   zero, reuses `iptCriterionMarkSchema()` (already built, already
-   tested).
-4. Gating wired to `assertComplete()` (already built) — block submit,
-   list unscored items with jump-links, exactly as `AGENTS.md`/
-   `ROADMAP.md` specify.
-5. Draft autosave (Dexie) from the start, per above.
-6. Submit → the exact `assessment_marks` + `assessment_mark_items`
-   two-insert contract below.
-7. Confirm the route list and trainee profile (already built) reflect
-   a real submission correctly — this is the actual "does it work"
-   proof for the demo, not just a form that posts somewhere.
+**3. Apply migration `0013`** (written, NOT applied — see below).
 
-**For Monday** (add on top of the above, over the weekend):
+**4. Browser-verify draft autosave and the outbox.** `ROADMAP.md` marks
+both `[~] not yet browser-verified`. They are the entire offline promise:
+a supervisor in a dead zone keeps typing, and reconnecting produces
+exactly one submission, never two. Phase 1's exit gate depends on it.
 
-8. The Dexie submit queue + retry-on-reconnect.
-9. The basic service worker (app-shell caching).
-10. A real airplane-mode manual test: mark a trainee offline, confirm
-    it queues (don't lose the draft), reconnect, confirm it syncs and
-    the route list updates. Lighter than the formal exit-gate test,
-    but must actually be exercised, not assumed.
+## The password system — three scripts, do not confuse them
 
-## One operational thing that is NOT a code task — flag to the user directly
+All in `packages/db/src/scripts/`, all documented in
+`packages/db/README.md` with a comparison table. All need the
+service-role key; **the user runs them, never you.**
 
-Real supervisor accounts (30 of them, from this session's roster
-imports) got one-time passwords printed to a script's stdout, and the
-**full output including those passwords was pasted into this chat
-twice** (see `MEMORY.md`'s IPT/TP roster-import entries). Those
-passwords must be treated as exposed. **Before Monday, the user needs
-to reset each real account's password via the Supabase dashboard** (or
-have `create-accounts.ts` re-run in a "reset" mode if that's built) —
-this is not something the agent can safely infer is already handled,
-and it blocks real people actually logging in safely. Ask directly
-rather than assuming it's done.
+|                  | `create:accounts`              | `assign:passwords`                          | `reset:passwords`            |
+| ---------------- | ------------------------------ | ------------------------------------------- | ---------------------------- |
+| For              | An account that does not exist | Handing out the College's chosen passwords  | "These leaked, rotate now"   |
+| Existing account | **Skipped**                    | Updated                                     | Updated                      |
+| Password         | Random                         | From the spreadsheet, or generated if blank | Random                       |
+| Afterwards       | Must change on first sign-in   | **Permanent**                               | Must change on first sign-in |
 
-Separately: confirm who is actually running Saturday's demo and on
-what device — if it's a phone/tablet in the field rather than this
-dev machine's browser, that changes what "tested" needs to mean
-(real mobile Chrome/Safari, not just the desktop Chrome extension used
-for verification all session).
+**`assign:passwords` is the one the College actually uses.** It is the
+Excel flow: `--template=<x.xlsx>` writes a workbook pre-filled with all
+30 usernames, the admin types a password beside each person, `--file=`
+applies them.
 
-## What's already done and verified live (don't rebuild)
+**The permanent-password decision was the user's, made explicitly on
+2026-09-05, with the cost spelled out first.** Do not quietly re-litigate
+it. The cost, recorded so nobody rediscovers it: the College holds a
+spreadsheet of live credentials, and `assessment_marks` is attributable
+to a named assessor, so "who awarded this mark" is now only as strong as
+that file's privacy. Mitigations already built: 8-character minimum, and
+two accounts sharing a password is a hard error.
 
-- **Phase 0**: full schema, RLS (default-deny, 18/18 pgTAP), all three
-  instruments' criteria seeded verbatim, both real rosters imported
-  (IPT 118 trainees/5 routes, TP 364 trainees/9 routes) — this already
-  covers "scalable": RLS scopes correctly to the full real dataset,
-  nothing here is sized for test data only.
-- **Phase 1 so far**: auth (sign-in, forced password change, session
-  cookies), the supervisor route list, the trainee profile screen —
-  all browser-verified live against real Supabase.
-- **Validation**: `packages/shared/src/schemas.ts` — both criterion-
-  mark schemas and `assertComplete()` gating, already tested.
-- All of the above is now committed on `phase-0/ipt-roster-support`
-  (5 commits made during this handoff) — check `git log --oneline -6`
-  and `git status -sb` for whether it's pushed; push it yourself if
-  not (`git push -u origin phase-0/ipt-roster-support`) — a prior
-  attempt was blocked by this session's own tool-permission classifier,
-  not a real error.
+Write order differs between the two password scripts **on purpose**, and
+both orders are locked in by tests. In each, the order is chosen so a
+partial failure never leaves a known-to-others password permanently
+valid. Do not "tidy" them into agreement.
 
-## Deferred to the next round — say so explicitly, don't half-build these
+## Migration 0013 is written but NOT applied — deliberately
 
-Per the user's own words, not a unilateral cut: PDF generation, e-mail/
-SMS/WhatsApp notifications (Brevo/Beem — no accounts provisioned
-anyway), full admin console (route management, reassignment workflow,
-override, exports, audit viewer), TOTP, backup panel, Swahili
-translation review, accessibility audit, penetration test, rate
-limiting/CSP hardening. Accounts/routes/trainees continue to be
-managed the way this whole session already did it — direct migrations
-run by the developer, not an admin UI — that's fine for "internal use
-only, small known group of supervisors."
+`packages/db/migrations/0013_remove_test_route_and_account.sql` removes
+`TEST ROUTE`, its 5 trainees (cascading through their marks, items,
+results and assignments) and the `test.supervisor` account.
 
-## Environment / access — what's already there vs. what needs the user
+**Do not apply it until step 2 above has passed.** Until a real
+supervisor has signed in successfully, `TEST ROUTE` is the only working
+way to demonstrate the app. `audit_log` deliberately does not cascade.
 
-- **Supabase MCP tools** (`mcp__supabase__*`) — should already be
-  connected in Claude Code on this machine; this is a tool
-  configuration, not tied to the Anthropic account. Confirm early with
-  `list_tables` against `azlwxriyhdshfhklonrx`.
-- **`apps/web/.env.local`** — already exists, gitignored, has the real
-  Supabase URL/anon key. No action needed.
-- **No repo-root `.env.local`** for `packages/db` scripts — fine
-  unless the password-reset task above needs `create-accounts.ts`
-  re-run, which needs `SUPABASE_SERVICE_ROLE_KEY` from the user.
-- **`claude-in-chrome` browser tools** — used all session for live
-  verification. Test login: `test.supervisor` / `NewTestPass456!`. 5
-  synthetic trainees on `TEST ROUTE` (`TEST TRAINEE 1`–`3` TP, `4`–`5`
-  IPT), assigned to `test.supervisor`'s `a1` slot only — no `a2`, so
-  a submitted mark there will show `partial`, never `locked`. Real
-  routes (imported from the actual rosters) all have real `a1`+`a2`
-  pairs already, so this only matters for dev testing, not Monday's
-  real usage.
-- **Dev server port**: `next dev` has landed on 3000, 3001, and 3002
-  across this session from stale processes piling up — always read the
-  dev server's own background-task log for the port it actually bound
-  to.
+## What's already done — don't rebuild, don't re-derive
 
-## The exact DB contract the marking forms have to satisfy
+- **Schema, RLS, criteria, rosters.** 13 tables, RLS on every one,
+  18/18 pgTAP live. All three instruments' criteria are seeded
+  **verbatim** and arithmetic-verified. 30 accounts, 14 routes, 482
+  trainees, 964 assignments imported. Migrations `0000`–`0012` applied.
+- **The account list is fixed and correct** —
+  `packages/db/src/data/{ipt,tp}-accounts.ts`. Adam Msofe and Aron
+  Franco each hold two accounts (super_admin + `.supervisor`) by design.
+  "Osward" is verbatim from the roster, not a typo to fix.
+- **Marking works for all three instruments**, including the two-insert
+  submit contract and server-side re-validation of gating.
+- **Offline**: one online visit to the route list caches the whole route
+  into IndexedDB; `/offline` re-renders the same `MarkingForm` from that
+  cache and submits through the outbox.
+- **PWA install**: manifest, icons, install gate, and the
+  `middleware.ts` exclusion that makes them work (2026-09-05).
 
-`packages/db/src/schema.ts` + `packages/db/migrations/0001_rls_and_functions.sql`:
+## Environment traps that have already cost time
 
-1. **`instruments`**/**`criteria`** already seeded live for all three
-   codes (`tp_theory`, `tp_practical`, `ipt`). Fetch by `instruments.code`,
-   join `criteria`, order by `order_index`. IPT's `item_max` is `5` per
-   item (the rating scale ceiling doubles as the point value).
-2. **Submission is two inserts, not one, and the order matters**:
-   - Insert one row into `assessment_marks` (`trainee_id`,
-     `instrument_id`, `supervisor_id = auth.uid()`, `slot` = the
-     signed-in supervisor's own slot for this trainee from
-     `assignments`). RLS's `assessment_marks_insert` policy requires a
-     matching `assignments` row — get the new row's id back.
-   - Insert **all** `assessment_mark_items` rows for that instrument
-     (`assessment_mark_id`, `criterion_id`, `score`, `comment`) in a
-     **single** `.insert([...])` call. The
-     `assessment_mark_items_finalize` trigger (statement-level, AFTER
-     INSERT) checks the item count against the instrument's real
-     criteria count — anything incomplete in that one statement gets
-     the **whole insert rejected**. Only a complete match stamps
-     `assessment_marks.total`/`submitted_at`, which fires
-     `assessment_marks_recompute_result` and updates `results`.
-   - **Known rough edge**: two separate round trips means a crash
-     between them leaves an orphaned empty `assessment_marks` row
-     (harmless — nothing recomputes off null `total`/`submitted_at` —
-     but a retry must reuse that row, not re-insert, since
-     `assessment_marks_trainee_instrument_slot_idx` is unique). Given
-     the Dexie submit queue is already handling retry logic for this
-     sprint, it's reasonable to have the queue's retry path look up
-     and reuse an existing unfinished `assessment_marks` row rather
-     than building a `submit_assessment_mark()` RPC to make it atomic
-     — that RPC is a legitimate future improvement (needs a migration,
-     show it and get approval first per `AGENTS.md`), not required to
-     hit Monday.
-3. **Validation already exists** — `packages/shared/src/schemas.ts`,
-   see above. Don't rebuild it.
-
-## Behavioural spec (per `AGENTS.md`, read before designing any screen)
-
-`reference/Tathmini.dc.html`'s `showAssess` (`st.screen === 'assess'`,
-line 416 on) is the marking screen; the IPT-specific 1–5 rating-scale
-comment is around line 1596/2614. Read the surrounding markup before
-writing any component, the same discipline the route-list and
-trainee-profile screens followed — don't invent a layout, and don't
-skip it just because the deadline is tight; skipping it is what
-produces rework, not what avoids it.
-
-## Gotchas already hit this session — don't rediscover these
-
-- **Postgres `numeric` columns come back from PostgREST/`supabase-js`
-  as strings** — `assessment_marks.total`, `criteria.item_max`/
-  `section_max`, `results.pct`/`gpa` will all hit this. Coerce with
-  `Number(...)` before arithmetic (see `trackPointsLabel()`'s usage in
-  `apps/web/src/app/trainee/[id]/page.tsx`).
-- **`import.meta.url === \`file://${process.argv[1]}\``never matches
-on Windows** — if you touch a CLI script's entry-point guard, use`pathToFileURL(process.argv[1]).href`.
-- **Browser automation**: use `find` + element `ref`s, not remembered
-  pixel coordinates — a page that shifts layout between screenshots
-  makes a coordinate-based click miss silently.
-- **`commitlint`** rejects a Sentence-case/Start-case subject after the
-  `type(scope):` prefix — lowercase the first word.
-- **`git push`** may get blocked by the local auto-mode permission
-  classifier even after the user approves in chat — a harness-level
-  gate, not something to route around; the user runs it themselves
-  with `!git push ...` if it happens again.
+- **Run `pnpm --filter` from the repo root.** From anywhere else it
+  fails with the useless `No projects matched the filters`. The path
+  contains spaces — quote it.
+- **Nothing in this repo loads `.env` files except via
+  `admin-client.ts`'s `resolveEnv()`.** There is no dotenv anywhere and
+  `tsx` does not read env files on its own. `create-accounts.ts` is
+  environment-only and predates the fix.
+- **The service-role key is not on disk anywhere.** Root `.env` has
+  `SUPABASE_URL` + `SUPABASE_ANON_KEY`; `.env.local` has only
+  `VERCEL_OIDC_TOKEN`.
+- **The git root is the `Header labels clip fix` directory**, not its
+  parent. A tool that reports "not a git repository" has almost
+  certainly resolved the parent path — check `git rev-parse
+--show-toplevel` before repeating the claim. Working branch as of
+  2026-09-05 is `phase-0/ipt-roster-support`; `.env.local` is
+  gitignored and that ignore is enforced.
+- **Another session may be editing concurrently.** On 2026-09-05 a
+  second session added the PWA manifest/install gate while this one was
+  working. Re-read before editing, and check the newest `MEMORY.md`
+  entry is still the one you think it is.
+- **An agent cannot type passwords into forms.** Browser-verifying a
+  signed-in flow needs the user to sign in first, then hand the tab over.
 
 ## Non-negotiables — the deadline cuts polish, not these
 
-Straight from `AGENTS.md`. Everything deferred above is genuinely
-deferrable; none of this is:
-
-- Authorization lives in RLS/Postgres, never a client-side role check.
-- `assessment_marks`/`assessment_mark_items` are append-only — no
-  "edit and resubmit" UI.
-- Scores/totals/grades are server/trigger-computed, never trusted from
-  the client.
-- **Stop and ask** before any migration, RLS change, or auth change.
-- Criterion wording is verbatim from `reference/forms/` — already
-  seeded correctly for all three instruments; don't re-type it from
-  memory in the UI.
-- Update `MEMORY.md` after every feature/decision/fix, and **commit as
-  you go** — don't let a weekend's worth of work sit uncommitted; that
-  exact situation is what made this handoff necessary in the first
-  place.
+- Authorisation is an RLS policy, never a React condition.
+- `assessment_marks` is append-only.
+- Scores, grade, GPA and verdict are computed in Postgres.
+- An assessor reads only their own slot until both are submitted.
+- Criterion wording is **verbatim** from `reference/forms/`.
+- Stop and ask on migrations, RLS, auth, anything touching a stored mark.
+- `pnpm lint && pnpm test && pnpm typecheck` green before reporting done.
+- Append to `MEMORY.md` after every feature, decision or bug fix.
