@@ -4,8 +4,8 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { clearDraft } from '@/lib/drafts';
 import { listDue, recordAttempt, removeQueued } from '@/lib/outbox';
+import { drainOutbox } from '@/lib/outbox-drain';
 import { listQueuedReports, recordReportAttempt, removeQueuedReport } from '@/lib/report-outbox';
-import { drainOutcomeFor } from '@/lib/submission';
 import { submitAssessment } from './actions/submit-assessment';
 import { generateReport } from './trainee/[id]/actions';
 
@@ -19,10 +19,11 @@ import { generateReport } from './trainee/[id]/actions';
  * Background Sync API. Renders nothing; what is waiting is shown on the
  * Pending tab and on the offline screen.
  *
- * Each pass takes only the entries whose exponential backoff has elapsed
- * (see outbox.ts). Without that, a submission failing for a reason a retry
- * cannot fix would be re-sent on every one of the many `online` events a
- * flapping signal produces.
+ * The pass itself lives in `lib/outbox-drain.ts` and is unit-tested there.
+ * This component owns only what genuinely belongs to the browser: when to run,
+ * and not running twice at once. ROADMAP.md's exit gate — "reconnecting
+ * produces exactly one submission, never two" — is asserted against that
+ * module rather than left to a manual check nobody has performed.
  */
 export function OutboxDrainer() {
   const router = useRouter();
@@ -34,51 +35,17 @@ export function OutboxDrainer() {
     if (draining.current || !navigator.onLine) return;
     draining.current = true;
     try {
-      let submitted = 0;
-      // Only entries whose backoff has elapsed. A submission failing for a
-      // reason no retry can fix must not be re-sent on every signal flap.
-      for (const record of await listDue()) {
-        let result;
-        try {
-          result = await submitAssessment(record.payload);
-        } catch {
-          // Still no usable connection despite navigator.onLine — abandon
-          // this pass and leave everything queued for the next one.
-          break;
-        }
-        if (drainOutcomeFor(result) === 'submitted') {
-          await removeQueued(record.key);
-          // Only now is the draft genuinely safe to discard.
-          await clearDraft(record.key);
-          submitted += 1;
-        } else if (!result.ok) {
-          await recordAttempt(record.key, result.error);
-        }
-      }
-      // Reports drain AFTER the marks, and only in the same pass, because a
-      // report is built from marks the server must already hold. Draining the
-      // other way round would make every report attempt fail with "submit your
-      // assessment first" and burn an attempt counter for no reason.
-      let sent = 0;
-      for (const report of await listQueuedReports()) {
-        let result;
-        try {
-          result = await generateReport(report.key);
-        } catch {
-          break;
-        }
-        if ('error' in result) {
-          await recordReportAttempt(report.key, result.error);
-          continue;
-        }
-        // The report is stored and recorded server-side by this point. Whether
-        // the e-mail itself went is reported inside `result.email` and does not
-        // belong to this queue: a delivery failure must not make the device
-        // re-generate and re-store the report on the next pass.
-        await removeQueuedReport(report.key);
-        sent += 1;
-      }
-
+      const { submitted, sent } = await drainOutbox({
+        listDue,
+        submit: submitAssessment,
+        removeQueued,
+        recordAttempt,
+        clearDraft,
+        listQueuedReports,
+        generateReport,
+        removeQueuedReport,
+        recordReportAttempt,
+      });
       if (submitted > 0 || sent > 0) router.refresh();
     } finally {
       draining.current = false;
