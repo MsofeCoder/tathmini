@@ -47,6 +47,79 @@ the diff. This file is for knowledge that would otherwise be lost.
 
 ---
 
+## 2026-09-05 · migration · 0014 applied live: reports table, private bucket, four RLS policies
+
+**Kind:** migration
+**Phase:** 2
+**Commit / PR:** #8 (feature), #13 (deploy), this entry
+
+**What changed**
+`0014_add_reports_table.sql` applied to `azlwxriyhdshfhklonrx` at the
+user's explicit instruction. It is purely additive — it created the
+`reports` table, enabled RLS on it with a select and an insert policy,
+inserted a **private** `reports` bucket into `storage.buckets`, and added
+two policies on `storage.objects`.
+
+**What it did to existing rows: nothing.** Verified by counting before
+and after — `assessment_marks` 16 both sides, `trainees` 487 both sides.
+No existing table was altered, no row updated or deleted. The
+append-only invariant is intact: `has_table_privilege('authenticated',
+'assessment_marks', 'UPDATE')` is still `false`.
+
+Also merged to `main` in the same session: PR #13 (the route-list counter
+fix and the pgTAP repair) and PR #8 (the PDF report feature itself).
+
+**Why this way**
+The drizzle-generated version of this migration wanted to re-add
+`users.must_change_password`, which `0009` already added and which is
+live. Confirmed present before applying (`information_schema.columns`
+returned 1), so the hand-edited migration that omits it is the correct
+one — applying drizzle's output as-is would have failed on a duplicate
+column. This is the recurring trap for every hand-written migration in
+this repo, and `0014_snapshot.json` is the first accurate snapshot in a
+while, so future `db:generate` runs diff against something real.
+
+`storage.objects` policies scope on `(storage.foldername(name))[1]::uuid`.
+Object names in Supabase Storage are **bucket-relative**, so the upload
+path in `actions.ts` — `<trainee_id>/<result_id>-<hash>.pdf` into the
+`reports` bucket — makes that first segment the trainee id. Verified
+directly rather than assumed: it resolves and casts cleanly. Had the path
+included the bucket name, `[1]` would have been the literal `'reports'`
+and every cast would have thrown.
+
+**Watch out for**
+
+- **The report path has still never run in a browser.** There are **zero
+  locked results** in production, and both the UI gate (`locked =
+  !!results.locked_at`) and the insert policy (`r.locked_at IS NOT NULL`)
+  require one — they agree exactly, which is right, but it means the
+  button is currently unreachable and the PDF pipeline is unproven end to
+  end. It becomes reachable the moment any trainee has both assessors in.
+- Report generation runs headless Chromium. Locally it uses
+  `playwright-core`'s resolution (needs `npx playwright install
+  chromium`); on Vercel it swaps to `@sparticuz/chromium`. Neither has
+  been exercised in the deployed environment. Server-side only —
+  first-load JS is unchanged at 141 kB, so nothing reached the client
+  bundle.
+- Supabase's security advisors report no new finding for `reports` or its
+  policies. The pre-existing WARNs are unchanged, but one is worth
+  knowing: **`pgtap` is installed in the production `public` schema**,
+  left behind by an earlier live pgTAP run. Also flagged: five grading
+  functions have a mutable `search_path`, the RLS helper functions are
+  callable by `anon` via RPC, and leaked-password protection is off.
+  None of these are from this migration; none are fixed here.
+
+**Verified by**
+Pre- and post-flight queries against the live project: `reports` table
+present, RLS enabled, 2 policies; bucket present with `public = false`;
+2 policies on `storage.objects`; mark and trainee counts unchanged; no
+`UPDATE` grant on `assessment_marks`. Before applying, the full chain
+`0000`–`0014` was proven against a throwaway `postgres:16` +
+`postgresql-16-pgtap` container, where `pgtap/phase0.sql` reports 18 ok
+and zero "not ok".
+
+---
+
 ## 2026-09-05 · bugfix · the pgTAP suite had been silently red since 0007 landed; CI auth stub lacked auth.users.email
 
 **Kind:** bugfix
