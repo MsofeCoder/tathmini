@@ -122,6 +122,26 @@ export default async function TraineeProfilePage({ params }: { params: Promise<{
     trackInstruments.length > 0 &&
     trackInstruments.every((instrument) => instrument.submitted);
 
+  // Has this assessor already stored and sent their report for this trainee?
+  //
+  // Asked on the server, not remembered in the component, because the button's
+  // own state dies on a reload: a supervisor who refreshes the page after
+  // sending would otherwise be offered the button again, and tapping it sends
+  // the trainee a second copy of their result. The storage upsert already
+  // stops a duplicate FILE, but nothing stopped a duplicate E-MAIL.
+  //
+  // RLS scopes this: reports_select only returns rows for a trainee the caller
+  // may read, and generated_by_id narrows it to this assessor's own report —
+  // a colleague's report must not suppress this supervisor's button.
+  const { data: existingReport } = await supabase
+    .from('reports')
+    .select('generated_at')
+    .eq('trainee_id', id)
+    .eq('generated_by_id', user.id)
+    .order('generated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
   return (
     <main className="min-h-dvh bg-[#eceff0]">
       <div className="border-b border-[#e1e9e6] bg-white p-4">
@@ -190,7 +210,10 @@ export default async function TraineeProfilePage({ params }: { params: Promise<{
             >
               Preview report
             </a>
-            <ReportDownloadButton traineeId={id} />
+            <ReportDownloadButton
+              traineeId={id}
+              alreadySentAt={existingReport?.generated_at ?? null}
+            />
           </div>
         ) : null}
 
