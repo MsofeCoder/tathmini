@@ -26,6 +26,6 @@
     "typescript-eslint": "^8.19.0"
   },
   "simple-git-hooks": {
-    "commit-msg": "pnpm exec commitlint --edit $1"
+    "commit-msg": "pnpm exec commitlint --edit \"$1\""
   }
 }

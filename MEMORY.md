@@ -47,6 +47,50 @@ the diff. This file is for knowledge that would otherwise be lost.
 
 ---
 
+## 2026-09-05 · bugfix · swapped the placeholder "TM" icon for the real MVTTC crest
+
+**Kind:** bugfix
+**Phase:** 1
+**Commit / PR:** (pending)
+
+**What changed**
+Replaced every generated placeholder icon (a plain teal "TM" monogram,
+noted as a stand-in in the 2026-09-05 install-screen and manifest
+entries below) with the real institutional crest, supplied as
+`apps/web/public/mvttc-logo.png` — matching the filename
+`reference/Tathmini.dc.html` already expected everywhere it shows a
+crest. Regenerated `icon-192/512.png`, `icon-maskable-192/512.png`,
+`apple-icon.png` and `favicon.ico` by compositing the real logo onto a
+white square (transparent PNGs render badly as home-screen/maskable
+icons — most launchers fill transparent regions with a flat color or an
+OS default). The install screen (`install-gate.tsx`) now shows
+`mvttc-logo.png` directly, matching the prototype's own crest treatment
+exactly (`Tathmini.dc.html` line 74).
+
+**Why this way**
+Maskable icons specifically need generous padding — content has to sit
+inside the centered ~80%-diameter circle any launcher might crop to —
+so the maskable pair uses more margin (logo at ~62% of canvas) than the
+plain "any"-purpose pair (~78%). The 1254×1254 source was resized to
+512px and re-saved before compositing; the untouched original was
+1.1 MB, and the install screen renders it uncompressed on first paint
+(no LCP budget to spend on that per `AGENTS.md`'s performance table) —
+resizing got it to ~255 KB. No further compression tooling
+(`pngquant`/`optipng`) was available in this environment to take it
+lower; worth revisiting if the budget is measured and fails.
+
+**Watch out for**
+`icon-512.png` is still ~410 KB even after `-strip` and max PNG
+compression — the crest's glossy bevel/gradient detail just doesn't
+palette-compress well as a plain PNG. Not fixed here; flagging rather
+than guessing at a further transform without a way to verify it doesn't
+degrade the mark.
+
+**Verified by**
+`pnpm lint && pnpm test && pnpm typecheck && pnpm build` green. Manually
+verified against `pnpm start` at mobile viewport: the crest renders
+correctly, undistorted, inside the white box on the install screen.
+
 ## 2026-09-05 · feature · real install screen, wired to beforeinstallprompt
 
 **Kind:** feature
