@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
+import { AppChrome } from '@/components/app-chrome';
 import { OutboxDrainer } from './outbox-drainer';
 
 export const metadata: Metadata = {
@@ -21,7 +22,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body>
         <OutboxDrainer />
-        {children}
+        <AppChrome>{children}</AppChrome>
       </body>
     </html>
   );
