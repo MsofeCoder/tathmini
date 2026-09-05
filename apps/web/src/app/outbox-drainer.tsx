@@ -7,7 +7,7 @@ import { listDue, recordAttempt, removeQueued } from '@/lib/outbox';
 import { drainOutbox } from '@/lib/outbox-drain';
 import { listQueuedReports, recordReportAttempt, removeQueuedReport } from '@/lib/report-outbox';
 import { submitAssessment } from './actions/submit-assessment';
-import { generateReport } from './trainee/[id]/actions';
+import type { ReportAttemptResult } from '@/lib/outbox-drain';
 
 /**
  * Replays queued submissions when connectivity comes back. Mounted once in
@@ -25,6 +25,25 @@ import { generateReport } from './trainee/[id]/actions';
  * produces exactly one submission, never two" — is asserted against that
  * module rather than left to a manual check nobody has performed.
  */
+/**
+ * Posts to the route handler rather than calling the Server Action.
+ *
+ * An action inherits the `maxDuration` of the route that invoked it, and this
+ * component runs from the root layout — usually on `/offline` or `/pending`,
+ * which are client components and cannot declare one. Every queued report was
+ * timing out there and silently staying queued. The handler carries its own
+ * 60s budget.
+ *
+ * A transport failure THROWS, so drainOutbox leaves the entry queued: a 401 on
+ * an expired session, or a dead connection, must never discard a supervisor's
+ * pending report.
+ */
+async function requestReport(traineeId: string): Promise<ReportAttemptResult> {
+  const response = await fetch(`/api/reports/${traineeId}`, { method: 'POST' });
+  if (!response.ok) throw new Error(`Report request failed: ${response.status}`);
+  return (await response.json()) as ReportAttemptResult;
+}
+
 export function OutboxDrainer() {
   const router = useRouter();
   const draining = useRef(false);
@@ -42,7 +61,7 @@ export function OutboxDrainer() {
         recordAttempt,
         clearDraft,
         listQueuedReports,
-        generateReport,
+        generateReport: requestReport,
         removeQueuedReport,
         recordReportAttempt,
       });
