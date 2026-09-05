@@ -44,7 +44,11 @@ export default async function HomePage() {
     assignmentsRes,
     criteriaRes,
   ] = await Promise.all([
-    supabase.from('trainees').select('id, name, occupation, institution, track, route_id'),
+    supabase.from('trainees').select(
+      // The register's full particulars, not just the list columns: the
+      // offline profile and report preview are built from this snapshot.
+      'id, name, occupation, institution, track, route_id, registration_number, course, mode_of_study, region, district, email, phone',
+    ),
     supabase
       .from('assessment_marks')
       .select('trainee_id, instrument_id')
@@ -67,6 +71,9 @@ export default async function HomePage() {
   ]);
 
   const trainees = traineesRes.data ?? [];
+  // Keyed lookup for the offline snapshot below, which needs the register
+  // columns the route list itself does not display.
+  const traineeById = new Map(trainees.map((t) => [t.id, t]));
 
   const ownSubmittedByTrainee = new Map<string, number>();
   for (const row of ownMarksRes.data ?? []) {
@@ -142,16 +149,29 @@ export default async function HomePage() {
     // Spelled out rather than spread, so what gets written to the device's
     // IndexedDB stays a deliberate shape and does not silently grow every
     // time the route list's own props gain a field.
-    trainees: routeListTrainees.map((t) => ({
-      id: t.id,
-      name: t.name,
-      occupation: t.occupation,
-      institution: t.institution,
-      track: t.track,
-      status: t.status,
-      slot: slotByTrainee.get(t.id) ?? null,
-      submittedInstrumentIds: submittedInstrumentsByTrainee.get(t.id) ?? [],
-    })),
+    supervisorName: profile.name,
+    trainees: routeListTrainees.map((t) => {
+      const record = traineeById.get(t.id);
+      return {
+        id: t.id,
+        name: t.name,
+        occupation: t.occupation,
+        institution: t.institution,
+        track: t.track,
+        status: t.status,
+        slot: slotByTrainee.get(t.id) ?? null,
+        submittedInstrumentIds: submittedInstrumentsByTrainee.get(t.id) ?? [],
+        registrationNumber: record?.registration_number ?? null,
+        course: record?.course ?? '',
+        modeOfStudy: record?.mode_of_study ?? null,
+        region: record?.region ?? null,
+        district: record?.district ?? null,
+        email: record?.email ?? null,
+        phone: record?.phone ?? null,
+        ownSubmittedCount: t.ownSubmittedCount,
+        requiredCount: t.requiredCount,
+      };
+    }),
     instruments: (instrumentsRes.data ?? []).map((i) => ({
       id: i.id,
       code: i.code,

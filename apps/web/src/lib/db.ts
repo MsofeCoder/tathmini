@@ -56,6 +56,28 @@ export interface OfflineTrainee {
   slot: 'a1' | 'a2' | null;
   /** Instrument ids this supervisor has already submitted for this trainee. */
   submittedInstrumentIds: string[];
+
+  // The rest of the register's particulars. Cached so the offline profile is
+  // the same screen as the online one rather than a cut-down stand-in, and so
+  // the offline report preview can print a complete VETA heading — the whole
+  // point of "nothing is typed in the field" is that these travel with the
+  // supervisor.
+  registrationNumber: string | null;
+  course: string;
+  modeOfStudy: string | null;
+  region: string | null;
+  district: string | null;
+  email: string | null;
+  phone: string | null;
+
+  /**
+   * Counts behind the route list's tiles. deriveStatus() collapses "some
+   * instruments submitted" and "none" both to 'pending', so the raw numbers
+   * have to travel too or the offline counters would disagree with the online
+   * ones on exactly the trainees a supervisor is midway through.
+   */
+  ownSubmittedCount: number;
+  requiredCount: number;
 }
 
 export interface OfflineInstrument {
@@ -72,6 +94,8 @@ export interface OfflineBundle {
   routeLabel: string | null;
   trainees: OfflineTrainee[];
   instruments: OfflineInstrument[];
+  /** Signs the offline report preview, as it does the online one. */
+  supervisorName: string;
   cachedAt: number;
 }
 
