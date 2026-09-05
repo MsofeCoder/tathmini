@@ -2,8 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { adviceFor } from '@tathmini/shared';
 import {
   computeGaps,
+  flaggedCriteria,
   criterionKindForInstrument,
   groupBySection,
   isFlagged,
@@ -59,6 +61,10 @@ export function MarkingForm({
   // rendered on IPT and nothing is ever written for it.
   const [sectionComments, setSectionComments] = useState<Record<string, string>>({});
   const [generalComment, setGeneralComment] = useState('');
+  // Suggestions the supervisor has waved away, by criterion id. Local to the
+  // session and never persisted: dismissing is "not this one, not now", not a
+  // judgement worth carrying into the next assessment.
+  const [dismissedAdvice, setDismissedAdvice] = useState<Set<string>>(new Set());
   const [draftLoaded, setDraftLoaded] = useState(false);
   const [savedLabel, setSavedLabel] = useState('');
   const [gapsShown, setGapsShown] = useState(false);
@@ -107,6 +113,32 @@ export function MarkingForm({
       [criterionId]: { score, comment: prev[criterionId]?.comment ?? '' },
     }));
     setSavedLabel('');
+  }
+
+  /** Advice for the sub-criteria that came out below the flag threshold, minus
+   * anything already dismissed or already sitting in the comment box. */
+  function suggestionsFor(criteriaToCheck: CriterionRow[], existing: string) {
+    return flaggedCriteria(kind, criteriaToCheck, marks)
+      .filter((c) => !dismissedAdvice.has(c.id))
+      .map((c) => ({
+        id: c.id,
+        text: adviceFor(instrumentCode, c.sectionCode, c.itemCode, c.itemLabel),
+      }))
+      .filter((s) => !existing.includes(s.text));
+  }
+
+  function dismissAdvice(criterionId: string) {
+    setDismissedAdvice((prev) => new Set(prev).add(criterionId));
+  }
+
+  /** Merges suggestions into a comment box as ordinary editable prose, exactly
+   * as the prototype's mergeAdvice() does: additive, never replacing what the
+   * supervisor has already written, and never inserting the same sentence
+   * twice. What the trainee reads must be one voice, not a list of clippings. */
+  function mergeAdvice(existing: string, lines: string[]): string {
+    if (lines.length === 0) return existing;
+    const prefix = existing.trim() ? `${existing.trim()}\n\n` : '';
+    return prefix + lines.join(' ');
   }
 
   function setSectionComment(sectionCode: string, comment: string) {
@@ -338,6 +370,16 @@ export function MarkingForm({
                     ? 'This criterion scored below half. Say what the trainee should do differently — never a grade-word like “fair” or “good”.'
                     : 'Optional. One comment for this criterion, as on the paper form.'}
                 </p>
+                <AdviceSuggestions
+                  items={suggestionsFor(section.criteria, sectionComments[section.code] ?? '')}
+                  onDismiss={dismissAdvice}
+                  onAddAll={(lines) =>
+                    setSectionComment(
+                      section.code,
+                      mergeAdvice(sectionComments[section.code] ?? '', lines),
+                    )
+                  }
+                />
                 <textarea
                   id={`section-comment-${section.code}`}
                   value={sectionComments[section.code] ?? ''}
@@ -365,6 +407,20 @@ export function MarkingForm({
               Optional. After the assessment the trainee should be consulted and advised on all
               matters arising.
             </p>
+            {/* IPT only. On TP each criterion carries its own suggestions
+                above its own box, which is where the merged COMMENTS cell
+                lives on the paper form; repeating them all down here would
+                offer the same sentence twice. */}
+            {!isTp ? (
+              <AdviceSuggestions
+                items={suggestionsFor(criteria, generalComment)}
+                onDismiss={dismissAdvice}
+                onAddAll={(lines) => {
+                  setGeneralComment(mergeAdvice(generalComment, lines));
+                  setSavedLabel('');
+                }}
+              />
+            ) : null}
             <textarea
               id="general-comment"
               value={generalComment}
@@ -398,6 +454,71 @@ export function MarkingForm({
  * copy has to leave no doubt the work is safe — a supervisor in a dead zone
  * who thinks their marks were lost will re-do them on paper.
  */
+/**
+ * The auto-comment suggestions, ported from the prototype's Comments step.
+ *
+ * Suggestions, never text written on the supervisor's behalf: each one can be
+ * waved away, and "Add all" merges them into the box as ordinary editable
+ * prose so what the trainee reads is one voice rather than a list of
+ * clippings. Nothing is inserted unless the supervisor asks for it —
+ * CONTEXT.md's first non-negotiable is that the supervisor owns the
+ * assessment decision, and the comment is part of that decision.
+ *
+ * Renders nothing when there is nothing to suggest, so a criterion marked at
+ * full marks stays quiet.
+ */
+function AdviceSuggestions({
+  items,
+  onDismiss,
+  onAddAll,
+}: {
+  items: { id: string; text: string }[];
+  onDismiss: (criterionId: string) => void;
+  onAddAll: (lines: string[]) => void;
+}) {
+  if (items.length === 0) return null;
+
+  return (
+    <div className="mt-2.5">
+      <div className="flex items-center gap-2">
+        <span className="rounded-[5px] bg-[#ffe9c2] px-1.5 py-0.5 text-[10.5px] font-extrabold tracking-[0.6px] text-[#6b4400]">
+          SUGGESTED
+        </span>
+        <span className="text-[12px] text-[#5b6b78]">
+          {items.length} {items.length === 1 ? 'suggestion' : 'suggestions'}
+        </span>
+      </div>
+
+      <div className="mt-2 flex flex-col gap-2">
+        {items.map((item) => (
+          <div
+            key={item.id}
+            className="flex items-start gap-2 rounded-[10px] border border-[#f0dcb4] bg-[#fffaf0] p-3"
+          >
+            <p className="flex-1 text-[13.5px] leading-relaxed text-[#4a3a1a]">{item.text}</p>
+            <button
+              type="button"
+              onClick={() => onDismiss(item.id)}
+              aria-label="Remove this suggestion"
+              className="focus:outline-accent min-h-11 min-w-11 shrink-0 text-[18px] text-[#7a5f22] focus:outline focus:outline-[3px] focus:outline-offset-2"
+            >
+              ×
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <button
+        type="button"
+        onClick={() => onAddAll(items.map((item) => item.text))}
+        className="focus:outline-accent mt-2 min-h-11 w-full rounded-[10px] border border-[#ccd7d4] bg-white text-[13.5px] font-bold text-[#3c4c58] focus:outline focus:outline-[3px] focus:outline-offset-2"
+      >
+        Add {items.length === 1 ? 'this' : 'all'} to my comment ↓
+      </button>
+    </div>
+  );
+}
+
 function QueuedConfirmation({
   returnHref,
   instrumentLabel,
