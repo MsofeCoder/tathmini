@@ -108,7 +108,7 @@ describe('renderReportHtml', () => {
 
   it('renders one page per (instrument, slot) plus one consolidated page', () => {
     const html = renderReportHtml(tpData(), 'TM-TEST');
-    expect(html.match(/page-break-after: always/g)).toHaveLength(2); // 1 instrument x 2 slots
+    expect(html.match(/<section data-report-page/g)).toHaveLength(3); // 1 instrument x 2 slots + consolidated
     expect(html).toContain('Assessor One');
     expect(html).toContain('Assessor Two');
     expect(html).toContain('CONSOLIDATED RESULT — TEACHING PRACTICE ASSESSMENT');
@@ -150,7 +150,7 @@ describe('renderReportHtml', () => {
     data.instruments[0]!.bySlot.a2 = null;
     const html = renderReportHtml(data, 'TM-TEST');
     expect(html).not.toContain('Assessor Two');
-    expect(html.match(/page-break-after: always/g)).toHaveLength(1);
+    expect(html.match(/<section data-report-page/g)).toHaveLength(2); // 1 assessor + consolidated
   });
 
   it('omits the consolidated page entirely until the result is locked', () => {
@@ -167,7 +167,7 @@ describe('renderReportHtml', () => {
     expect(html).not.toContain('TP Coordinator');
     // The assessor's own sheet is still a complete VETA document.
     expect(html).toContain('Assessor One');
-    expect(html.match(/page-break-after: always/g)).toHaveLength(1);
+    expect(html.match(/<section data-report-page/g)).toHaveLength(1);
   });
 
   it('is a one-assessor document when scoped to a single slot, even once locked', () => {
