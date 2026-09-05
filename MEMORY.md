@@ -47,6 +47,49 @@ the diff. This file is for knowledge that would otherwise be lost.
 
 ---
 
+## 2026-09-05 · bugfix · site was never installable — no manifest, and middleware blocked the one added
+
+**Kind:** bugfix
+**Phase:** 1
+**Commit / PR:** (pending)
+
+**What changed**
+Added `apps/web/src/app/manifest.ts` (Next.js native manifest route),
+generated icon assets (`public/icons/icon-{192,512}.png`,
+`icon-maskable-{192,512}.png`, `src/app/apple-icon.png`, `public/favicon.ico`)
+in the existing deep-teal `#0d4a43` palette with the prototype's "TM" mark, and
+added `theme-color` / `appleWebApp` metadata to `layout.tsx`. Also added
+`manifest\.webmanifest` to the auth middleware's matcher exclusion list.
+
+**Why this way**
+The app had a working service worker (Serwist) but no web app manifest at
+all — Chrome's install-prompt criteria need both, so the "download the PWA"
+experience the user expected on first visiting the live URL never fired.
+Fixing the manifest alone wasn't enough: `middleware.ts` redirects every
+unauthenticated request to `/login`, and `/manifest.webmanifest` isn't a
+static-asset extension, so it matched the auth gate and a first-time
+(signed-out) visitor's browser got a `307` redirect body instead of manifest
+JSON — silently killing installability rather than erroring. Excluded it the
+same way `sw.js` already is, per the existing comment in that file explaining
+why service-worker-adjacent assets can't go through the session check.
+Icons are placeholder — no logo asset exists yet in the repo (checked
+`reference/` for `mvttc-logo.png`, not present); swap in the real crest once
+provided.
+
+**Watch out for**
+`start_url: '/home'` in the manifest — this is *itself* auth-gated (by
+design, per `PUBLIC_PATHS` in `middleware.ts`), so an installed icon still
+routes through `/login` for a signed-out user. That's correct behavior, not
+a bug — do not add `/home` to `PUBLIC_PATHS` to "fix" it.
+
+**Verified by**
+`pnpm lint && pnpm test && pnpm typecheck` green; `pnpm build` succeeds and
+lists `/manifest.webmanifest` and `/apple-icon.png` as generated routes;
+manual check against a local `pnpm start` server confirmed
+`/manifest.webmanifest` returns `200` with valid JSON while unauthenticated
+(previously `307` to `/login`), and that `/home` is still correctly gated.
+---
+
 ## 2026-09-05 · security · Supabase env vars dropped the NEXT_PUBLIC_ prefix; unused browser client deleted
 
 **Kind:** security
