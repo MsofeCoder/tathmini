@@ -47,6 +47,70 @@ the diff. This file is for knowledge that would otherwise be lost.
 
 ---
 
+## 2026-09-05 · bugfix · the pgTAP suite had been silently red since 0007 landed; CI auth stub lacked auth.users.email
+
+**Kind:** bugfix
+**Phase:** 0
+**Commit / PR:** (pending) — PR #8
+
+**What changed**
+`packages/db/scripts/local-auth-stub.sql` now gives its stand-in
+`auth.users` an `email` column (plus the unique index Supabase's real
+one has). One line of schema; the rest of the change is the comment
+explaining why it is there.
+
+**Why this way**
+This is not a new feature — it is the repair of a suite that had stopped
+running. `AGENTS.md` calls pgTAP "the priority suite" and Phase 0's exit
+gate is stated purely in terms of it, so it failing open is the most
+expensive kind of breakage here.
+
+The stub predates the roster imports and only ever declared
+`auth.users(id)`. Migrations `0007`, `0008` and `0010` link real accounts
+with `join auth.users au on au.email = v.email`, and `0013` deletes by
+email. From the moment `0007` merged, the CI job's "apply every
+migration" step aborted at `0007` with `column au.email does not exist` —
+so **not one pgTAP assertion has executed in CI since 2026-09-04**. The
+last five merges to `main` (PRs #6, #7, #9, #10, #11) are all red for
+this single reason. Nobody was ignoring a failure; the job simply died
+before reaching the tests, and the branch protection that would have
+caught it is the one unticked Phase 0 box.
+
+Fixing the stub was the right move rather than editing the migrations:
+the migrations are correct and are already applied live against real
+Supabase, where `auth.users.email` genuinely exists. The stub is the
+thing that had drifted from reality. Its own header says it is "local
+dev and CI only — nothing here ever runs against a real project", so
+this touches no production auth, no RLS policy and no stored mark.
+
+`add column if not exists` as a separate statement rather than inlining
+the column in the `create table if not exists`, because the latter is a
+no-op against a local database created from an older copy of the stub —
+which is exactly the machine a developer would be debugging on.
+
+**Watch out for**
+In CI the stub's `auth.users` is always **empty**, so the three import
+migrations join zero rows and insert nothing. That is fine and
+intentional — every one is `NOT EXISTS`-guarded, the routes and trainees
+that hang off them join through `users`, and pgTAP seeds its own
+fixtures — but it does mean **CI never exercises the roster data
+itself**. A defect in the seeded values would not be caught here.
+
+The same class of drift is already queued up again: the Phase 2 reports
+migration `0014` creates a bucket in `storage.buckets` and policies on
+`storage.objects`, and this stub has no `storage` schema at all. That
+branch's pgTAP job will fail the same way unless the stub grows a
+`storage` stand-in first.
+
+**Verified by**
+Reproduced and fixed against a throwaway `postgres:16` container with
+`postgresql-16-pgtap`, mirroring the CI job step for step. Before:
+aborts at `0007`, identical error to the CI log. After: every migration
+`0000`–`0013` applies clean, and `pgtap/phase0.sql` reports **18 ok, 0
+"not ok"** — matching the 18/18 last seen on PR #2.
+
+---
+
 ## 2026-09-05 · bugfix · swapped the placeholder "TM" icon for the real MVTTC crest
 
 **Kind:** bugfix
