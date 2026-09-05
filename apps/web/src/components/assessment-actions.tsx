@@ -4,6 +4,28 @@ import { useEffect, useState } from 'react';
 import { draftKey } from '@/lib/drafts';
 import { listQueued } from '@/lib/outbox';
 
+/** Outline eye, 24px. Inline rather than a dependency — AGENTS.md forbids
+ *  adding a client-bundle package without asking, and this is one path. */
+function EyeIcon() {
+  return (
+    <svg
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
 export interface AssessmentAction {
   instrumentId: string;
   code: string;
@@ -51,10 +73,22 @@ export function AssessmentActions({
           return (
             <div
               key={action.code}
-              className="flex min-h-[52px] items-center justify-between rounded-xl border border-[#dae3e0] bg-[#f1f3f4] px-4"
+              className="flex min-h-[52px] items-center justify-between gap-2 rounded-xl border border-[#dae3e0] bg-[#f1f3f4] py-1 pl-4 pr-1"
             >
               <span className="text-[15px] font-semibold text-[#3c4c58]">{action.label}</span>
-              <span className="text-[13px] font-bold text-[#1c6650]">Submitted ✓</span>
+              <span className="flex items-center gap-1">
+                <span className="text-[13px] font-bold text-[#1c6650]">Submitted ✓</span>
+                <a
+                  href={`/trainee/${traineeId}/report/preview`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Preview this report"
+                  aria-label={`Preview the ${action.label} report`}
+                  className="focus:outline-accent flex h-11 w-11 items-center justify-center rounded-lg text-[#12665b] focus:outline focus:outline-[3px] focus:outline-offset-2"
+                >
+                  <EyeIcon />
+                </a>
+              </span>
             </div>
           );
         }

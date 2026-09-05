@@ -436,7 +436,12 @@ function consolidatedPage(data: ReportData, reportRef: string, generatedAt: stri
         ? `${trainee.region} · ${trainee.district}`
         : (trainee.region ?? trainee.district ?? '—'),
     ],
-    ['Date result locked', new Date(result.lockedAt).toLocaleDateString('en-GB')],
+    [
+      'Date result locked',
+      // renderReportHtml only reaches this page once the result is locked;
+      // the fallback keeps the type honest rather than asserting non-null.
+      result.lockedAt ? new Date(result.lockedAt).toLocaleDateString('en-GB') : '—',
+    ],
   ];
 
   const particularsHtml = particulars
@@ -526,6 +531,19 @@ export function renderReportHtml(data: ReportData, reportRef: string): string {
     )
     .join('');
 
+  // The consolidated page carries the OFFICIAL result — the average of both
+  // assessors, with the grade, GPA, class of award and verdict Postgres
+  // computed. Until the result is locked, recompute_result() has averaged
+  // over whichever marks exist so far, so those figures are provisional and
+  // will change when the second assessor submits. Printing them on a report
+  // that goes to a trainee would publish a verdict that later moves, so the
+  // page is omitted entirely until locked.
+  //
+  // Nothing is invented to replace it: each assessor page is already a
+  // complete VETA sheet with its own TOTAL MARKS and its own COMPETENT /
+  // NOT COMPETENT box, exactly as in reference/Tathmini Result Report.dc.html.
+  const consolidated = data.result.lockedAt ? consolidatedPage(data, reportRef, generatedAt) : '';
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -535,7 +553,7 @@ export function renderReportHtml(data: ReportData, reportRef: string): string {
 </head>
 <body>
 ${assessorPages}
-${consolidatedPage(data, reportRef, generatedAt)}
+${consolidated}
 </body>
 </html>`;
 }

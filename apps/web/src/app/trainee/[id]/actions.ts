@@ -9,13 +9,18 @@ import { renderPdf } from '@/lib/reports/pdf';
 export type GenerateReportResult = { url: string } | { error: string };
 
 /**
- * Generates the VETA result PDF for a locked trainee result, stores it in
- * the private `reports` Storage bucket, records its SHA-256 hash (ROADMAP.md
- * Phase 2: "SHA-256 hash stored with each generated report"), and returns a
+ * Generates THIS supervisor's own VETA result PDF, stores it in the private
+ * `reports` Storage bucket, records its SHA-256 hash (ROADMAP.md Phase 2:
+ * "SHA-256 hash stored with each generated report"), and returns a
  * short-lived signed URL — never a public path (AGENTS.md "Never do these").
  *
+ * Deliberately does NOT wait for the second assessor. Each assessor submits
+ * their own report independently, and a trainee receives one per assessor —
+ * the College's requirement (2026-09-05): a supervisor who is sick or
+ * unreachable would otherwise block their colleague's submission entirely.
+ *
  * Runs entirely through the caller's own authenticated Supabase client.
- * Migration 0014's RLS is what actually gates this — a caller who isn't a
+ * RLS is what actually gates this — a caller who isn't a
  * coordinator/super_admin/assigned supervisor gets zero rows back from
  * getReportData and a rejected storage insert, not a client-side check.
  */
@@ -26,16 +31,42 @@ export async function generateReport(traineeId: string): Promise<GenerateReportR
   } = await supabase.auth.getUser();
   if (!user) return { error: 'Not signed in.' };
 
-  const data = await getReportData(supabase, traineeId);
+  const { data: assignment } = await supabase
+    .from('assignments')
+    .select('slot')
+    .eq('trainee_id', traineeId)
+    .eq('supervisor_id', user.id)
+    .maybeSingle();
+  if (!assignment) {
+    return { error: 'You are not assigned to this trainee.' };
+  }
+
+  const data = await getReportData(supabase, traineeId, { slot: assignment.slot as 'a1' | 'a2' });
   if (!data) {
-    return { error: 'This result is not locked yet — a report needs both assessors submitted.' };
+    return { error: 'Submit your assessment first — there is nothing to report on yet.' };
+  }
+
+  // Every instrument the track requires must carry this assessor's own mark.
+  // A TP report with the Practical half missing is not a VETA document, and
+  // once stored it cannot be replaced — reports, like marks, are append-only.
+  const missing = data.instruments.filter(
+    (instrument) => instrument.bySlot[assignment.slot as 'a1' | 'a2'] === null,
+  );
+  if (missing.length > 0) {
+    const names = missing.map((instrument) => instrument.label).join(' and ');
+    return { error: `Submit your ${names} assessment as well before storing the report.` };
   }
 
   const reportRef = `TM-${new Date().getFullYear()}-${randomUUID().slice(0, 8).toUpperCase()}`;
   const html = renderReportHtml(data, reportRef);
   const pdf = await renderPdf(html);
   const hash = createHash('sha256').update(pdf).digest('hex');
-  const storagePath = `${traineeId}/${data.result.id}-${hash.slice(0, 12)}.pdf`;
+  // First segment must stay the trainee id — migration 0014's Storage
+  // policies scope on (storage.foldername(name))[1]::uuid. The slot makes the
+  // two assessors' reports distinguishable in the bucket without opening a
+  // file; the hash keeps a regenerated report from overwriting its
+  // predecessor, since reports are append-only like the marks behind them.
+  const storagePath = `${traineeId}/${assignment.slot}-${data.result.id}-${hash.slice(0, 12)}.pdf`;
 
   const upload = await supabase.storage.from('reports').upload(storagePath, pdf, {
     contentType: 'application/pdf',

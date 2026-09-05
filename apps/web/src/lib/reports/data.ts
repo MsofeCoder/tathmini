@@ -42,7 +42,14 @@ export interface ReportResult {
   gpa: number | null;
   classOfAward: string | null;
   competent: boolean | null;
-  lockedAt: string;
+  /**
+   * Null until BOTH assessors have submitted every instrument in the track.
+   * While null, `total`/`pct`/`grade`/`competent` on this row are computed
+   * by recompute_result() as an average over whichever marks exist so far —
+   * i.e. provisional, and they will change when the second assessor submits.
+   * The consolidated page is therefore only rendered once this is set.
+   */
+  lockedAt: string | null;
 }
 
 export interface ReportData {
@@ -56,13 +63,29 @@ export interface ReportData {
  * own authenticated Supabase client — never a service-role bypass (see
  * migration 0014's RLS: `reports_select`/assessment_marks/results are all
  * scoped to is_assigned_to_trainee(), same as every other read in the app).
- * Returns null if the trainee doesn't exist, isn't visible to the caller,
- * or the result isn't locked yet — a report is only ever generated from a
- * result both assessors have actually finalized.
+ * Returns null if the trainee doesn't exist, isn't visible to the caller, or
+ * no submitted marks are readable for the requested slot.
+ *
+ * `slot` scopes the report to ONE assessor's own assessment. That is the
+ * normal case: each assessor previews and submits their own report without
+ * waiting for the other, so a colleague who is sick or unreachable can never
+ * block a submission (the College's requirement, 2026-09-05). Each assessor
+ * page in the VETA form is self-contained — it carries its own TOTAL MARKS
+ * and its own COMPETENT / NOT COMPETENT box computed from that assessor's
+ * marks alone — so a single-slot report is a complete, valid VETA document,
+ * not a truncated one.
+ *
+ * Deliberately NOT relaxed: this still reads through the caller's own
+ * authenticated client, so RLS remains the thing that decides what is
+ * visible. An assessor cannot pass slot:'a2' to read a colleague's marks
+ * before both have submitted — `assessment_marks_select`'s
+ * `submitted_slot_count(...) >= 2` gate returns nothing (AGENTS.md rule 1:
+ * authorisation is a policy, never an argument).
  */
 export async function getReportData(
   supabase: SupabaseClient,
   traineeId: string,
+  options: { slot?: 'a1' | 'a2' } = {},
 ): Promise<ReportData | null> {
   const [traineeRes, resultRes] = await Promise.all([
     supabase
@@ -75,7 +98,11 @@ export async function getReportData(
     supabase.from('results').select('*').eq('trainee_id', traineeId).maybeSingle(),
   ]);
 
-  if (!traineeRes.data || !resultRes.data || !resultRes.data.locked_at) {
+  // No locked_at requirement: a supervisor's own finished assessment is a
+  // reportable document in its own right. A `results` row exists from the
+  // first submitted mark (recompute_result() upserts it), so its absence
+  // means nothing has been submitted for this trainee at all.
+  if (!traineeRes.data || !resultRes.data) {
     return null;
   }
 
@@ -135,6 +162,7 @@ export async function getReportData(
     for (const mark of marksRes.data ?? []) {
       if (mark.instrument_id !== instrument.id) continue;
       const slot = mark.slot as 'a1' | 'a2';
+      if (options.slot && slot !== options.slot) continue;
       const supervisorName =
         (mark.supervisor as unknown as { name: string } | null)?.name ?? 'Unknown supervisor';
       bySlot[slot] = {
@@ -155,6 +183,15 @@ export async function getReportData(
       bySlot,
     };
   });
+
+  // Nothing readable for this slot — an unsubmitted assessment, or another
+  // assessor's slot that RLS correctly withheld. Either way there is no
+  // document to render, and returning an empty shell would print a VETA form
+  // with blank score columns over a real trainee's name.
+  const hasAnyMarks = instruments.some((i) => i.bySlot.a1 !== null || i.bySlot.a2 !== null);
+  if (!hasAnyMarks) {
+    return null;
+  }
 
   return {
     trainee: {

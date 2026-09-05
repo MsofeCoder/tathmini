@@ -152,4 +152,35 @@ describe('renderReportHtml', () => {
     expect(html).not.toContain('Assessor Two');
     expect(html.match(/page-break-after: always/g)).toHaveLength(1);
   });
+
+  it('omits the consolidated page entirely until the result is locked', () => {
+    // Until both assessors are in, recompute_result() has averaged over one
+    // assessor's marks, so result.grade/competent are provisional and will
+    // change. Publishing them to a trainee would state a verdict that later
+    // moves — so the page is left out rather than shown with a caveat.
+    const data = tpData();
+    data.result.lockedAt = null;
+    data.instruments[0]!.bySlot.a2 = null;
+    const html = renderReportHtml(data, 'TM-TEST');
+
+    expect(html).not.toContain('CONSOLIDATED RESULT');
+    expect(html).not.toContain('TP Coordinator');
+    // The assessor's own sheet is still a complete VETA document.
+    expect(html).toContain('Assessor One');
+    expect(html.match(/page-break-after: always/g)).toHaveLength(1);
+  });
+
+  it('is a one-assessor document when scoped to a single slot, even once locked', () => {
+    // Each assessor stores their own report; a trainee receives one per
+    // assessor. getReportData({ slot }) drops the other slot, and a locked
+    // result must not smuggle the colleague's marks back into this one.
+    const data = tpData();
+    data.instruments[0]!.bySlot.a2 = null;
+    const html = renderReportHtml(data, 'TM-TEST');
+
+    expect(html).toContain('Assessor One');
+    expect(html).not.toContain('Assessor Two');
+    // Locked, so the official consolidated page is still carried.
+    expect(html).toContain('CONSOLIDATED RESULT');
+  });
 });
