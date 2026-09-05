@@ -6,8 +6,9 @@ import { getReportData } from '@/lib/reports/data';
 import { renderReportHtml } from '@/lib/reports/render';
 import { renderPdf } from '@/lib/reports/pdf';
 import { reportFileNames } from '@/lib/reports/naming';
+import { sendResultEmail, type EmailOutcome } from '@/lib/notifications/send';
 
-export type GenerateReportResult = { url: string } | { error: string };
+export type GenerateReportResult = { url: string; email: EmailOutcome } | { error: string };
 
 /**
  * Generates THIS supervisor's own VETA result PDF, stores it in the private
@@ -102,5 +103,20 @@ export async function generateReport(traineeId: string): Promise<GenerateReportR
     };
   }
 
-  return { url: signed.data.signedUrl };
+  // Sending is the second half of "Submit and Send", but it is not allowed to
+  // undo the first. The report is stored and recorded by this point; if the
+  // mail fails, the supervisor is told it was saved but not sent, and the
+  // Coordinator can re-send. Throwing here would strand a stored, hashed,
+  // append-only report behind an error screen.
+  const email = await sendResultEmail({
+    supabase,
+    userId: user.id,
+    traineeId,
+    data,
+    pdf,
+    filename: downloadName,
+    reportRef,
+  });
+
+  return { url: signed.data.signedUrl, email };
 }

@@ -34,7 +34,10 @@ const nextConfig: NextConfig = {
   //
   // This is exactly what the package's own docs mean by "you must externalize
   // @sparticuz/chromium"; serverExternalPackages is Next's way of saying it.
-  serverExternalPackages: ['@sparticuz/chromium', 'playwright-core'],
+  // nodemailer is here for a related reason: it is CommonJS, resolves
+  // transports by dynamic require, and must never be pulled toward a client
+  // bundle -- it reaches for net/tls/dns and it is handed SMTP_PASSWORD.
+  serverExternalPackages: ['@sparticuz/chromium', 'playwright-core', 'nodemailer'],
 
   // This is a pnpm workspace and Vercel's Root Directory is apps/web, but the
   // dependencies are hoisted to the repo root. Without this, tracing is
