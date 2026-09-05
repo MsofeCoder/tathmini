@@ -86,7 +86,11 @@ export function InstallGate({ destination }: { destination: string }) {
       <div className="flex flex-col items-center text-center">
         <div className="flex h-[132px] w-[132px] shrink-0 items-center justify-center rounded-[22px] bg-white p-3.5 shadow-[0_12px_32px_rgba(0,0,0,0.24)]">
           {/* eslint-disable-next-line @next/next/no-img-element -- fixed local asset, not worth next/image's runtime for a single splash screen */}
-          <img src="/icons/icon-512.png" alt="Tathmini" className="h-full w-full object-contain" />
+          <img
+            src="/mvttc-logo.png"
+            alt="Morogoro Vocational Teachers Training College"
+            className="h-full w-full object-contain"
+          />
         </div>
         <p className="mt-5 text-[11px] font-extrabold tracking-[1.3px] text-[#a8cbc3]">
           MOROGORO VOCATIONAL TEACHERS
