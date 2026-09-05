@@ -47,6 +47,56 @@ the diff. This file is for knowledge that would otherwise be lost.
 
 ---
 
+## 2026-09-05 · decision · the deadline is Sunday 6 September before lunch, not Monday
+
+**Kind:** decision
+**Phase:** 2
+**Commit / PR:** #25
+
+**What changed**
+The College's deadline moved forward. Field use is **tomorrow, Sunday 6
+September 2026, before lunch** — roughly half a working day from the evening of
+the 5th, not the Monday every earlier note assumed.
+
+`HANDOFF.md` is rewritten around it: a four-step critical path (merge #25 and
+deploy → one end-to-end e-mail test → delete the test trainees → spot-check one
+real trainee), an explicit list of what to drop if time runs out, and one thing
+not to drop.
+
+**Why this way**
+Entries above this one still say Monday. They are left exactly as written —
+this log is append-only, and they were true when recorded. `HANDOFF.md` is the
+disposable briefing and now carries the correction at the top, including a line
+saying the older entries are stale, so a cold agent reading either file arrives
+at the same date.
+
+The cut list is deliberate. The nine missing supervisor `contact_email`
+addresses are droppable: marking is unaffected and TP reports still send
+without the assessor's Cc. Only the six IPT assessors genuinely cannot send,
+because on IPT the assessor is the To — tell those six rather than block the
+morning on it.
+
+**Watch out for**
+- **Deleting the test trainees is now on the critical path, not after it.** 43
+  of the 46 sit on REAL routes, so every supervisor opening the app finds fake
+  trainees in their own list and counters three too high. It must run after the
+  e-mail test (which needs them) and before the College opens the app — a
+  narrow window, and the only step with an ordering constraint on both sides.
+- **The offline outbox test has still never been done.** It is Phase 1's exit
+  gate and offline is the normal case in a workshop, not an edge case. It is
+  marked "do not drop" over items that look more urgent, because a
+  double-submitted or lost assessment is the one failure that cannot be
+  recovered in the field.
+- PR #30 (migration guard, CONTEXT.md decisions) is hygiene and must not block
+  the merge.
+
+**Verified by**
+Not applicable — a scheduling fact, recorded so the next session does not plan
+against the wrong day. `grep -ri monday` over the repo now returns only the
+correction line in `HANDOFF.md`.
+
+---
+
 ## 2026-09-05 · ops · renumbered six migrations to 0022–0027 after colliding with main
 
 **Kind:** ops

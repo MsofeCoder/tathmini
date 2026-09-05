@@ -3,8 +3,14 @@
 Disposable briefing. Read `AGENTS.md` and `CONTEXT.md` first; this only says
 where the work stands tonight and what will bite you.
 
-**The College uses this in the field on Monday.** Everything below is ordered
-by what that needs.
+> ## ⚠ DEADLINE: tomorrow, Sunday 6 September 2026, BEFORE LUNCH
+>
+> Not Monday. Earlier notes and older `MEMORY.md` entries say Monday — they are
+> out of date and were written before the date moved. This is roughly **half a
+> working day** from the evening of the 5th.
+
+Everything below is ordered by what that deadline needs. The critical path is
+short; most of what remains is optional and is marked so.
 
 ---
 
@@ -63,18 +69,45 @@ Until #25 merges and deploys, **none of the e-mail or comment work is live**.
 
 ---
 
-## Do this next
+## The critical path — in this order, nothing skipped
 
-1. **Merge #25 and deploy.** Everything else waits on it.
-2. **Get 9 supervisor contact addresses** into `users.contact_email`. The six
-   IPT ones are blocking: on IPT the assessor is the **To**, so their reports
-   cannot send at all. On TP a missing address only costs the Cc.
-3. **One end-to-end test** from a `TEST` trainee to a real inbox.
-4. **Then** clean up the test trainees — the corrected query is below.
-5. **Still unproven: the offline outbox in a real browser.** Go offline, mark,
-   submit, reconnect, confirm *exactly one* row lands. This is Phase 1's exit
-   gate in `ROADMAP.md` and the whole reason the app is built this way. It has
-   never been done.
+Four steps. They are sequential: the test needs the deploy, and the cleanup
+destroys what the test uses.
+
+**1 · Merge #25 and deploy.** ~15 minutes. Until this lands, none of the
+e-mail work, the criterion comments or the duplicate-send fix is live. It is
+conflict-free as of `bb19499`. **#30 is hygiene — do not let it block this.**
+
+**2 · One end-to-end e-mail test.** Sign in, open a `TEST TP R…` trainee, mark
+**both** instruments, tap Submit and send report. Confirm the mail arrives.
+This is the only step that proves the deploy actually works.
+
+**3 · Delete the test trainees.** Query below. **This is not optional and it is
+the most visible defect if missed** — 43 of the 46 sit on *real* routes, so
+every supervisor opening the app tomorrow sees fake trainees mixed into their
+own list, and their progress counters are wrong by three.
+
+**4 · Confirm a real trainee still looks right.** Open one real trainee on one
+real route and check the particulars and counters. Two minutes, and it catches
+a cleanup that took too much.
+
+### What to drop if time runs out
+
+- **The 9 missing supervisor addresses.** Marking is unaffected. TP reports
+  still send, minus the assessor's Cc. Only the six IPT assessors genuinely
+  cannot send a report — tell those six, and fix it next week.
+- **PR #30** (migration guard, CONTEXT decisions). Pure hygiene.
+- **The auto-comment**, if anything about it misbehaves. It is a suggestion
+  layer; the comment boxes work without it.
+
+### What NOT to drop
+
+**The offline outbox test.** Go offline, mark, submit, reconnect, confirm
+*exactly one* row lands — never two, never zero. It has never been done, it is
+Phase 1's exit gate in `ROADMAP.md`, and offline is the *normal* case in a
+workshop, not an edge case. If only one optional thing survives the morning,
+make it this: a double-submitted or lost assessment is the one failure the
+College cannot recover from in the field.
 
 ---
 
@@ -130,9 +163,10 @@ A narrower regex misses `TEST-IPT-0001`/`0002` and the two rows from 0011 whose
 `registration_number` is **null** (`null ~ '...'` is null, not true).
 
 **This cascades to marks** — about 8 test marks. Fine, they are test marks, but
-it is not a no-op. **Run it only after the end-to-end test**, and before any
-real marking starts on those routes: 43 of the 46 sit on real routes, so
-supervisors will otherwise see fake trainees in their lists on Monday.
+it is not a no-op. **Run it only after the end-to-end test** (step 2 above),
+and before the College opens the app tomorrow morning: 43 of the 46 sit on
+real routes, so every supervisor would otherwise find fake trainees in their
+own list with their counters three too high.
 
 ---
 
