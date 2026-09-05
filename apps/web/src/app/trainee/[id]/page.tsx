@@ -10,6 +10,15 @@ const ASSESSOR_SLOT_LABELS: Record<string, string> = {
 };
 
 /**
+ * The generateReport server action is invoked against this route, so this
+ * segment's budget is what bounds it. A cold Chromium start plus rendering a
+ * multi-page A4 report does not reliably fit Vercel's default, and the
+ * failure mode is a timeout the supervisor cannot act on. 60s is the ceiling
+ * on the Hobby plan, so it is safe on any plan.
+ */
+export const maxDuration = 60;
+
+/**
  * "Pre-loaded particulars" screen — a read-only port of the prototype's
  * showProfile (reference/Tathmini.dc.html lines 323-398). Deliberately
  * excludes showProfile's notify-the-trainee panel (Phase 2, needs a real
