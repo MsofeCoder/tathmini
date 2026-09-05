@@ -10,6 +10,7 @@ function names(overrides: Partial<Parameters<typeof reportFileNames>[0]> = {}) {
     traineeId: TRAINEE_ID,
     slot: 'a1',
     trainee: { name: 'Asha Mwakalinga', registrationNumber: 'MVTTC/TP/2026/0142', track: 'TP' },
+    routeCode: 'TP ROUTE 3',
     resultId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
     hash: HASH,
     now: NOW,
@@ -29,21 +30,35 @@ describe('slug', () => {
 });
 
 describe('reportFileNames', () => {
-  it('keeps the trainee id as the first path segment', () => {
-    // Migration 0014's Storage policies scope on
-    // (storage.foldername(name))[1]::uuid — anything else here makes every
-    // object unreadable, or throws on the cast.
+  it('keeps the trainee id as the second path segment, under the route', () => {
+    // Migration 0016's Storage policies read the trainee id from this
+    // position — reordering these two segments makes every object unreadable.
     const { storagePath } = names();
-    expect(storagePath.split('/')[0]).toBe(TRAINEE_ID);
+    expect(storagePath.split('/')[1]).toBe(TRAINEE_ID);
+  });
+
+  it('groups by route as the first path segment', () => {
+    expect(names().storagePath.split('/')[0]).toBe('TP-ROUTE-3');
+  });
+
+  it('falls back to UNASSIGNED rather than emitting an empty first segment', () => {
+    // trainees.route_id is NOT NULL so this cannot happen through the app, but
+    // an empty segment would shift every later one up and break migration
+    // 0016's positional read of the trainee id.
+    const { storagePath } = names({
+      routeCode: null,
+    });
+    expect(storagePath.split('/')[0]).toBe('UNASSIGNED');
+    expect(storagePath.split('/')[1]).toBe(TRAINEE_ID);
   });
 
   it('files reports under a year folder', () => {
-    expect(names().storagePath.split('/')[1]).toBe('2026');
+    expect(names().storagePath.split('/')[2]).toBe('2026');
   });
 
   it('names the object by track, assessor, registration, date and hash', () => {
     expect(names().storagePath).toBe(
-      `${TRAINEE_ID}/2026/TP-ASSESSOR1-MVTTC-TP-2026-0142-20260907-abcdef01.pdf`,
+      `TP-ROUTE-3/${TRAINEE_ID}/2026/TP-ASSESSOR1-MVTTC-TP-2026-0142-20260907-abcdef01.pdf`,
     );
   });
 
@@ -64,6 +79,7 @@ describe('reportFileNames', () => {
     // IPT trainees have no registration number — the register records a phone.
     const { storagePath } = names({
       trainee: { name: 'Juma Ally', registrationNumber: null, track: 'IPT' },
+      routeCode: 'IPT ROUTE 1',
     });
     expect(storagePath).toContain('IPT-ASSESSOR1-REF-AAAAAAAA-');
   });

@@ -62,10 +62,20 @@ export async function generateReport(traineeId: string): Promise<GenerateReportR
   const html = renderReportHtml(data, reportRef);
   const pdf = await renderPdf(html);
   const hash = createHash('sha256').update(pdf).digest('hex');
+
+  // Route decides the storage folder, not the document's contents, so it is
+  // fetched here rather than carried through the render model.
+  const { data: routeRow } = await supabase
+    .from('trainees')
+    .select('route:routes(code)')
+    .eq('id', traineeId)
+    .maybeSingle();
+
   const { storagePath, downloadName } = reportFileNames({
     traineeId,
     slot: assignment.slot as 'a1' | 'a2',
     trainee: data.trainee,
+    routeCode: (routeRow?.route as unknown as { code: string } | null)?.code ?? null,
     resultId: data.result.id,
     hash,
   });

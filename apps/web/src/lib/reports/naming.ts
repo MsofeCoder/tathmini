@@ -21,6 +21,12 @@ export interface ReportFileNameInput {
   traineeId: string;
   slot: 'a1' | 'a2';
   trainee: Pick<ReportTrainee, 'name' | 'registrationNumber' | 'track'>;
+  /**
+   * Route code, e.g. 'TP ROUTE 3'. Passed in rather than read off
+   * ReportTrainee: the route never appears ON the report, it only decides
+   * where the file is filed, so it does not belong in the render model.
+   */
+  routeCode: string | null;
   resultId: string;
   hash: string;
   /** Injected for deterministic tests. */
@@ -37,13 +43,19 @@ export interface ReportFileNames {
 /**
  * Where a generated report is filed, and what it is called.
  *
- * Storage layout: `<trainee_id>/<year>/<TRACK>-ASSESSOR<n>-<REG>-<date>-<hash8>.pdf`
+ * Storage layout: `<ROUTE>/<trainee_id>/<year>/<TRACK>-ASSESSOR<n>-<REG>-<date>-<hash8>.pdf`
  *
- * The first segment MUST remain the trainee id: migration 0014's Storage
- * policies scope on `(storage.foldername(name))[1]::uuid`, so putting the year
- * or the track first would make every object unreadable — or worse, throw on
- * the uuid cast. The year subfolder is what keeps a trainee's folder legible
- * across the 24 months of archives CONTEXT.md requires.
+ * Route first, so the bucket groups the way the College works — a supervisor
+ * owns a route, and the Coordinator reviews by route. The trainee id is the
+ * SECOND segment and that is load-bearing: migration 0016's Storage policies
+ * scope on it, so reordering these two makes every object unreadable. The year
+ * keeps a trainee's folder legible across the 24 months of archives CONTEXT.md
+ * requires.
+ *
+ * A trainee with no route falls back to `UNASSIGNED`. It cannot happen through
+ * the app — `trainees.route_id` is NOT NULL — but the path must never collapse
+ * to an empty first segment, which would silently shift every later segment up
+ * and break the policy's positional read.
  *
  * The trainee's NAME is deliberately not in the storage key. Bucket listings
  * are visible to coordinators and super_admins and turn up in tooling and
@@ -61,6 +73,7 @@ export function reportFileNames({
   traineeId,
   slot,
   trainee,
+  routeCode,
   resultId,
   hash,
   now = new Date(),
@@ -79,8 +92,10 @@ export function reportFileNames({
   const assessor = `ASSESSOR${SLOT_NUMBER[slot]}`;
   const track = slug(trainee.track);
 
+  const route = slug(routeCode ?? '') || 'UNASSIGNED';
+
   const storagePath =
-    `${traineeId}/${year}/` +
+    `${route}/${traineeId}/${year}/` +
     `${track}-${assessor}-${reference}-${compact}-${hash.slice(0, 8)}.pdf`;
 
   const name = slug(trainee.name) || 'TRAINEE';
