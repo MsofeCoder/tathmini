@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useState } from 'react';
 import { signIn, type SignInState } from './actions';
 
 const initialState: SignInState = { error: null };
@@ -11,6 +11,7 @@ const initialState: SignInState = { error: null };
 // #a35c00 accent (focus rings only) — no invented colours.
 export default function LoginPage() {
   const [state, formAction, pending] = useActionState(signIn, initialState);
+  const [showPassword, setShowPassword] = useState(false);
 
   return (
     <main className="flex min-h-dvh items-center justify-center bg-[#eceff0] p-6">
@@ -39,12 +40,29 @@ export default function LoginPage() {
 
           <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-[#3c4c58]">
             Password
-            <input
-              name="password"
-              type="password"
-              required
-              className="focus:outline-accent min-h-[48px] rounded-[10px] border border-[#ccd7d4] px-3.5 text-[15px] text-neutral-900 focus:outline focus:outline-[3px] focus:outline-offset-1"
-            />
+            {/* Reveal exists because these passwords are admin-assigned, not
+                chosen: a supervisor is typing a string somebody else generated,
+                one-handed, often in bright sun. Getting it wrong twice and
+                being locked out in the field is the failure this prevents. */}
+            <div className="relative">
+              <input
+                name="password"
+                type={showPassword ? 'text' : 'password'}
+                required
+                autoCapitalize="none"
+                spellCheck={false}
+                className="focus:outline-accent min-h-[48px] w-full rounded-[10px] border border-[#ccd7d4] py-3 pl-3.5 pr-14 text-[15px] text-neutral-900 focus:outline focus:outline-[3px] focus:outline-offset-1"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((shown) => !shown)}
+                aria-pressed={showPassword}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                className="focus:outline-accent absolute right-1 top-1/2 flex min-h-11 min-w-11 -translate-y-1/2 items-center justify-center rounded-lg text-[#3c4c58] focus:outline focus:outline-[3px] focus:outline-offset-1"
+              >
+                {showPassword ? <EyeOffIcon /> : <EyeIcon />}
+              </button>
+            </div>
           </label>
 
           {state.error ? (
@@ -55,29 +73,6 @@ export default function LoginPage() {
               {state.error}
             </div>
           ) : null}
-
-          <div className="rounded-[10px] bg-[#e8f1ef] p-3.5">
-            <p className="text-teal-deep text-[12px] font-extrabold tracking-[0.7px]">
-              ACCOUNTS ARE ISSUED BY THE ADMINISTRATOR
-            </p>
-            <p className="mt-1.5 text-[12.5px] leading-relaxed text-[#3c4c58]">
-              Your username is <strong>firstname.lastname</strong>, and your password is set for you
-              by the Administrator. There is no self-registration.
-            </p>
-            <ul className="mt-2 space-y-1 text-[12.5px] leading-relaxed text-[#3c4c58]">
-              <li>
-                <strong>Supervisor</strong> — assesses trainees in the field. Almost all daily use.
-              </li>
-              <li>
-                <strong>Coordinator</strong> — sees the whole dashboard, read-only, and downloads
-                the Excel results.
-              </li>
-              <li>
-                <strong>Super Administrator</strong> — maintainer: unlock, override, accounts,
-                exports.
-              </li>
-            </ul>
-          </div>
 
           <button
             type="submit"
@@ -107,5 +102,27 @@ export default function LoginPage() {
         </p>
       </div>
     </main>
+  );
+}
+
+/* Inline so the reveal works with no network and no icon dependency — the
+   sign-in screen is the one page a supervisor may open on a dead connection.
+   aria-hidden: the button beside them carries the accessible name. */
+function EyeIcon() {
+  return (
+    <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12Z" />
+      <circle cx="12" cy="12" r="2.9" />
+    </svg>
+  );
+}
+
+function EyeOffIcon() {
+  return (
+    <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M10.6 6.1A9.9 9.9 0 0 1 12 5.5c6.4 0 10 6.5 10 6.5a17.6 17.6 0 0 1-3.4 4.2M6.2 7.9A17.5 17.5 0 0 0 2 12s3.6 6.5 10 6.5a9.8 9.8 0 0 0 3.9-.8" />
+      <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+      <path d="m3 3 18 18" />
+    </svg>
   );
 }
