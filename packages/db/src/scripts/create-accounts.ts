@@ -6,10 +6,11 @@
  * would skip GoTrue's own bookkeeping (password hashing, confirmation
  * state) and likely not produce a working account.
  *
- * Needs SUPABASE_SERVICE_ROLE_KEY and SUPABASE_URL in the
- * environment. This key is never something an agent should hold — run
- * this yourself, locally, with your own .env.local. See MEMORY.md for why
- * account creation went this route instead of any other.
+ * Needs SUPABASE_SERVICE_ROLE_KEY and SUPABASE_URL, from the repo-root
+ * .env/.env.local or your shell — see resolveEnv() in admin-client.ts.
+ * This key is never something an agent should hold — run this yourself,
+ * locally. See MEMORY.md for why account creation went this route
+ * instead of any other.
  *
  * This script only creates the Auth identities (auth.users). It does NOT
  * insert the matching packages/db `users` rows, `routes`, `trainees`, or
@@ -25,6 +26,7 @@
 import { randomBytes } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { createClient } from '@supabase/supabase-js';
+import { MISSING_ENV_MESSAGE, resolveEnv } from './admin-client';
 import { DEV_ACCOUNTS } from '../data/dev-accounts';
 import { IPT_ACCOUNTS, type AccountSeed } from '../data/ipt-accounts';
 import { TP_ACCOUNTS } from '../data/tp-accounts';
@@ -93,15 +95,14 @@ export async function createAccounts(
 }
 
 async function main() {
-  const url = process.env.SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !serviceRoleKey) {
-    console.error('Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.');
+  const env = resolveEnv();
+  if (!env) {
+    console.error(MISSING_ENV_MESSAGE);
     process.exitCode = 1;
     return;
   }
 
-  const supabase = createClient(url, serviceRoleKey, {
+  const supabase = createClient(env.url, env.serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 

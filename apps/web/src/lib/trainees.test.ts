@@ -7,6 +7,8 @@ import {
   trackChipStyle,
   traineeParticulars,
   trackPointsLabel,
+  routeProgress,
+  type RouteProgressInput,
 } from './trainees';
 
 describe('deriveStatus', () => {
@@ -164,5 +166,88 @@ describe('trackPointsLabel', () => {
       ['ipt', 70],
     ]);
     expect(trackPointsLabel('IPT', maxima)).toBe('IPT · 70 pts');
+  });
+});
+
+describe('routeProgress', () => {
+  const trainee = (over: Partial<RouteProgressInput> = {}): RouteProgressInput => ({
+    status: 'pending',
+    ownSubmittedCount: 0,
+    requiredCount: 2,
+    hasDraft: false,
+    ...over,
+  });
+
+  it('counts a partial as assessed, not as outstanding', () => {
+    // The real defect: a supervisor who had marked three of five trainees
+    // saw "0 of 5 assessed · 5 still to assess", because 'partial' — their
+    // own work done, waiting on the second assessor — fell through to
+    // not-started.
+    const progress = routeProgress([
+      trainee({ status: 'partial', ownSubmittedCount: 2 }),
+      trainee({ status: 'partial', ownSubmittedCount: 2 }),
+      trainee({ status: 'partial', ownSubmittedCount: 1, requiredCount: 1 }),
+      trainee(),
+      trainee(),
+    ]);
+
+    expect(progress).toEqual({ assessed: 3, inProgress: 0, notStarted: 2, pct: 60 });
+  });
+
+  it('counts locked as assessed', () => {
+    const progress = routeProgress([
+      trainee({ status: 'locked', ownSubmittedCount: 2 }),
+      trainee(),
+    ]);
+
+    expect(progress.assessed).toBe(1);
+    expect(progress.notStarted).toBe(1);
+  });
+
+  it('counts a half-submitted multi-instrument track as in progress', () => {
+    // TP theory submitted, practical not. deriveStatus() reports 'pending'
+    // for this, indistinguishable from untouched without the raw counts.
+    const progress = routeProgress([trainee({ ownSubmittedCount: 1, requiredCount: 2 })]);
+
+    expect(progress).toEqual({ assessed: 0, inProgress: 1, notStarted: 0, pct: 0 });
+  });
+
+  it('counts a local draft as in progress', () => {
+    // The only signal available for a single-instrument IPT trainee.
+    const progress = routeProgress([trainee({ requiredCount: 1, hasDraft: true })]);
+
+    expect(progress).toEqual({ assessed: 0, inProgress: 1, notStarted: 0, pct: 0 });
+  });
+
+  it('does not double-count a draft on an already-assessed trainee', () => {
+    const progress = routeProgress([
+      trainee({ status: 'partial', ownSubmittedCount: 2, hasDraft: true }),
+    ]);
+
+    expect(progress).toEqual({ assessed: 1, inProgress: 0, notStarted: 0, pct: 100 });
+  });
+
+  it('reports 100% when every trainee is assessed', () => {
+    const progress = routeProgress([
+      trainee({ status: 'locked', ownSubmittedCount: 2 }),
+      trainee({ status: 'partial', ownSubmittedCount: 2 }),
+    ]);
+
+    expect(progress.pct).toBe(100);
+    expect(progress.notStarted).toBe(0);
+  });
+
+  it('handles an empty route without dividing by zero', () => {
+    expect(routeProgress([])).toEqual({ assessed: 0, inProgress: 0, notStarted: 0, pct: 0 });
+  });
+
+  it('rounds the percentage to a whole number', () => {
+    const progress = routeProgress([
+      trainee({ status: 'locked', ownSubmittedCount: 2 }),
+      trainee(),
+      trainee(),
+    ]);
+
+    expect(progress.pct).toBe(33);
   });
 });

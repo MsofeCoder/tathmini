@@ -47,6 +47,70 @@ the diff. This file is for knowledge that would otherwise be lost.
 
 ---
 
+## 2026-09-05 · bugfix · the pgTAP suite had been silently red since 0007 landed; CI auth stub lacked auth.users.email
+
+**Kind:** bugfix
+**Phase:** 0
+**Commit / PR:** (pending) — PR #8
+
+**What changed**
+`packages/db/scripts/local-auth-stub.sql` now gives its stand-in
+`auth.users` an `email` column (plus the unique index Supabase's real
+one has). One line of schema; the rest of the change is the comment
+explaining why it is there.
+
+**Why this way**
+This is not a new feature — it is the repair of a suite that had stopped
+running. `AGENTS.md` calls pgTAP "the priority suite" and Phase 0's exit
+gate is stated purely in terms of it, so it failing open is the most
+expensive kind of breakage here.
+
+The stub predates the roster imports and only ever declared
+`auth.users(id)`. Migrations `0007`, `0008` and `0010` link real accounts
+with `join auth.users au on au.email = v.email`, and `0013` deletes by
+email. From the moment `0007` merged, the CI job's "apply every
+migration" step aborted at `0007` with `column au.email does not exist` —
+so **not one pgTAP assertion has executed in CI since 2026-09-04**. The
+last five merges to `main` (PRs #6, #7, #9, #10, #11) are all red for
+this single reason. Nobody was ignoring a failure; the job simply died
+before reaching the tests, and the branch protection that would have
+caught it is the one unticked Phase 0 box.
+
+Fixing the stub was the right move rather than editing the migrations:
+the migrations are correct and are already applied live against real
+Supabase, where `auth.users.email` genuinely exists. The stub is the
+thing that had drifted from reality. Its own header says it is "local
+dev and CI only — nothing here ever runs against a real project", so
+this touches no production auth, no RLS policy and no stored mark.
+
+`add column if not exists` as a separate statement rather than inlining
+the column in the `create table if not exists`, because the latter is a
+no-op against a local database created from an older copy of the stub —
+which is exactly the machine a developer would be debugging on.
+
+**Watch out for**
+In CI the stub's `auth.users` is always **empty**, so the three import
+migrations join zero rows and insert nothing. That is fine and
+intentional — every one is `NOT EXISTS`-guarded, the routes and trainees
+that hang off them join through `users`, and pgTAP seeds its own
+fixtures — but it does mean **CI never exercises the roster data
+itself**. A defect in the seeded values would not be caught here.
+
+The same class of drift is already queued up again: the Phase 2 reports
+migration `0014` creates a bucket in `storage.buckets` and policies on
+`storage.objects`, and this stub has no `storage` schema at all. That
+branch's pgTAP job will fail the same way unless the stub grows a
+`storage` stand-in first.
+
+**Verified by**
+Reproduced and fixed against a throwaway `postgres:16` container with
+`postgresql-16-pgtap`, mirroring the CI job step for step. Before:
+aborts at `0007`, identical error to the CI log. After: every migration
+`0000`–`0013` applies clean, and `pgtap/phase0.sql` reports **18 ok, 0
+"not ok"** — matching the 18/18 last seen on PR #2.
+
+---
+
 ## 2026-09-05 · bugfix · swapped the placeholder "TM" icon for the real MVTTC crest
 
 **Kind:** bugfix
@@ -140,6 +204,103 @@ matching the prototype, "Continue in browser" sets the flag and routes to
 `/login`, and a repeat visit to `/` then skips straight to `/login`
 without showing the splash again.
 
+## 2026-09-05 · decision · Admin-assigned permanent passwords, in bulk from Excel (assign:passwords)
+
+**Kind:** decision
+**Phase:** 1
+**Commit / PR:** (pending)
+
+**What changed**
+`packages/db/src/scripts/assign-passwords.ts` (+ 31 tests), the
+`assign:passwords` script, `packages/db/src/data/password-words.ts` (162
+Swahili words), and `scripts/admin-client.ts` — a shared `AdminClient`
+seam plus env handling, now used by both password scripts.
+
+`assign:passwords --template=<x.xlsx>` writes a workbook pre-filled with
+all 30 usernames; the admin types a password beside each person;
+`--file=<x.xlsx>` applies them. Columns are located by header name, not
+position.
+
+**The decision, and it is the user's, made explicitly**
+The user reported the generated 16-character passwords as unusable for
+non-technical supervisors, and asked for admin-assigned passwords
+instead. Offered the choice between keeping them as one-time credentials
+(forced change on first sign-in) and making them permanent, with the
+attribution cost of the latter spelled out. **The user chose
+permanent.** So this script sets `must_change_password = false` — the
+exact opposite of `reset-passwords.ts`.
+
+What that costs, recorded so nobody has to rediscover it: the College
+now holds a spreadsheet of live credentials, and whoever holds it can
+sign in as any supervisor on it. `assessment_marks` rows are
+attributable to a named assessor, so "who awarded this mark" is now only
+as strong as that file's privacy. This is a real weakening, accepted
+deliberately in exchange for supervisors who can actually log in.
+Mitigations built in rather than argued about: minimum 8 characters
+(matching `/change-password`), and **two accounts sharing a password is
+a hard error**, since that directly destroys attribution.
+
+**Why this way**
+*Any issue aborts the entire run, before a single write.* A
+half-applied password sheet is the worst possible state: the spreadsheet
+no longer tells the admin who is on which password, and there is no way
+to tell from outside. All validation is a pure function
+(`planAssignments`) over parsed rows, so it is exhaustively testable
+with no network.
+
+*Write order is password-then-flag — the opposite of
+`reset-passwords.ts`, on the same principle.* In each script the order
+is chosen so that a partial failure never leaves a known-to-others
+password permanently valid. Here the flag write is what makes a password
+permanent, so clearing it before the new password lands would make the
+account's OLD (exposed) password permanent. Both orders are locked in by
+tests, in both scripts.
+
+*Memorable fallback for blank cells rather than skipping them.*
+`simba-moto-4821` — two words + four digits, ~2^28. Deliberately weaker
+than `create-accounts.ts`'s 16-char random string, because these
+passwords are now typed at every sign-in rather than once, and an
+untypeable credential gets written on paper and shared — a worse
+outcome than a smaller keyspace behind Supabase's own sign-in rate
+limiting. Swahili words because the people typing them are Tanzanian
+tutors; the selection rules (no near-homophones, no English homographs,
+neutral nouns only) are documented in `password-words.ts` so a future
+edit does not quietly break dictatability.
+
+*`reset:passwords` was refactored onto the shared `AdminClient`, not
+duplicated.* Both scripts hold the service-role key and act on real
+assessors' credentials; two lookalike code paths that can drift is the
+wrong shape for that.
+
+**Watch out for**
+
+- `create-accounts.ts` still reads the environment only — it predates
+  `resolveEnv()` and was deliberately left alone rather than modified,
+  since it provisions real auth identities.
+- A latent bug caught by a failing test while writing this:
+  `words[random(n)]` is `string | undefined` under
+  `noUncheckedIndexedAccess`, and a bad `random` would have put the
+  literal text `undefined` into a live password with nothing noticing
+  until someone could not sign in. `pick()` now throws instead.
+- Still nothing revokes sessions established under an old password.
+- The in-app admin screen for this is explicitly deferred (the user
+  chose "script now, UI later"). Building it means putting the
+  service-role key into the Vercel environment, which the web app does
+  not have today — it holds only the anon key. That is a real decision
+  to make deliberately, not a detail to slip into a later PR.
+
+**Verified by**
+`pnpm lint && pnpm typecheck && pnpm test` all green — 175 tests total
+(102 in `@tathmini/db`, up from 65). End-to-end against the real CLI:
+`--template` wrote a 30-row workbook, an untouched template planned 30
+generated passwords with no duplicates, and a deliberately broken sheet
+(short password, unknown username, two accounts sharing a password)
+reported all three problems and wrote nothing, exit code 1. **Not run
+against `azlwxriyhdshfhklonrx`** — that is the user's to run.
+
+---
+
+
 ## 2026-09-05 · bugfix · site was never installable — no manifest, and middleware blocked the one added
 
 **Kind:** bugfix
@@ -181,6 +342,119 @@ lists `/manifest.webmanifest` and `/apple-icon.png` as generated routes;
 manual check against a local `pnpm start` server confirmed
 `/manifest.webmanifest` returns `200` with valid JSON while unauthenticated
 (previously `307` to `/login`), and that `/home` is still correctly gated.
+
+## 2026-09-05 · security · reset:passwords script built — the missing half of account provisioning
+
+**Kind:** security
+**Phase:** 1
+**Commit / PR:** (pending)
+
+**What changed**
+`packages/db/src/scripts/reset-passwords.ts` (+ 18 tests) and a
+`reset:passwords` package script. It rotates the password on real
+accounts that **already exist** and sets `must_change_password = true`
+on each, so the new password is a one-time credential that `/login`
+forces through `/change-password`.
+
+This closes a real gap, not a nice-to-have. `create-accounts.ts` is
+create-**only**: it skips any account whose e-mail is already
+registered, so it could never rotate anything. Every one of the 30 real
+accounts already exists, and their one-time passwords were pasted into
+chat twice (see the IPT and TP roster-import entries below, both of
+which end with "treat those as exposed, reset before real use"). Until
+now there was no way to act on that guidance short of clicking through
+the Supabase dashboard 30 times.
+
+Scope is `REAL_ACCOUNTS` = `IPT_ACCOUNTS` + `TP_ACCOUNTS` (13 + 17 = 30).
+`DEV_ACCOUNTS` (`test.supervisor`) is deliberately excluded — that
+account and its `TEST ROUTE` data are scheduled for deletion, not
+rotation.
+
+**Why this way**
+*Flag before password, not after.* The two writes cannot be atomic (one
+is a PostgREST update to `public.users`, the other an Auth Admin API
+call to GoTrue), so one of the two partial-failure states is
+unavoidable. Setting the flag first means a failed password write leaves
+the account reachable only by its **old** password and forced to change
+it — recoverable by re-running. The reverse order leaves the opposite:
+a freshly handed-out password whose holder is never forced to change it,
+which is exactly the hole this script exists to close. There is a test
+asserting the call order, so a future refactor cannot silently swap it.
+
+*Resolve uids through `public.users`, not `admin.listUsers()`.* Both
+work, but the `users` row is needed anyway for the flag write, and an
+account present in `auth.users` but missing from `public.users` is a
+real defect worth surfacing (`0010` existed precisely because that
+linking step was once missed) — it reports `not_found` rather than
+quietly resetting nothing.
+
+*A narrow `ResetClient` interface, not a `SupabaseClient`.* Same seam as
+`AdminAuthClient` in `create-accounts.ts` — the whole reset flow is
+tested without a network or a service-role key.
+
+*`--dry-run` and `--only=`.* `--only` **throws** on an unrecognised
+username rather than silently resetting a smaller set than the operator
+intended. `--only` matters operationally: a reset invalidates whatever
+password the holder currently has, so once real supervisors start
+setting their own, a blanket run would lock them out.
+
+**Follow-up, same session: nothing in this repo ever loaded `.env.local`**
+The first real run failed. Two causes, one of them a genuine defect.
+The user ran `pnpm --filter` from `C:\Users\HomePC` and got
+`No projects matched the filters` — operator error, but the underlying
+trap is that pnpm gives no hint that the working directory is the cause.
+The real defect: **no dotenv is installed anywhere in this workspace and
+`tsx` does not read env files on its own**, so `.env.local` has been
+documented as the place for the service-role key (in `.env.example`, in
+`create-accounts.ts`'s header, and briefly in this script's) while being
+read by literally nothing. `create:accounts` only ever worked because
+the vars were set inline in the shell.
+
+Fixed in `reset-passwords.ts` with `loadEnvFiles()` (+ 5 tests) using
+Node's built-in `process.loadEnvFile` — **no new dependency**, and
+guarded by a `typeof` check since it is Node 20.12+/22+ and this package
+pulls `@types/node` in only transitively. Precedence: root `.env` <
+root `.env.local` < `packages/db/.env.local` < **shell always wins**.
+Shell-wins is deliberate: setting the key inline for one run keeps it
+off disk, which is the better habit, and a stale file must never
+silently override it. `create-accounts.ts` was left alone — it works,
+and changing a script that provisions real auth identities was not worth
+it for ergonomics alone; `packages/db/README.md` now says plainly that
+it is environment-only.
+
+Also confirmed while debugging: the repo-root `.env` holds `SUPABASE_URL`
+and `SUPABASE_ANON_KEY` but **no service-role key**, and `.env.local`
+holds only `VERCEL_OIDC_TOKEN`. So the key has never been on disk here —
+the user must supply it per run or add it to `.env.local`.
+
+**Watch out for**
+- ~~This whole workspace is not a git repository.~~ **Wrong — corrected
+  same session.** The git root is the `Header labels clip fix` directory
+  itself (branch `phase-0/ipt-roster-support`); the earlier claim came
+  from a tool reporting on the *parent* path. `.env.local` is gitignored
+  and `git check-ignore` confirms the rule is live, so a service-role key
+  there is genuinely protected, not protected by convention only.
+- Rotating a password does **not** explicitly revoke a session already
+  established with the old one. Irrelevant today (nobody has signed in
+  with a real account yet); if it ever matters, revoking outstanding
+  refresh tokens is a separate step this script does not perform.
+- The script prints the password table to **stdout only**. Do not paste
+  it anywhere it will be retained — that is the mistake this entry
+  exists to undo, twice over.
+- `must_change_password` is written directly here with the service role,
+  which bypasses RLS. That is correct for an admin script, but note the
+  in-app path is different and deliberately narrower: the
+  `clear_own_password_change_flag()` RPC from `0009`, which can only
+  ever clear the caller's own flag.
+
+**Verified by**
+`pnpm --filter @tathmini/db test` — 65/65 (47 existing + 18 new), `lint`
+and `typecheck` clean, `prettier --check` clean. Tests cover the call
+order, both partial-failure paths, `not_found`, a whole-run lookup
+failure, and that `--dry-run` performs no writes. **Not yet run against
+`azlwxriyhdshfhklonrx`** — that is the user's to run, with their own
+service-role key.
+
 ---
 
 ## 2026-09-05 · security · Supabase env vars dropped the NEXT_PUBLIC_ prefix; unused browser client deleted

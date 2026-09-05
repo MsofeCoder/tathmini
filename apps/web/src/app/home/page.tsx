@@ -84,10 +84,16 @@ export default async function HomePage() {
   }
 
   const routeListTrainees: RouteListTrainee[] = trainees.map((t) => {
+    // Carried through alongside the derived status, not just used to
+    // derive it: deriveStatus() collapses "some instruments submitted" and
+    // "none submitted" both to 'pending', and the route list's in-progress
+    // counter has to tell those apart. See routeProgress().
+    const ownSubmittedCount = ownSubmittedByTrainee.get(t.id) ?? 0;
+    const requiredCount = requiredByTrack.get(t.track) ?? 0;
     const status: TraineeStatus = deriveStatus({
       lockedAt: lockedAtByTrainee.get(t.id),
-      ownSubmittedCount: ownSubmittedByTrainee.get(t.id) ?? 0,
-      requiredCount: requiredByTrack.get(t.track) ?? 0,
+      ownSubmittedCount,
+      requiredCount,
     });
     return {
       id: t.id,
@@ -96,6 +102,8 @@ export default async function HomePage() {
       institution: t.institution,
       track: t.track,
       status,
+      ownSubmittedCount,
+      requiredCount,
     };
   });
 
@@ -131,8 +139,16 @@ export default async function HomePage() {
   const offlineBundle: OfflineBundleInput = {
     routeCode: routeRes.data?.code ?? 'MY ROUTE',
     routeLabel: routeRes.data?.label ?? null,
+    // Spelled out rather than spread, so what gets written to the device's
+    // IndexedDB stays a deliberate shape and does not silently grow every
+    // time the route list's own props gain a field.
     trainees: routeListTrainees.map((t) => ({
-      ...t,
+      id: t.id,
+      name: t.name,
+      occupation: t.occupation,
+      institution: t.institution,
+      track: t.track,
+      status: t.status,
       slot: slotByTrainee.get(t.id) ?? null,
       submittedInstrumentIds: submittedInstrumentsByTrainee.get(t.id) ?? [],
     })),

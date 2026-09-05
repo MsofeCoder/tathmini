@@ -4,12 +4,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   initials,
+  routeProgress,
   statusMeta,
   statusPlain,
   trackChipStyle,
   type TraineeStatus,
 } from '@/lib/trainees';
 import { saveOfflineBundle, type OfflineBundleInput } from '@/lib/offline-cache';
+import { traineeIdsWithDrafts } from '@/lib/drafts';
 
 export interface RouteListTrainee {
   id: string;
@@ -18,6 +20,10 @@ export interface RouteListTrainee {
   institution: string;
   track: 'TP' | 'IPT';
   status: TraineeStatus;
+  /** This supervisor's own submitted marks for this trainee — see routeProgress(). */
+  ownSubmittedCount: number;
+  /** Instruments this trainee's track requires (TP: 2, IPT: 1). */
+  requiredCount: number;
 }
 
 export interface RouteListProps {
@@ -65,13 +71,37 @@ export function RouteList({ routeCode, routeLabel, trainees, offlineBundle }: Ro
     router.prefetch('/offline');
   }, [offlineBundle, router]);
 
-  const done = trainees.filter((t) => t.status === 'locked').length;
-  // "In progress" is driven by local draft state in the prototype, which
-  // doesn't exist yet (Dexie/draft persistence — separate ROADMAP.md
-  // line). Always 0 for now; wire to real draft state once that lands.
-  const inProgress = 0;
-  const notStarted = Math.max(0, trainees.length - done - inProgress);
-  const pct = trainees.length === 0 ? 0 : Math.round((done / trainees.length) * 100);
+  // Drafts live in IndexedDB, which does not exist during the server
+  // render, so the counters start from server state alone and refine once
+  // the device's drafts have been read. Starting empty rather than
+  // blocking on it keeps the list interactive offline-first; the only
+  // visible effect is a trainee moving from "not started" to "in
+  // progress" a moment after paint.
+  const [draftTraineeIds, setDraftTraineeIds] = useState<Set<string>>(() => new Set());
+
+  useEffect(() => {
+    let cancelled = false;
+    void traineeIdsWithDrafts().then((ids) => {
+      if (!cancelled) setDraftTraineeIds(ids);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [trainees]);
+
+  const { assessed, inProgress, notStarted, pct } = useMemo(
+    () =>
+      routeProgress(
+        trainees.map((t) => ({
+          status: t.status,
+          ownSubmittedCount: t.ownSubmittedCount,
+          requiredCount: t.requiredCount,
+          hasDraft: draftTraineeIds.has(t.id),
+        })),
+      ),
+    [trainees, draftTraineeIds],
+  );
+  const outstanding = trainees.length - assessed;
 
   const institutionCount = new Set(trainees.map((t) => t.institution)).size;
 
@@ -102,7 +132,7 @@ export function RouteList({ routeCode, routeLabel, trainees, offlineBundle }: Ro
         <div className="mt-3 rounded-xl border border-[#d5e6df] bg-[#f1f6f4] px-3.5 py-3">
           <div className="flex items-baseline justify-between">
             <p className="text-[13px] font-bold text-[#1c6650]">
-              {done} of {trainees.length} trainees assessed
+              {assessed} of {trainees.length} trainees assessed
             </p>
             <p className="text-[20px] font-extrabold text-[#1c6650]">{pct}%</p>
           </div>
@@ -115,15 +145,15 @@ export function RouteList({ routeCode, routeLabel, trainees, offlineBundle }: Ro
           <p className="mt-2 text-[12px] font-semibold text-[#40614f]">
             {trainees.length === 0
               ? 'No trainees assigned to this route yet.'
-              : done === trainees.length
-                ? 'Route complete — every trainee has been assessed.'
-                : `${notStarted} still to assess`}
+              : outstanding === 0
+                ? 'Route complete — you have assessed every trainee.'
+                : `${outstanding} still to assess`}
           </p>
         </div>
 
         <div className="mt-3 flex gap-2">
           <div className="flex-1 rounded-[10px] border border-[#d5e6df] bg-[#f1f6f4] px-2.5 py-2">
-            <p className="text-[20px] font-bold text-[#1c6650]">{done}</p>
+            <p className="text-[20px] font-bold text-[#1c6650]">{assessed}</p>
             <p className="text-[10.5px] font-bold tracking-[0.4px] text-[#40614f]">ASSESSED</p>
           </div>
           <div className="flex-1 rounded-[10px] border border-[#f0dcb4] bg-[#fffaf0] px-2.5 py-2">

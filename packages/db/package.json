@@ -14,6 +14,8 @@
     "import:trainees": "tsx src/scripts/import-trainees.ts",
     "import:ipt-roster": "tsx src/scripts/import-ipt-roster.ts",
     "create:accounts": "tsx src/scripts/create-accounts.ts",
+    "reset:passwords": "tsx src/scripts/reset-passwords.ts",
+    "assign:passwords": "tsx src/scripts/assign-passwords.ts",
     "generate:tp-import-sql": "tsx src/scripts/generate-tp-import-sql.ts"
   },
   "dependencies": {
