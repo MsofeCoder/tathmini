@@ -32,6 +32,22 @@ export interface DraftRecord {
   updatedAt: number;
 }
 
+/**
+ * A queued "send the report" instruction. Holds no payload: the report is
+ * built server-side from the marks that are already in the database by the
+ * time this drains, so keeping a copy here would only risk the two
+ * disagreeing. See lib/report-outbox.ts.
+ */
+export interface ReportOutboxRecord {
+  /** The trainee id — one report per trainee per assessor. */
+  key: string;
+  /** For the "waiting to send" copy, so the queue reads without a network round trip. */
+  traineeName: string;
+  queuedAt: number;
+  attempts: number;
+  lastError: string | null;
+}
+
 export interface OutboxRecord {
   key: string;
   payload: SubmitAssessmentInput;
@@ -117,12 +133,23 @@ class TathminiDb extends Dexie {
   drafts!: Table<DraftRecord, string>;
   outbox!: Table<OutboxRecord, string>;
   cache!: Table<OfflineBundle, string>;
+  reportOutbox!: Table<ReportOutboxRecord, string>;
 
   constructor() {
     super('tathmini-drafts');
     this.version(1).stores({ drafts: 'key' });
     this.version(2).stores({ drafts: 'key', outbox: 'key' });
     this.version(3).stores({ drafts: 'key', outbox: 'key', cache: 'key' });
+    // v4 adds reportOutbox. Dexie carries the earlier stores forward, so a
+    // device mid-route keeps its drafts, its queued marks and its route
+    // snapshot across the upgrade — losing any of those would lose work a
+    // supervisor cannot redo.
+    this.version(4).stores({
+      drafts: 'key',
+      outbox: 'key',
+      cache: 'key',
+      reportOutbox: 'key',
+    });
   }
 }
 

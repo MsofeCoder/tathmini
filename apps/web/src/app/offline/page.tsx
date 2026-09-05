@@ -6,6 +6,9 @@ import type { OfflineBundle, OfflineInstrument, OfflineTrainee, OutboxRecord } f
 import { draftKey, traineeIdsWithDrafts } from '@/lib/drafts';
 import { loadOfflineBundle } from '@/lib/offline-cache';
 import { listQueued } from '@/lib/outbox';
+import { enqueueReport, traineeIdsWithQueuedReports } from '@/lib/report-outbox';
+import { readyToSendReport } from '@/lib/report-readiness';
+import { generateReport } from '@/app/trainee/[id]/actions';
 import {
   initials,
   routeProgress,
@@ -33,6 +36,7 @@ export default function OfflinePage() {
   const [draftTraineeIds, setDraftTraineeIds] = useState<Set<string>>(new Set());
   const [traineeId, setTraineeId] = useState<string | null>(null);
   const [instrumentId, setInstrumentId] = useState<string | null>(null);
+  const [queuedReportIds, setQueuedReportIds] = useState<Set<string>>(new Set());
   const [showQueue, setShowQueue] = useState(false);
   const [search, setSearch] = useState('');
 
@@ -40,6 +44,7 @@ export default function OfflinePage() {
     void loadOfflineBundle().then((found) => setBundle(found ?? null));
     void listQueued().then(setQueued);
     void traineeIdsWithDrafts().then(setDraftTraineeIds);
+    void traineeIdsWithQueuedReports().then(setQueuedReportIds);
   }, []);
 
   const queuedKeys = useMemo(() => new Set(queued.map((r) => r.key)), [queued]);
@@ -116,6 +121,7 @@ export default function OfflinePage() {
         trainee={trainee}
         instruments={bundle.instruments.filter((i) => i.track === trainee.track)}
         queuedKeys={queuedKeys}
+        reportQueued={queuedReportIds.has(trainee.id)}
         supervisorName={bundle.supervisorName}
         onPick={setInstrumentId}
         onBack={() => setTraineeId(null)}
@@ -236,6 +242,7 @@ function TraineeProfile({
   trainee,
   instruments,
   queuedKeys,
+  reportQueued,
   supervisorName,
   onPick,
   onBack,
@@ -243,10 +250,46 @@ function TraineeProfile({
   trainee: OfflineTrainee;
   instruments: OfflineInstrument[];
   queuedKeys: Set<string>;
+  reportQueued: boolean;
   supervisorName: string;
   onPick: (id: string) => void;
   onBack: () => void;
 }) {
+  const [reportState, setReportState] = useState<'idle' | 'working' | 'queued' | 'sent'>(
+    reportQueued ? 'queued' : 'idle',
+  );
+  const [reportError, setReportError] = useState<string | null>(null);
+
+  const canSend = readyToSendReport({
+    instrumentIds: instruments.map((i) => i.id),
+    submittedInstrumentIds: trainee.submittedInstrumentIds,
+    queuedInstrumentIds: instruments
+      .filter((i) => queuedKeys.has(draftKey(trainee.id, i.id)))
+      .map((i) => i.id),
+  });
+
+  async function handleSend() {
+    setReportError(null);
+    setReportState('working');
+    // Queue FIRST, so the instruction survives the tab closing, the battery
+    // dying, or the connection never arriving. Only then try to act on it.
+    await enqueueReport({ traineeId: trainee.id, traineeName: trainee.name });
+    setReportState('queued');
+
+    if (!navigator.onLine) return;
+    try {
+      const result = await generateReport(trainee.id);
+      if ('error' in result) {
+        // Left queued deliberately: the usual cause is that the marks
+        // themselves have not drained yet, which the next pass fixes.
+        setReportError(result.error);
+        return;
+      }
+      setReportState('sent');
+    } catch {
+      // No usable connection despite navigator.onLine. It stays queued.
+    }
+  }
   const rows = traineeParticulars({
     track: trainee.track,
     registrationNumber: trainee.registrationNumber,
@@ -346,6 +389,47 @@ function TraineeProfile({
             </button>
           );
         })}
+        {/* The report can only be built on the server — it renders the VETA
+            form through headless Chromium and then e-mails it. Offline the
+            button still accepts the instruction and keeps it, exactly as the
+            marks are kept. Without this an IPT supervisor has no way to send
+            at all: an IPT trainee has one instrument, so once it is marked
+            this screen would otherwise have nothing left to offer. */}
+        {canSend ? (
+          <div className="mt-1 rounded-xl border border-[#e1e9e6] bg-white p-3.5">
+            <p className="text-[13px] font-semibold text-[#3c4c58]">Report</p>
+            {reportState === 'sent' ? (
+              <p className="mt-1.5 text-[12.5px] leading-relaxed text-[#1c6650]">
+                Report sent.
+              </p>
+            ) : reportState === 'queued' ? (
+              <p className="mt-1.5 text-[12.5px] leading-relaxed text-[#6b4400]">
+                Report waiting to send. It goes on its own as soon as there is a connection — you do
+                not need to come back to this screen.
+              </p>
+            ) : (
+              <>
+                <p className="mt-1.5 text-[12.5px] leading-relaxed text-[#5f6f7c]">
+                  Your assessment is complete. Sending stores the report and e-mails it.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleSend}
+                  disabled={reportState === 'working'}
+                  className="focus:outline-accent mt-2.5 flex min-h-[48px] w-full items-center justify-center rounded-xl bg-[#12665b] text-[15px] font-bold text-white focus:outline focus:outline-[3px] focus:outline-offset-2 disabled:opacity-70"
+                >
+                  {reportState === 'working' ? 'Sending…' : 'Send report'}
+                </button>
+              </>
+            )}
+            {reportError ? (
+              <p role="alert" className="mt-2 text-[12.5px] leading-relaxed text-[#7a3325]">
+                {reportError}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
         <p className="mt-1 text-[12.5px] leading-relaxed text-[#5f6f7c]">
           Marks you complete here are stored on this phone and send themselves as soon as there is a
           connection.
