@@ -105,6 +105,14 @@ export default async function TraineeProfilePage({ params }: { params: Promise<{
     }));
   const canAssess = !!assignmentRes.data && !locked;
 
+  // This supervisor has finished their own half: every instrument the track
+  // requires carries their submitted mark. That — not `locked` — is what
+  // makes a report available, so an absent second assessor never blocks it.
+  const ownSlotComplete =
+    !!assignmentRes.data &&
+    trackInstruments.length > 0 &&
+    trackInstruments.every((instrument) => instrument.submitted);
+
   return (
     <main className="min-h-dvh bg-[#eceff0]">
       <div className="border-b border-[#e1e9e6] bg-white p-4">
@@ -154,6 +162,25 @@ export default async function TraineeProfilePage({ params }: { params: Promise<{
               This assessment was submitted and is read-only. Corrections require an Administrator
               override.
             </p>
+          </div>
+        ) : null}
+
+        {ownSlotComplete ? (
+          <div className="mt-4 rounded-xl border border-[#dae3e0] bg-white px-4 py-3.5">
+            <p className="text-[13px] font-bold text-[#3c4c58]">Your report</p>
+            <p className="mt-1.5 text-[13px] leading-relaxed text-[#5b6b78]">
+              {locked
+                ? 'Both assessors have submitted, so this report also carries the consolidated official result.'
+                : 'You have finished your own assessment. Preview it, then submit it to be stored — you do not need to wait for the second assessor.'}
+            </p>
+            <a
+              href={`/trainee/${id}/report/preview`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="focus:outline-accent mt-3 flex min-h-[48px] items-center justify-center rounded-xl border border-[#12665b] text-[15px] font-semibold text-[#12665b] focus:outline focus:outline-[3px] focus:outline-offset-2"
+            >
+              Preview report
+            </a>
             <ReportDownloadButton traineeId={id} />
           </div>
         ) : null}
