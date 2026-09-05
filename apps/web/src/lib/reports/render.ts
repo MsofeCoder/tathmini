@@ -143,12 +143,23 @@ function keyBox(): string {
   );
 }
 
-function cell(text: string, align: 'left' | 'center' | 'right' = 'left', weight = 400): string {
+interface CellOptions {
+  align?: 'left' | 'center' | 'right';
+  weight?: number;
+  /** Vertical merge, as the paper form does for S/N and COMMENTS. */
+  rowSpan?: number;
+  valign?: 'top' | 'middle';
+  background?: string;
+}
+
+/** One `<td>` of the assessment table. */
+function td(text: string, options: CellOptions = {}): string {
+  const { align = 'left', weight = 400, rowSpan, valign = 'middle', background } = options;
   return (
-    `<div style="padding: 0.2px 3px; border-right: ${BORDER}; border-top: ${BORDER}; ` +
-    `font-size: 5.9pt; line-height: 1.08; text-align: ${align}; font-weight: ${weight};">${esc(
-      text,
-    )}</div>`
+    `<td${rowSpan && rowSpan > 1 ? ` rowspan="${rowSpan}"` : ''} ` +
+    `style="border: ${BORDER}; padding: 0.6px 3px; font-size: 5.9pt; line-height: 1.08; ` +
+    `text-align: ${align}; vertical-align: ${valign}; font-weight: ${weight};` +
+    `${background ? ` background: ${background};` : ''}">${esc(text)}</td>`
   );
 }
 
@@ -167,8 +178,6 @@ const INSTRUMENT_TITLES: Record<string, { formTitle: string; subtitle: string }>
   },
 };
 
-const SLOT_LABELS: Record<'a1' | 'a2', string> = { a1: 'Assessor 1', a2: 'Assessor 2' };
-
 function assessorPage(
   trainee: ReportData['trainee'],
   instrument: InstrumentReport,
@@ -177,9 +186,21 @@ function assessorPage(
   generatedAt: string,
 ): string {
   const meta = INSTRUMENT_TITLES[instrument.code] ?? { formTitle: instrument.label, subtitle: '' };
-  const slotLabel = SLOT_LABELS[slot];
-  const grid = '6% 44% 10% 12% 12% 16%';
-  const columns = ['S/N', 'ITEM DESCRIPTION', 'MAX', 'AWARDED', 'AWARDED %', 'COMMENTS'];
+  // Columns verbatim from the paper form (reference/forms/TP Theory form.txt,
+  // and the same six on TP Practical and IPT): TOTAL POINTS carries the
+  // section maximum, POINTS DISTRIBUTION the per-item maximum. An earlier
+  // version collapsed those two into one "MAX" column and added an
+  // "AWARDED %" the form does not have — that is a different document, and
+  // CONTEXT.md non-negotiable #6 requires this one field for field.
+  const columns = [
+    'S/N',
+    'ITEM DESCRIPTION',
+    'TOTAL POINTS',
+    'POINTS DISTRIBUTION',
+    'POINTS AWARDED',
+    'COMMENTS',
+  ];
+  const columnWidths = ['5%', '41%', '9%', '11%', '11%', '23%'];
 
   const sections = new Map<string, CriterionRow[]>();
   for (const c of instrument.criteria) {
@@ -211,59 +232,77 @@ function assessorPage(
     )
     .join('');
 
+  const colgroup = columnWidths.map((w) => `<col style="width: ${w};" />`).join('');
+
   const columnsHtml = columns
     .map(
-      (c, n) =>
-        `<div style="padding: 2px 4px; border-right: ${n === columns.length - 1 ? 'none' : BORDER};">${esc(
-          c,
-        )}</div>`,
+      (c) =>
+        `<th style="border: ${BORDER}; padding: 2px 3px; font-size: 6.2pt; line-height: 1.1; ` +
+        `text-align: center; vertical-align: middle; background: #e9e9e9;">${esc(c)}</th>`,
     )
     .join('');
 
+  // One <tbody> per section, so a section and its merged S/N and COMMENTS
+  // cells are never split across a page boundary — a rowspan broken over two
+  // sheets renders as a detached, unreadable fragment.
   const sectionsHtml = [...sections.entries()]
     .map(([code, items]) => {
       const sectionMax = items[0]?.sectionMax ?? 0;
       const sectionLabel = items[0]?.sectionLabel ?? '';
+      const span = items.length + 1;
+
+      // The paper form gives each SECTION one comment area, not each item.
+      // Ours are captured per criterion, so they are gathered back into the
+      // section's merged cell in the order the criteria appear.
+      const sectionComment = items
+        .map((item) => marks.itemsByCriterionId.get(item.id)?.comment)
+        .filter((c): c is string => !!c && c.trim().length > 0)
+        .join(' ');
+
+      const sectionAwarded = items.reduce(
+        (sum, item) => sum + (marks.itemsByCriterionId.get(item.id)?.score ?? 0),
+        0,
+      );
+
+      // S/N and COMMENTS are opened here and span the section's item rows —
+      // exactly the vertical merge the paper form uses.
       const headerRow =
-        `<div style="display: grid; grid-template-columns: ${grid}; background: #f0f0f0;">` +
-        cell(code, 'center', 700) +
-        cell(sectionLabel, 'left', 700) +
-        cell(fmt(sectionMax), 'center', 700) +
-        cell('', 'center') +
-        cell('', 'center') +
-        cell('', 'left') +
-        '</div>';
+        '<tr>' +
+        td(code, { align: 'center', weight: 700, rowSpan: span, valign: 'top' }) +
+        td(sectionLabel, { weight: 700, background: '#f0f0f0' }) +
+        td(fmt(sectionMax), { align: 'center', weight: 700, background: '#f0f0f0' }) +
+        td('', { background: '#f0f0f0' }) +
+        td(fmt(sectionAwarded), { align: 'center', weight: 700, background: '#f0f0f0' }) +
+        td(sectionComment, { rowSpan: span, valign: 'top' }) +
+        '</tr>';
+
       const itemRows = items
         .map((item) => {
-          const mark = marks.itemsByCriterionId.get(item.id);
-          const score = mark?.score;
-          const awardedPct =
-            score === undefined ? '—' : `${Math.round((score / item.itemMax) * 100)}%`;
+          const score = marks.itemsByCriterionId.get(item.id)?.score;
           return (
-            `<div style="display: grid; grid-template-columns: ${grid};">` +
-            cell('', 'center') +
-            cell(`${item.itemCode} ${item.itemLabel}`, 'left') +
-            cell(fmt(item.itemMax), 'center') +
-            cell(fmt(score), 'center', 700) +
-            cell(awardedPct, 'center') +
-            cell(mark?.comment ?? '', 'left') +
-            '</div>'
+            '<tr>' +
+            td(`${item.itemCode} ${item.itemLabel}`) +
+            td('', { align: 'center' }) +
+            td(fmt(item.itemMax), { align: 'center' }) +
+            td(fmt(score), { align: 'center', weight: 700 }) +
+            '</tr>'
           );
         })
         .join('');
-      return headerRow + itemRows;
+
+      return `<tbody style="break-inside: avoid; page-break-inside: avoid;">${headerRow}${itemRows}</tbody>`;
     })
     .join('');
 
   const totalRow =
-    `<div style="display: grid; grid-template-columns: ${grid}; background: #e2e2e2;">` +
-    cell('', 'center', 700) +
-    cell('TOTAL', 'right', 700) +
-    cell(fmt(instrument.maxTotal), 'center', 700) +
-    cell(fmt(total), 'center', 700) +
-    cell(pct1(evalResult.pct), 'center', 700) +
-    cell('', 'left') +
-    '</div>';
+    '<tbody><tr>' +
+    td('', { background: '#e2e2e2' }) +
+    td('TOTAL', { align: 'right', weight: 700, background: '#e2e2e2' }) +
+    td(fmt(instrument.maxTotal), { align: 'center', weight: 700, background: '#e2e2e2' }) +
+    td('', { background: '#e2e2e2' }) +
+    td(fmt(total), { align: 'center', weight: 700, background: '#e2e2e2' }) +
+    td(pct1(evalResult.pct), { align: 'center', weight: 700, background: '#e2e2e2' }) +
+    '</tr></tbody>';
 
   return `
 <section data-report-page style="${PAGE_STYLE}">
@@ -282,11 +321,12 @@ function assessorPage(
     )}
   </div>
 
-  <div style="border: ${BORDER};">
-    <div style="display: grid; grid-template-columns: ${grid}; font-size: 6.2pt; font-weight: 700; text-align: center; background: #e9e9e9;">${columnsHtml}</div>
+  <table style="border-collapse: collapse; table-layout: fixed; width: 100%;">
+    <colgroup>${colgroup}</colgroup>
+    <thead><tr>${columnsHtml}</tr></thead>
     ${sectionsHtml}
     ${totalRow}
-  </div>
+  </table>
 
   <div style="font-size: 7.5pt;">
     <div style="font-weight: 700;">SUPERVISOR&rsquo;S GENERAL COMMENTS:</div>
@@ -318,13 +358,13 @@ function assessorPage(
   </div>
 
   <div style="margin-top: auto; font-size: 7.5pt; display: flex; gap: 14px; align-items: flex-end; padding-top: 3px;">
-    <span style="flex: 1.2;">SUPERVISOR&rsquo;S NAME <span style="font-weight: 700; border-bottom: 1px dotted #000; padding: 0 6px;">${esc(marks.supervisorName)} (${esc(slotLabel)})</span></span>
+    <span style="flex: 1.2;">SUPERVISOR&rsquo;S NAME <span style="font-weight: 700; border-bottom: 1px dotted #000; padding: 0 6px;">${esc(marks.supervisorName)}</span></span>
     <span style="flex: 1;">SIGNATURE <span style="border-bottom: 1px dotted #000; padding: 0 26px;">&nbsp;</span></span>
     <span style="flex: 0.9;">DATE <span style="font-weight: 700; border-bottom: 1px dotted #000; padding: 0 6px;">${esc(
       marks.submittedAt ? new Date(marks.submittedAt).toLocaleDateString('en-GB') : '—',
     )}</span></span>
   </div>
-  <div style="font-size: 6.5pt; color: #444; text-align: right;">${esc(slotLabel)} · assessors mark independently; the official result is the average of both. Generated ${esc(generatedAt)}.</div>
+  <div style="font-size: 6.5pt; color: #444; text-align: right;">Generated ${esc(generatedAt)}.</div>
 </section>`;
 }
 
