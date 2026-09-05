@@ -11,11 +11,13 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@sparticuz/chromium": "^149.0.0",
     "@supabase/ssr": "^0.12.6",
     "@supabase/supabase-js": "^2.115.0",
     "@tathmini/shared": "workspace:*",
     "dexie": "^4.4.5",
     "next": "15.5.25",
+    "playwright-core": "^1.63.0",
     "react": "19.0.0",
     "react-dom": "19.0.0"
   },
