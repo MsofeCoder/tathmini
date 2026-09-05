@@ -227,9 +227,138 @@ describe('parseRoster / validateRoster', () => {
       institution: 'Arusha VTC',
       district: 'Arusha',
       region: 'Arusha',
+      phone: '',
+      sex: '',
       email: 'a@example.test',
     };
     const issues = validateRoster([row]);
     expect(issues.some((i) => i.kind === 'missing_field')).toBe(true);
+  });
+});
+
+/**
+ * The September 2026 "FINAL VERSION" register. Two differences from the
+ * original, both of which silently corrupted a fixed-index parser: the route
+ * header carries the supervisors in its own cell after a colon (sometimes with
+ * no space, "ROUTE5:"), and two columns were inserted mid-row.
+ */
+describe('parseRoster - FINAL VERSION layout', () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'tathmini-roster-final-'));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  const FINAL_HEADERS = [
+    'No.',
+    'Student Name',
+    'Registration Number',
+    'Sex',
+    'Course',
+    'Mode of Study',
+    'Occpation',
+    'Institution  ',
+    'District',
+    'Region',
+    'Mobile Number',
+    'Email',
+  ];
+
+  async function writeFinalFixture(path: string) {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('FINAL TP ROUTES');
+    sheet.addRow(['MOROGORO VOCATIONAL TEACHERS TRAINING COLLEGE']);
+    sheet.addRow(['TEACHING PRACTICE, SEPTEMBER 2026']);
+    sheet.addRow([]);
+
+    sheet.addRow(['ROUTE 1: MKAMA MAUGO & YOHANA YONA']);
+    sheet.addRow(FINAL_HEADERS);
+    sheet.addRow([
+      1,
+      'Augustina Nsemwa',
+      'REG-0001',
+      'Female',
+      'CAVT',
+      'In-Campus',
+      'Food Production',
+      'Arusha VTC',
+      'Arusha',
+      'Arusha',
+      '624489157',
+      'one@example.test',
+    ]);
+
+    // No space after ROUTE, exactly as routes 5-7 are written in the real file.
+    sheet.addRow(['ROUTE5: NEHEMIA DAVID  &  LAURENT MWAISANILA']);
+    sheet.addRow(FINAL_HEADERS);
+    sheet.addRow([
+      1,
+      'Mlima Hamadi Iddi',
+      'NS0108/0104/2017',
+      'Male',
+      'TC-TVTE',
+      'ODeL',
+      'Electrical Installation',
+      'Veta Mbeya',
+      'Mbeya',
+      'Mbeya',
+      '758353085',
+      'two@example.test',
+    ]);
+
+    await workbook.xlsx.writeFile(path);
+  }
+
+  it('reads the route number and both supervisors out of the header cell', async () => {
+    const path = join(dir, 'final.xlsx');
+    await writeFinalFixture(path);
+
+    const rows = await parseRoster(path);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.route).toBe('ROUTE 1');
+    expect(rows[0]?.supervisors).toEqual(['MKAMA MAUGO', 'YOHANA YONA']);
+  });
+
+  it('matches a route header written without a space, as routes 5-7 are', async () => {
+    const path = join(dir, 'final.xlsx');
+    await writeFinalFixture(path);
+
+    const rows = await parseRoster(path);
+    expect(rows[1]?.route).toBe('ROUTE 5');
+    expect(rows[1]?.supervisors).toEqual(['NEHEMIA DAVID', 'LAURENT MWAISANILA']);
+  });
+
+  it('maps columns by header, so the inserted Sex column does not shift the row', async () => {
+    const path = join(dir, 'final.xlsx');
+    await writeFinalFixture(path);
+
+    const rows = await parseRoster(path);
+    // A fixed-index parser reads Sex into course and cascades from there.
+    expect(rows[0]?.course).toBe('CAVT');
+    expect(rows[0]?.modeOfStudy).toBe('In-Campus');
+    expect(rows[0]?.occupation).toBe('Food Production');
+    expect(rows[0]?.region).toBe('Arusha');
+    expect(rows[0]?.email).toBe('one@example.test');
+    expect(rows[0]?.sex).toBe('Female');
+  });
+
+  it('captures the mobile number the original register did not carry', async () => {
+    const path = join(dir, 'final.xlsx');
+    await writeFinalFixture(path);
+
+    const rows = await parseRoster(path);
+    expect(rows[0]?.phone).toBe('624489157');
+    expect(rows[1]?.phone).toBe('758353085');
+  });
+
+  it('accepts the file as valid apart from the defects it genuinely carries', async () => {
+    const path = join(dir, 'final.xlsx');
+    await writeFinalFixture(path);
+
+    expect(validateRoster(await parseRoster(path))).toHaveLength(0);
   });
 });
