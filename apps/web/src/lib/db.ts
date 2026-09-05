@@ -41,6 +41,12 @@ export interface OutboxRecord {
   queuedAt: number;
   attempts: number;
   lastError: string | null;
+  /**
+   * Epoch ms before which this must not be retried — the exponential backoff
+   * in outbox.ts. Optional because records queued before backoff existed do
+   * not have it; those are treated as due immediately rather than stranded.
+   */
+  nextAttemptAt?: number;
 }
 
 /**

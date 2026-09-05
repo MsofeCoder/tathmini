@@ -52,13 +52,18 @@ describe('reportFileNames', () => {
     expect(storagePath.split('/')[1]).toBe(TRAINEE_ID);
   });
 
-  it('files reports under a year folder', () => {
-    expect(names().storagePath.split('/')[2]).toBe('2026');
+  it('has no year folder — the filename already carries the date', () => {
+    // A trainee holds at most one report per assessor, so a year directory
+    // wrapped one or two files. Removing it needs no migration:
+    // report_path_trainee_id() still reads the trainee id from segment 2.
+    expect(names().storagePath.split('/')).toHaveLength(3);
+    expect(names().storagePath).not.toContain('/2026/');
+    expect(names().storagePath).toContain('-20260907-');
   });
 
   it('names the object by track, assessor, registration, date and hash', () => {
     expect(names().storagePath).toBe(
-      `TP-ROUTE-3/${TRAINEE_ID}/2026/TP-ASSESSOR1-MVTTC-TP-2026-0142-20260907-abcdef01.pdf`,
+      `TP-ROUTE-3/${TRAINEE_ID}/TP-ASSESSOR1-MVTTC-TP-2026-0142-20260907-abcdef01.pdf`,
     );
   });
 

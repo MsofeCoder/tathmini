@@ -43,14 +43,19 @@ export interface ReportFileNames {
 /**
  * Where a generated report is filed, and what it is called.
  *
- * Storage layout: `<ROUTE>/<trainee_id>/<year>/<TRACK>-ASSESSOR<n>-<REG>-<date>-<hash8>.pdf`
+ * Storage layout: `<ROUTE>/<trainee_id>/<TRACK>-ASSESSOR<n>-<REG>-<date>-<hash8>.pdf`
  *
  * Route first, so the bucket groups the way the College works — a supervisor
  * owns a route, and the Coordinator reviews by route. The trainee id is the
  * SECOND segment and that is load-bearing: migration 0016's Storage policies
- * scope on it, so reordering these two makes every object unreadable. The year
- * keeps a trainee's folder legible across the 24 months of archives CONTEXT.md
- * requires.
+ * scope on it, so reordering these two makes every object unreadable.
+ *
+ * There is deliberately no year folder. The date is already in the filename,
+ * and a trainee holds at most one report per assessor, so a year directory
+ * added a level of nesting to wrap one or two files. Dropping it needs no
+ * migration: report_path_trainee_id() reads the trainee id from the second
+ * segment either way, and still falls back for objects written under the
+ * older layouts, so nothing already in the bucket is orphaned.
  *
  * A trainee with no route falls back to `UNASSIGNED`. It cannot happen through
  * the app — `trainees.route_id` is NOT NULL — but the path must never collapse
@@ -78,7 +83,6 @@ export function reportFileNames({
   hash,
   now = new Date(),
 }: ReportFileNameInput): ReportFileNames {
-  const year = String(now.getUTCFullYear());
   const iso = now.toISOString().slice(0, 10); // YYYY-MM-DD
   const compact = iso.replace(/-/g, ''); // YYYYMMDD
 
@@ -95,7 +99,7 @@ export function reportFileNames({
   const route = slug(routeCode ?? '') || 'UNASSIGNED';
 
   const storagePath =
-    `${route}/${traineeId}/${year}/` +
+    `${route}/${traineeId}/` +
     `${track}-${assessor}-${reference}-${compact}-${hash.slice(0, 8)}.pdf`;
 
   const name = slug(trainee.name) || 'TRAINEE';
