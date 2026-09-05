@@ -145,6 +145,40 @@ describe('renderReportHtml', () => {
     expect(html).not.toContain('TP Coordinator');
   });
 
+  it("uses the paper form's six columns, not a collapsed set", () => {
+    // reference/forms/TP Theory form.txt. TOTAL POINTS is the section
+    // maximum, POINTS DISTRIBUTION the per-item maximum; an earlier version
+    // collapsed both into "MAX" and invented an "AWARDED %".
+    const html = renderReportHtml(tpData(), 'TM-TEST');
+    for (const column of [
+      'S/N',
+      'ITEM DESCRIPTION',
+      'TOTAL POINTS',
+      'POINTS DISTRIBUTION',
+      'POINTS AWARDED',
+      'COMMENTS',
+    ]) {
+      expect(html).toContain(`>${column}<`);
+    }
+    expect(html).not.toContain('AWARDED %');
+  });
+
+  it('merges S/N and COMMENTS down each section, as the paper form does', () => {
+    // One section of one criterion => the section row plus 1 item row, so both
+    // merged cells span 2.
+    const html = renderReportHtml(tpData(), 'TM-TEST');
+    expect((html.match(/rowspan="2"/g) ?? []).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("gathers a section's criterion comments into its one merged cell", () => {
+    const data = tpData();
+    data.instruments[0]!.bySlot.a1!.itemsByCriterionId = new Map([
+      ['c1', { score: 1, comment: 'Involve every trainee, not only volunteers.' }],
+    ]);
+    const html = renderReportHtml(data, 'TM-TEST');
+    expect(html).toContain('Involve every trainee, not only volunteers.');
+  });
+
   it('omits a page for a slot with no submitted marks', () => {
     const data = tpData();
     data.instruments[0]!.bySlot.a2 = null;
