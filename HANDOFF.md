@@ -1,152 +1,225 @@
-# HANDOFF — Saturday 2026-09-05, midday. Real use starts Monday.
+# HANDOFF — Saturday 2026-09-05, afternoon. Real use starts Monday.
 
-Written for a fresh Claude Code agent picking this project up **on a
-different Anthropic Pro account, same machine**, mid-sprint. This
-replaces the 2026-09-04 handoff entirely — that one is absorbed into
-`MEMORY.md` now.
+For a fresh Claude Code agent picking this up **on a different Anthropic
+Pro account, same machine**. Replaces every earlier handoff.
 
-Nothing here overrides `AGENTS.md`. Read the normal session-start order
-(`AGENTS.md` → `CONTEXT.md` → `ROADMAP.md` → `MEMORY.md`, newest 3–4
-entries). This file only says where to start and what not to re-derive.
-**Disposable** — delete it once stale.
+Read the normal session-start order first (`AGENTS.md` → `CONTEXT.md` →
+`ROADMAP.md` → `MEMORY.md`, newest 3–4 entries). This file says only
+where to start and what not to re-derive. **Disposable** — delete it once
+stale.
 
-## Read this first: two things are true at once
+**Another session is working in this repo right now** (Phase 2 PDF
+reports). See "Concurrent session" below before touching anything.
+Re-read files before editing; do not commit their work.
 
-1. **The app is built and works.** Auth, route list, trainee profile,
-   all three marking instruments, the two-insert submit, gating, offline
-   caching and an outbox — all live against the College's real Supabase
-   project (`azlwxriyhdshfhklonrx`) and verified in a real browser.
-2. **No real supervisor has ever signed in.** Every end-to-end
-   verification so far used `test.supervisor` against `TEST ROUTE` and
-   its five synthetic trainees (migration `0011`). The 30 real accounts,
-   14 real routes and 482 real trainees are all in the database and have
-   never been exercised through the UI.
+---
 
-Closing the gap between those two sentences is the whole job right now.
+## The one thing that matters most
 
-## The deadline
+**Nothing from today is deployed, and the live app has a visible bug that
+is already fixed in this branch.**
 
-- **Monday 2026-09-07: real internal use begins**, both IPT and TP, by
-  actual supervisors in the field.
-- The user asked for this "before lunch" on Saturday 2026-09-05 and is
-  switching accounts to keep working. Treat it as live.
+- `tathmini-web.vercel.app` serves **`main`** (`origin/HEAD → origin/main`).
+- This branch, `phase-0/ipt-roster-support`, is **20 commits unpushed**
+  and **9 commits ahead of `main`**.
+- One of them, `61abe0c`, fixes the route-list counters. On the deployed
+  build a supervisor who has finished a trainee still sees **0% / 0
+  ASSESSED / all NOT STARTED**, while the per-row badges correctly read
+  "1 of 2 assessors". Confirmed against the live site today.
 
-Internal use only, for now. Full production polish (Swahili review,
-PDF/e-mail/SMS, admin console, pentest, accessibility, rate limiting,
-backups) is **deliberately deferred**, not forgotten — see `ROADMAP.md`
-Phases 2–4.
+**On Monday every supervisor's progress reads 0% regardless of work
+done.** The fix exists. It is not deployed.
 
-## The critical path, in order
+**Action, and it is the user's call:** push the branch, open a PR into
+`main`, merge, let Vercel redeploy, re-check the counters live. Do not
+push or merge unless asked.
 
-**1. The user runs `assign:passwords` against the live project.**
-Blocking, and only they can do it — it needs the service-role key, which
-an agent must never hold (`AGENTS.md`). If they have not done it yet,
-say so plainly and give them the command; do not work around it.
+---
 
-```powershell
-$env:SUPABASE_SERVICE_ROLE_KEY = "<service_role secret>"
-pnpm --filter @tathmini/db assign:passwords -- --template=passwords.xlsx
-# fill in passwords, then:
-pnpm --filter @tathmini/db assign:passwords -- --file=passwords.xlsx --dry-run
-pnpm --filter @tathmini/db assign:passwords -- --file=passwords.xlsx
-```
+## Where things stand
 
-**2. A real supervisor signs in and submits one real assessment.**
-The single highest-value unknown. Until it happens, RLS scoping against
-real `assignments` rows, the real route list, and real trainee
-particulars are all unproven. `denis.michael` (TP Route 6) or any IPT
-supervisor will do.
+### Verified live today (2026-09-05)
 
-**3. Apply migration `0013`** (written, NOT applied — see below).
+- **All 30 real passwords are assigned and working.** The user ran
+  `assign:passwords` against `azlwxriyhdshfhklonrx`. Passwords are
+  **permanent** — see the decision below.
+- **A real supervisor signed in for the first time ever** —
+  `denis.michael`, TP ROUTE 6. Checked in a real browser:
+  - RLS scoping: 43 trainees, not all 482
+  - Route list: 43 rows, real names / trades / centres
+  - Trainee profile: real registration number, e-mail, region, district
+  - Assessor slot resolves from real `assignments` ("Assessor 1 of 2")
+  - Marking form: all 41 TP Theory criteria, 0.5 steps, subtotals
+  - Offline cache: whole route written to IndexedDB
+- **Draft autosave — `ROADMAP.md` line moved to `[x]`.** Scoring one
+  criterion wrote a `drafts` row keyed `<traineeId>:<instrumentId>`; a
+  full reload restored the score, the section subtotal and the pressed
+  button. The injected score was cleared; nothing reached the database.
 
-**4. Browser-verify draft autosave and the outbox.** `ROADMAP.md` marks
-both `[~] not yet browser-verified`. They are the entire offline promise:
-a supervisor in a dead zone keeps typing, and reconnecting produces
-exactly one submission, never two. Phase 1's exit gate depends on it.
+### The next task, and it is small
+
+**Browser-verify the outbox.** Last `[~]` on Phase 1 and its exit gate:
+go offline, submit, confirm it queues; reconnect, confirm it drains to
+**exactly one** row, never two.
+
+Run it as `test.supervisor` on `TEST ROUTE` — never a real trainee. The
+user was signed in as `test.supervisor` when this was written.
+
+### Then, and only then
+
+Apply `packages/db/migrations/0013_remove_test_route_and_account.sql`.
+Written, committed, **deliberately not applied**. It deletes `TEST
+ROUTE`, its 5 trainees and `test.supervisor` — the only safe place to
+exercise the submit path. Not before the outbox test.
+
+---
+
+## Hard rule: never submit a mark against a real trainee
+
+`assessment_marks` is append-only — no role has an `UPDATE` grant. A
+"just testing" submission against a real trainee is **permanent**; the
+only way to supersede one is `result_revisions`, which is Phase 3 and
+unbuilt. It would sit in the College's records forever.
+
+Read-only checks against real data are fine. Draft autosave is fine — it
+is pure IndexedDB and never touches the database. **Submitting is not.**
+
+---
 
 ## The password system — three scripts, do not confuse them
 
-All in `packages/db/src/scripts/`, all documented in
-`packages/db/README.md` with a comparison table. All need the
-service-role key; **the user runs them, never you.**
+In `packages/db/src/scripts/`, documented in `packages/db/README.md`.
+All need the service-role key. **The user runs them, never you**
+(`AGENTS.md`).
 
-|                  | `create:accounts`              | `assign:passwords`                          | `reset:passwords`            |
-| ---------------- | ------------------------------ | ------------------------------------------- | ---------------------------- |
-| For              | An account that does not exist | Handing out the College's chosen passwords  | "These leaked, rotate now"   |
-| Existing account | **Skipped**                    | Updated                                     | Updated                      |
-| Password         | Random                         | From the spreadsheet, or generated if blank | Random                       |
-| Afterwards       | Must change on first sign-in   | **Permanent**                               | Must change on first sign-in |
+|                  | `create:accounts`      | `assign:passwords`                 | `reset:passwords` |
+| ---------------- | ---------------------- | ---------------------------------- | ----------------- |
+| For              | Account does not exist | The College's chosen passwords     | "These leaked"    |
+| Existing account | **Skipped**            | Updated                            | Updated           |
+| Password         | Random                 | From the sheet, generated if blank | Random            |
+| Afterwards       | Must change            | **Permanent**                      | Must change       |
 
-**`assign:passwords` is the one the College actually uses.** It is the
-Excel flow: `--template=<x.xlsx>` writes a workbook pre-filled with all
-30 usernames, the admin types a password beside each person, `--file=`
-applies them.
+`assign:passwords` is the one in use: `--template=<x.xlsx>` writes a
+workbook pre-filled with all 30 usernames, the admin types a password
+beside each person, `--file=` applies it. Any problem aborts the whole
+run before a single write.
 
-**The permanent-password decision was the user's, made explicitly on
-2026-09-05, with the cost spelled out first.** Do not quietly re-litigate
-it. The cost, recorded so nobody rediscovers it: the College holds a
-spreadsheet of live credentials, and `assessment_marks` is attributable
-to a named assessor, so "who awarded this mark" is now only as strong as
-that file's privacy. Mitigations already built: 8-character minimum, and
-two accounts sharing a password is a hard error.
+**The permanent-password decision was the user's**, made explicitly on
+2026-09-05 with the cost spelled out first. Do not re-litigate it. The
+cost, recorded so nobody rediscovers it: the College holds a spreadsheet
+of live credentials, and `assessment_marks` is attributable to a named
+assessor, so "who awarded this mark" is only as strong as that file's
+privacy. Mitigations built in: 8-character minimum, and two accounts
+sharing a password is a hard error.
 
-Write order differs between the two password scripts **on purpose**, and
+**Write order differs between the two password scripts on purpose**, and
 both orders are locked in by tests. In each, the order is chosen so a
 partial failure never leaves a known-to-others password permanently
 valid. Do not "tidy" them into agreement.
 
-## Migration 0013 is written but NOT applied — deliberately
+**`packages/db/passwords.xlsx` holds 30 live permanent credentials.**
+Spreadsheets are gitignored repo-wide (`202f2a9`) and none has ever been
+tracked, so history is clean. Never `git add -f` one.
 
-`packages/db/migrations/0013_remove_test_route_and_account.sql` removes
-`TEST ROUTE`, its 5 trainees (cascading through their marks, items,
-results and assignments) and the `test.supervisor` account.
+---
 
-**Do not apply it until step 2 above has passed.** Until a real
-supervisor has signed in successfully, `TEST ROUTE` is the only working
-way to demonstrate the app. `audit_log` deliberately does not cascade.
+## Concurrent session — Phase 2 PDF reports, in flight
 
-## What's already done — don't rebuild, don't re-derive
+A second session is building reports/PDF **right now**. Uncommitted and
+**not yours to commit**:
 
-- **Schema, RLS, criteria, rosters.** 13 tables, RLS on every one,
-  18/18 pgTAP live. All three instruments' criteria are seeded
-  **verbatim** and arithmetic-verified. 30 accounts, 14 routes, 482
-  trainees, 964 assignments imported. Migrations `0000`–`0012` applied.
+```
+ M apps/web/package.json
+ M apps/web/src/app/trainee/[id]/page.tsx
+ M packages/db/src/schema.ts
+ M packages/db/migrations/meta/_journal.json
+ M pnpm-lock.yaml
+?? apps/web/src/app/trainee/[id]/actions.ts
+?? apps/web/src/app/trainee/[id]/report-download-button.tsx
+?? apps/web/src/lib/reports/
+?? packages/db/migrations/0014_add_reports_table.sql
+?? packages/db/migrations/meta/0014_snapshot.json
+```
+
+Two traps in that work — flag them to whoever owns it:
+
+1. **It first generated a migration numbered `0012`**, colliding with the
+   existing `0012_fix_finalize_mark_security_definer.sql`. It renumbered
+   to `0014` itself — verify before anything is applied.
+2. **Its generated SQL re-adds `must_change_password`**, which migration
+   `0009` already added and which is **live in production**. Applying it
+   as-is fails on a duplicate column. Drizzle regenerates it because
+   `0009` was hand-written and never captured in a snapshot. The same
+   trap recurs for every hand-written migration.
+
+---
+
+## Environment traps that have already cost hours
+
+- **Run `pnpm --filter` from the repo root.** Anywhere else gives the
+  useless `No projects matched the filters`. The path has spaces — quote
+  it.
+- **Only `admin-client.ts`'s `resolveEnv()` loads `.env` files.** There
+  is no dotenv here and `tsx` does not read them. Precedence: root
+  `.env` < root `.env.local` < `packages/db/.env.local` < **shell always
+  wins**.
+- **The service-role key lives in the gitignored root `.env.local`.**
+  Root `.env` has only `SUPABASE_URL` and `SUPABASE_ANON_KEY`.
+- **The git root is the `Header labels clip fix` directory**, not its
+  parent. A tool reporting "not a git repository" has resolved the
+  parent path — run `git rev-parse --show-toplevel` before repeating the
+  claim. An earlier handoff got this wrong.
+- **`pnpm format:check` fails locally on Windows and is a false alarm.**
+  `core.autocrlf=true` with no `.gitattributes`, so git checks out CRLF
+  while prettier wants LF. **CI on Linux is unaffected.** The proper fix
+  (`* text=auto eol=lf`) renormalises the whole repo — a large diff that
+  would collide with the concurrent session, deliberately deferred until
+  after Monday. Check single files with `npx prettier --check <path>`
+  instead of trusting the repo-wide run.
+- **An agent cannot type passwords into forms.** Browser-verifying a
+  signed-in flow needs the user to sign in and hand the tab over. Ask; do
+  not work around it.
+- **Commit subjects must be lowercase** (commitlint `subject-case`).
+  `feat(web): PWA manifest…` is rejected; `feat(web): add the manifest…`
+  passes.
+
+---
+
+## Already done — do not rebuild or re-derive
+
+- **Schema, RLS, criteria, rosters.** 13 tables, RLS everywhere, 18/18
+  pgTAP live. All three instruments seeded **verbatim** and
+  arithmetic-verified. 30 accounts, 14 routes, 482 trainees, 964
+  assignments. Migrations `0000`–`0012` applied live; `0013` written, not
+  applied.
 - **The account list is fixed and correct** —
-  `packages/db/src/data/{ipt,tp}-accounts.ts`. Adam Msofe and Aron
-  Franco each hold two accounts (super_admin + `.supervisor`) by design.
+  `packages/db/src/data/{ipt,tp}-accounts.ts`. Adam Msofe and Aron Franco
+  each hold two accounts (super_admin + `.supervisor`) by design.
   "Osward" is verbatim from the roster, not a typo to fix.
 - **Marking works for all three instruments**, including the two-insert
   submit contract and server-side re-validation of gating.
-- **Offline**: one online visit to the route list caches the whole route
-  into IndexedDB; `/offline` re-renders the same `MarkingForm` from that
-  cache and submits through the outbox.
-- **PWA install**: manifest, icons, install gate, and the
-  `middleware.ts` exclusion that makes them work (2026-09-05).
+- **Offline**: one online visit caches the whole route to IndexedDB;
+  `/offline` re-renders the same `MarkingForm` from that cache and
+  submits through the outbox.
+- **PWA**: manifest, icons, real MVTTC crest, install screen, and the
+  `middleware.ts` exclusion that makes them work.
+- **`Forgot password?` is intentionally not a link** (`0813d6c`). No
+  reset flow exists or can: every account e-mail is a synthetic
+  `@tathmini.internal` identifier nothing is sent to. It tells the user
+  to contact the Administrator. Do not "restore" the link.
 
-## Environment traps that have already cost time
+---
 
-- **Run `pnpm --filter` from the repo root.** From anywhere else it
-  fails with the useless `No projects matched the filters`. The path
-  contains spaces — quote it.
-- **Nothing in this repo loads `.env` files except via
-  `admin-client.ts`'s `resolveEnv()`.** There is no dotenv anywhere and
-  `tsx` does not read env files on its own. `create-accounts.ts` is
-  environment-only and predates the fix.
-- **The service-role key is not on disk anywhere.** Root `.env` has
-  `SUPABASE_URL` + `SUPABASE_ANON_KEY`; `.env.local` has only
-  `VERCEL_OIDC_TOKEN`.
-- **The git root is the `Header labels clip fix` directory**, not its
-  parent. A tool that reports "not a git repository" has almost
-  certainly resolved the parent path — check `git rev-parse
---show-toplevel` before repeating the claim. Working branch as of
-  2026-09-05 is `phase-0/ipt-roster-support`; `.env.local` is
-  gitignored and that ignore is enforced.
-- **Another session may be editing concurrently.** On 2026-09-05 a
-  second session added the PWA manifest/install gate while this one was
-  working. Re-read before editing, and check the newest `MEMORY.md`
-  entry is still the one you think it is.
-- **An agent cannot type passwords into forms.** Browser-verifying a
-  signed-in flow needs the user to sign in first, then hand the tab over.
+## Deferred deliberately — say so, do not half-build
+
+Admin console (Phase 3, including the in-app version of password
+assignment), Swahili review, e-mail/SMS, pentest, accessibility audit,
+rate limiting, backup panel. Building the in-app password screen means
+putting the **service-role key into Vercel's environment** — the web app
+holds only the anon key today. A real decision to make deliberately, not
+a detail to slip into a PR.
+
+---
 
 ## Non-negotiables — the deadline cuts polish, not these
 
