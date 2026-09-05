@@ -60,7 +60,9 @@ export async function generateReport(traineeId: string): Promise<GenerateReportR
 
   const signed = await supabase.storage.from('reports').createSignedUrl(storagePath, 300);
   if (signed.error || !signed.data) {
-    return { error: `Could not create a download link: ${signed.error?.message ?? 'unknown error'}` };
+    return {
+      error: `Could not create a download link: ${signed.error?.message ?? 'unknown error'}`,
+    };
   }
 
   return { url: signed.data.signedUrl };

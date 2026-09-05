@@ -84,7 +84,10 @@ function traineeHeaderLines(trainee: ReportData['trainee']): [string, string][][
     ],
     [
       ['OCCUPATION', trainee.occupation],
-      ['COURSE', trainee.modeOfStudy ? `${trainee.course} · ${trainee.modeOfStudy}` : trainee.course],
+      [
+        'COURSE',
+        trainee.modeOfStudy ? `${trainee.course} · ${trainee.modeOfStudy}` : trainee.course,
+      ],
       trainee.track === 'IPT' ? ['PHONE', trainee.phone ?? '—'] : ['EMAIL', trainee.email ?? '—'],
     ],
   ];
@@ -220,7 +223,8 @@ function assessorPage(
         .map((item) => {
           const mark = marks.itemsByCriterionId.get(item.id);
           const score = mark?.score;
-          const awardedPct = score === undefined ? '—' : `${Math.round((score / item.itemMax) * 100)}%`;
+          const awardedPct =
+            score === undefined ? '—' : `${Math.round((score / item.itemMax) * 100)}%`;
           return (
             `<div style="display: grid; grid-template-columns: ${grid};">` +
             cell('', 'center') +
@@ -310,7 +314,12 @@ function assessorPage(
 </section>`;
 }
 
-function sCell(text: string, align: 'left' | 'center' | 'right' = 'left', weight = 400, last = false): string {
+function sCell(
+  text: string,
+  align: 'left' | 'center' | 'right' = 'left',
+  weight = 400,
+  last = false,
+): string {
   return (
     `<div style="padding: 3px 5px; border-top: ${BORDER}; border-right: ${last ? 'none' : BORDER}; ` +
     `font-size: 8.5pt; text-align: ${align}; font-weight: ${weight};">${esc(text)}</div>`
@@ -338,7 +347,9 @@ function consolidatedPage(data: ReportData, reportRef: string, generatedAt: stri
     `<div style="display: grid; grid-template-columns: ${summaryGrid};${bg ? ` background: ${bg};` : ''}">` +
     sCell(label, 'left', 700) +
     sCell(name) +
-    cells.map((c, i) => sCell(c, 'center', i === cells.length - 1 ? 700 : 400, i === cells.length - 1)).join('') +
+    cells
+      .map((c, i) => sCell(c, 'center', i === cells.length - 1 ? 700 : 400, i === cells.length - 1))
+      .join('') +
     '</div>';
 
   const a1Total = slotTotal('a1');
@@ -347,8 +358,14 @@ function consolidatedPage(data: ReportData, reportRef: string, generatedAt: stri
 
   const rows = isIPT
     ? [
-        summaryRow('Assessor 1', slotName('a1'), [fmt(a1Total), pct1((a1Total / result.max) * 100)]),
-        summaryRow('Assessor 2', slotName('a2'), [fmt(a2Total), pct1((a2Total / result.max) * 100)]),
+        summaryRow('Assessor 1', slotName('a1'), [
+          fmt(a1Total),
+          pct1((a1Total / result.max) * 100),
+        ]),
+        summaryRow('Assessor 2', slotName('a2'), [
+          fmt(a2Total),
+          pct1((a2Total / result.max) * 100),
+        ]),
         summaryRow(
           'OFFICIAL AVERAGE',
           'Mean of the two assessors',
@@ -372,7 +389,12 @@ function consolidatedPage(data: ReportData, reportRef: string, generatedAt: stri
         summaryRow(
           'OFFICIAL AVERAGE',
           'Mean of the two assessors',
-          [fmt(result.theoryTotal), fmt(result.practicalTotal), fmt(officialTotal), pct1(result.pct)],
+          [
+            fmt(result.theoryTotal),
+            fmt(result.practicalTotal),
+            fmt(officialTotal),
+            pct1(result.pct),
+          ],
           '#e2e2e2',
         ),
       ];
@@ -383,7 +405,10 @@ function consolidatedPage(data: ReportData, reportRef: string, generatedAt: stri
       .map((m) => m.comment)
       .filter((c): c is string => !!c && c.trim().length > 0)
       .join(' ');
-    return { tag: slot === 'a1' ? 'ASSESSOR 1 —' : 'ASSESSOR 2 —', text: text || 'No comments recorded.' };
+    return {
+      tag: slot === 'a1' ? 'ASSESSOR 1 —' : 'ASSESSOR 2 —',
+      text: text || 'No comments recorded.',
+    };
   });
 
   const signatures = isIPT
@@ -487,7 +512,10 @@ function consolidatedPage(data: ReportData, reportRef: string, generatedAt: stri
 }
 
 export function renderReportHtml(data: ReportData, reportRef: string): string {
-  const generatedAt = new Date().toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
+  const generatedAt = new Date().toLocaleString('en-GB', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
 
   const assessorPages = data.instruments
     .flatMap((instrument) =>

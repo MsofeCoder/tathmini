@@ -3,7 +3,13 @@ import { renderReportHtml } from './render';
 import type { CriterionRow } from '@/lib/marking';
 import type { ReportData } from './data';
 
-function crit(id: string, sectionCode: string, itemCode: string, itemMax: number, orderIndex: number): CriterionRow {
+function crit(
+  id: string,
+  sectionCode: string,
+  itemCode: string,
+  itemMax: number,
+  orderIndex: number,
+): CriterionRow {
   return {
     id,
     sectionCode,
@@ -18,7 +24,8 @@ function crit(id: string, sectionCode: string, itemCode: string, itemMax: number
 
 function marksMap(entries: Record<string, { score: number; comment?: string | null }>) {
   const m = new Map<string, { score: number; comment: string | null }>();
-  for (const [k, v] of Object.entries(entries)) m.set(k, { score: v.score, comment: v.comment ?? null });
+  for (const [k, v] of Object.entries(entries))
+    m.set(k, { score: v.score, comment: v.comment ?? null });
   return m;
 }
 

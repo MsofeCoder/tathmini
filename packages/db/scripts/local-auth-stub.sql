@@ -52,3 +52,54 @@ grant usage on schema public to authenticated;
 grant all on all tables in schema public to authenticated;
 grant usage, select on all sequences in schema public to authenticated;
 alter default privileges in schema public grant all on tables to authenticated;
+
+-- ── storage ─────────────────────────────────────────────────────────
+-- Stand-in for Supabase Storage, added for migration 0014, which creates
+-- the private `reports` bucket and the RLS policies guarding its objects.
+-- Without these the pgTAP job dies applying 0014 with
+-- `relation "storage.buckets" does not exist` — the same drift that had
+-- already stopped the suite once via auth.users.email. See MEMORY.md.
+--
+-- Only the surface 0014 actually touches is modelled: the two tables, the
+-- columns its INSERT and its policies name, and foldername(). Supabase's
+-- real tables carry many more columns; adding them here would be
+-- inventing a contract nothing in this repo depends on.
+
+create schema if not exists storage;
+
+create table if not exists storage.buckets (
+  id text primary key,
+  name text not null,
+  public boolean not null default false
+);
+
+create table if not exists storage.objects (
+  id uuid primary key default gen_random_uuid(),
+  bucket_id text references storage.buckets (id),
+  name text not null,
+  owner uuid
+);
+
+-- RLS is on in real Supabase, and 0014's policies are only meaningful
+-- with it enabled — a policy on a table without RLS is inert, which would
+-- make a test of those policies silently vacuous.
+alter table storage.objects enable row level security;
+
+-- Mirrors Supabase's own storage.foldername(): the path segments of an
+-- object name, excluding the filename. Object names are bucket-relative,
+-- so an upload to `reports/<trainee_id>/<file>.pdf` (bucket `reports`,
+-- path `<trainee_id>/<file>.pdf` — see actions.ts) yields {<trainee_id>},
+-- and 0014's `(storage.foldername(name))[1]::uuid` is the trainee id.
+create or replace function storage.foldername(name text) returns text[]
+language plpgsql immutable
+as $$
+declare
+  _parts text[];
+begin
+  select string_to_array(name, '/') into _parts;
+  return _parts[1:array_length(_parts, 1) - 1];
+end
+$$;
+
+grant usage on schema storage to authenticated;
+grant all on all tables in schema storage to authenticated;

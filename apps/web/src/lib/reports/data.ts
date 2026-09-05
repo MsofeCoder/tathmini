@@ -172,7 +172,8 @@ export async function getReportData(
     },
     result: {
       id: resultRes.data.id,
-      theoryTotal: resultRes.data.theory_total === null ? null : Number(resultRes.data.theory_total),
+      theoryTotal:
+        resultRes.data.theory_total === null ? null : Number(resultRes.data.theory_total),
       practicalTotal:
         resultRes.data.practical_total === null ? null : Number(resultRes.data.practical_total),
       total: resultRes.data.total === null ? null : Number(resultRes.data.total),
