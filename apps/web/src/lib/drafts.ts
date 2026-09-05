@@ -10,17 +10,44 @@ import type { MarksByCriterion } from './marking';
  * was queued (see outbox.ts).
  */
 
+/** Everything a supervisor has typed for one instrument: the scores, the
+ * per-criterion comments (TP), and the general comment. */
+export interface DraftState {
+  marks: MarksByCriterion;
+  /** Keyed by `criteria.section_code`. */
+  sectionComments: Record<string, string>;
+  generalComment: string;
+}
+
 export function draftKey(traineeId: string, instrumentId: string): string {
   return `${traineeId}:${instrumentId}`;
 }
 
-export async function loadDraft(key: string): Promise<MarksByCriterion | undefined> {
+/**
+ * Reads a draft, tolerating the pre-2026-09-05 shape that stored `marks`
+ * alone. A supervisor part-way through an assessment when this version
+ * deployed keeps every score they had entered; they simply start with no
+ * criterion comments, which is the correct state — those boxes did not exist
+ * when they typed.
+ */
+export async function loadDraft(key: string): Promise<DraftState | undefined> {
   const record = await db.drafts.get(key);
-  return record?.marks;
+  if (!record) return undefined;
+  return {
+    marks: record.marks,
+    sectionComments: record.sectionComments ?? {},
+    generalComment: record.generalComment ?? '',
+  };
 }
 
-export async function saveDraft(key: string, marks: MarksByCriterion): Promise<void> {
-  await db.drafts.put({ key, marks, updatedAt: Date.now() });
+export async function saveDraft(key: string, state: DraftState): Promise<void> {
+  await db.drafts.put({
+    key,
+    marks: state.marks,
+    sectionComments: state.sectionComments,
+    generalComment: state.generalComment,
+    updatedAt: Date.now(),
+  });
 }
 
 export async function clearDraft(key: string): Promise<void> {

@@ -29,7 +29,10 @@ before writing code.
 - The prototype in `reference/Tathmini.dc.html` is the behavioural spec. Read the
   relevant flow before designing a screen.
 - Criterion wording is **verbatim** from `reference/forms/`.
-- `pnpm lint && pnpm test && pnpm typecheck` green before reporting done.
+- `pnpm format:check && pnpm lint && pnpm test && pnpm typecheck` green before
+  reporting done. **`format:check` is easy to forget and CI runs it inside the
+  `lint` job** — a branch that is otherwise perfect fails on formatting alone.
+  `pnpm format` fixes it.
 - Append to `MEMORY.md` after every feature, decision or bug fix.
 
 ## Sub-agent guidance

@@ -23,14 +23,23 @@ describe('pointsCriterionMarkSchema', () => {
     expect(schema.safeParse({ criterionId: 'c1', score: 4.3 }).success).toBe(false);
   });
 
-  it('rejects a below-half score with no comment', () => {
-    expect(schema.safeParse({ criterionId: 'c1', score: 2 }).success).toBe(false);
+  // The comment requirement was removed on 2026-09-05. A below-half score
+  // still raises an auto-comment SUGGESTION (isFlagged, apps/web marking.ts),
+  // but the supervisor decides whether to write one - the paper form gives a
+  // criterion one merged COMMENTS cell, not one per sub-criterion, and the
+  // prototype gates only on every criterion being scored.
+  it('accepts a below-half score with no comment', () => {
+    expect(schema.safeParse({ criterionId: 'c1', score: 2 }).success).toBe(true);
   });
 
   it('accepts a below-half score with a comment', () => {
     expect(
       schema.safeParse({ criterionId: 'c1', score: 2, comment: 'Needs more practice.' }).success,
     ).toBe(true);
+  });
+
+  it('accepts a zero with no comment - the lowest score is not a special case', () => {
+    expect(schema.safeParse({ criterionId: 'c1', score: 0 }).success).toBe(true);
   });
 });
 
@@ -39,15 +48,16 @@ describe('iptCriterionMarkSchema', () => {
     expect(iptCriterionMarkSchema.safeParse({ criterionId: 'i1', score: 0 }).success).toBe(false);
   });
 
-  it('requires a comment at 3 or below', () => {
-    expect(iptCriterionMarkSchema.safeParse({ criterionId: 'i1', score: 3 }).success).toBe(false);
+  it('accepts 3 or below with no comment', () => {
+    expect(iptCriterionMarkSchema.safeParse({ criterionId: 'i1', score: 1 }).success).toBe(true);
+    expect(iptCriterionMarkSchema.safeParse({ criterionId: 'i1', score: 3 }).success).toBe(true);
     expect(
       iptCriterionMarkSchema.safeParse({ criterionId: 'i1', score: 3, comment: 'Below average.' })
         .success,
     ).toBe(true);
   });
 
-  it('does not require a comment above 3', () => {
+  it('accepts a score above 3 with no comment', () => {
     expect(iptCriterionMarkSchema.safeParse({ criterionId: 'i1', score: 4 }).success).toBe(true);
   });
 

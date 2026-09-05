@@ -10,11 +10,22 @@ import { createClient } from '@/lib/supabase/server';
 import type { SubmitAssessmentInput, SubmitAssessmentResult } from '@/lib/submission';
 
 /**
- * The exact two-insert contract from HANDOFF.md: one assessment_marks row
- * for this (trainee, instrument, slot), then every assessment_mark_items row
- * in a single insert — the assessment_mark_items_finalize trigger rejects
- * the whole statement unless the item count matches the instrument's real
- * criteria count, and only a complete match stamps total/submitted_at.
+ * Three inserts, in a fixed order:
+ *
+ *   1. the assessment_marks row for this (trainee, instrument, slot),
+ *      carrying the supervisor's general comment;
+ *   2. any per-criterion comments (TP only);
+ *   3. every assessment_mark_items row, in a SINGLE insert.
+ *
+ * The order is not stylistic. assessment_mark_items_finalize fires on that
+ * last statement, rejects it unless the item count matches the instrument's
+ * real criteria count, and on a complete match stamps total/submitted_at —
+ * which closes the window that
+ * assessment_mark_section_comments_insert requires. Comments written after
+ * the items are refused.
+ *
+ * (This was the two-insert contract in HANDOFF.md until the comment surfaces
+ * moved from sub-criterion to criterion on 2026-09-05.)
  *
  * Re-validates completeness and every mark server-side (AGENTS.md rule 3:
  * never trust a client-computed total, and by extension never trust a
@@ -108,6 +119,9 @@ export async function submitAssessment(
         instrument_id: input.instrumentId,
         supervisor_id: user.id,
         slot: input.slot,
+        // Only settable here — assessment_marks has no UPDATE grant, so the
+        // general comment is append-only along with the rest of the row.
+        general_comment: input.generalComment.trim() || null,
       })
       .select('id')
       .single();
@@ -119,6 +133,35 @@ export async function submitAssessment(
       };
     }
     markId = inserted.id;
+  }
+
+  // BEFORE the items, and this order is load-bearing: inserting the items
+  // fires assessment_mark_items_finalize, which stamps submitted_at, and
+  // assessment_mark_section_comments_insert (migration 0025) only admits a row
+  // while the mark is still open. Written after the items it would be
+  // rejected, and the supervisor would lose every criterion comment they
+  // wrote with no error that named the cause.
+  //
+  // ON CONFLICT DO NOTHING because this action is replayable: the outbox
+  // retries a submission whose first attempt may have crashed between the
+  // inserts. `ignoreDuplicates` needs only the INSERT grant, which matters —
+  // there is deliberately no UPDATE grant on this table.
+  const sectionComments = input.sectionComments
+    .map((s) => ({ sectionCode: s.sectionCode, comment: s.comment.trim() }))
+    .filter((s) => s.comment.length > 0);
+
+  if (sectionComments.length > 0) {
+    const { error: commentsError } = await supabase.from('assessment_mark_section_comments').upsert(
+      sectionComments.map((s) => ({
+        assessment_mark_id: markId,
+        section_code: s.sectionCode,
+        comment: s.comment,
+      })),
+      { onConflict: 'assessment_mark_id,section_code', ignoreDuplicates: true },
+    );
+    if (commentsError) {
+      return { ok: false, code: 'server', error: commentsError.message };
+    }
   }
 
   const { error: itemsError } = await supabase.from('assessment_mark_items').insert(

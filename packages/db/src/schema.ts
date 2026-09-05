@@ -214,6 +214,14 @@ export const assessmentMarks = pgTable(
       .references(() => users.id),
     slot: assessorSlotEnum('slot').notNull(),
     total: numeric('total', { precision: 5, scale: 2 }),
+    /**
+     * The paper form's SUPERVISOR'S GENERAL COMMENTS block (both TP forms) and
+     * the IPT form's Supervisor's Comments. Optional — never required of the
+     * supervisor (migration 0025). Settable only in the INSERT that creates
+     * this row: `assessment_marks` has no UPDATE grant, so it is append-only
+     * like everything else about a mark.
+     */
+    generalComment: text('general_comment'),
     submittedAt: timestamp('submitted_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -244,6 +252,36 @@ export const assessmentMarkItems = pgTable(
   },
   (t) => [
     uniqueIndex('assessment_mark_items_mark_criterion_idx').on(t.assessmentMarkId, t.criterionId),
+  ],
+);
+
+/**
+ * One comment per CRITERION, which is what the TP forms' merged COMMENTS
+ * column actually is — the cell spans every sub-criterion row in an S/N
+ * group (migration 0025). TP only: the IPT form has no comments column, so an
+ * IPT assessment writes nothing here and uses `generalComment` alone.
+ *
+ * `sectionCode` is `criteria.section_code` ('1' on TP Theory, 'A' on IPT), not
+ * a foreign key — a section is a label repeated across its criteria, not a row
+ * anywhere. Append-only: no UPDATE or DELETE grant, matching the marks these
+ * comments explain.
+ */
+export const assessmentMarkSectionComments = pgTable(
+  'assessment_mark_section_comments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    assessmentMarkId: uuid('assessment_mark_id')
+      .notNull()
+      .references(() => assessmentMarks.id, { onDelete: 'cascade' }),
+    sectionCode: text('section_code').notNull(),
+    comment: text('comment').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('assessment_mark_section_comments_mark_section_key').on(
+      t.assessmentMarkId,
+      t.sectionCode,
+    ),
   ],
 );
 

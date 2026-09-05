@@ -3,6 +3,52 @@ import type { CriterionRow } from '@/lib/marking';
 import type { AssessorMarks, InstrumentReport, ReportData } from './data';
 
 /**
+ * The comment printed in a criterion's merged COMMENTS cell.
+ *
+ * Since 2026-09-05 a supervisor writes one comment per criterion and it is
+ * stored as such. Before that the app forced a comment on each sub-criterion
+ * scored below half, and those rows are still in the database — so when a mark
+ * carries no section comment, the old per-item comments are joined back
+ * together in criterion order. Without that fallback every report generated
+ * before the change would come back blank in this column.
+ */
+function sectionCommentFor(
+  marks: AssessorMarks,
+  sectionCode: string,
+  items: CriterionRow[],
+): string {
+  const stored = marks.commentsBySectionCode.get(sectionCode);
+  if (stored && stored.trim().length > 0) return stored.trim();
+
+  return items
+    .map((item) => marks.itemsByCriterionId.get(item.id)?.comment)
+    .filter((c): c is string => !!c && c.trim().length > 0)
+    .join(' ');
+}
+
+/**
+ * SUPERVISOR'S GENERAL COMMENTS. Same fallback, same reason: a mark submitted
+ * before the change has no general comment of its own, and what filled this
+ * block then was every per-item comment joined together.
+ */
+function generalCommentFor(marks: AssessorMarks): string {
+  if (marks.generalComment && marks.generalComment.trim().length > 0) {
+    return marks.generalComment.trim();
+  }
+  // Only a mark with no criterion comments at all can be a pre-2026-09-05 one,
+  // and only then do the per-item comments stand in for a general comment.
+  // Without this guard a current mark whose supervisor left the general box
+  // empty would repeat its criterion comments down here, printing the same
+  // advice twice on one page.
+  if (marks.commentsBySectionCode.size > 0) return '';
+
+  return [...marks.itemsByCriterionId.values()]
+    .map((i) => i.comment)
+    .filter((c): c is string => !!c && c.trim().length > 0)
+    .join(' ');
+}
+
+/**
  * Renders the VETA result report as a full HTML string for Playwright to
  * print to PDF — layout and copy ported field-for-field from
  * reference/Tathmini Result Report.dc.html (CONTEXT.md non-negotiable #6:
@@ -211,10 +257,7 @@ function assessorPage(
 
   const total = marks.total ?? 0;
   const evalResult = evaluate(total, instrument.maxTotal);
-  const comments = [...marks.itemsByCriterionId.values()]
-    .map((i) => i.comment)
-    .filter((c): c is string => !!c && c.trim().length > 0)
-    .join(' ');
+  const comments = generalCommentFor(marks);
 
   const headerLinesHtml = traineeHeaderLines(trainee)
     .map(
@@ -251,13 +294,12 @@ function assessorPage(
       const sectionLabel = items[0]?.sectionLabel ?? '';
       const span = items.length + 1;
 
-      // The paper form gives each SECTION one comment area, not each item.
-      // Ours are captured per criterion, so they are gathered back into the
-      // section's merged cell in the order the criteria appear.
-      const sectionComment = items
-        .map((item) => marks.itemsByCriterionId.get(item.id)?.comment)
-        .filter((c): c is string => !!c && c.trim().length > 0)
-        .join(' ');
+      // The paper form gives each SECTION one merged comment cell, and since
+      // 2026-09-05 that is exactly how it is captured too. Assessments
+      // submitted before then stored a comment per sub-criterion, so those are
+      // gathered back into the cell in criterion order — a report generated
+      // last week must still print the same way today.
+      const sectionComment = sectionCommentFor(marks, code, items);
 
       const sectionAwarded = items.reduce(
         (sum, item) => sum + (marks.itemsByCriterionId.get(item.id)?.score ?? 0),
@@ -455,9 +497,8 @@ function consolidatedPage(data: ReportData, reportRef: string, generatedAt: stri
 
   const allComments = (['a1', 'a2'] as const).map((slot) => {
     const text = instruments
-      .flatMap((i) => (i.bySlot[slot] ? [...i.bySlot[slot]!.itemsByCriterionId.values()] : []))
-      .map((m) => m.comment)
-      .filter((c): c is string => !!c && c.trim().length > 0)
+      .map((i) => (i.bySlot[slot] ? generalCommentFor(i.bySlot[slot]!) : ''))
+      .filter((c) => c.trim().length > 0)
       .join(' ');
     return {
       tag: slot === 'a1' ? 'ASSESSOR 1 —' : 'ASSESSOR 2 —',

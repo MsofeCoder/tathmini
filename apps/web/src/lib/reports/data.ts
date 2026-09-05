@@ -6,6 +6,17 @@ export interface AssessorMarks {
   submittedAt: string | null;
   total: number | null;
   itemsByCriterionId: Map<string, { score: number; comment: string | null }>;
+  /**
+   * One comment per criterion, keyed by section code — the TP forms' merged
+   * COMMENTS cell (migration 0025). Empty for IPT, which has no such column,
+   * and empty for anything submitted before 2026-09-05, when the comment was
+   * still attached to each sub-criterion. The renderer falls back to joining
+   * `itemsByCriterionId` comments in that case, so older reports print
+   * unchanged.
+   */
+  commentsBySectionCode: Map<string, string>;
+  /** SUPERVISOR'S GENERAL COMMENTS. Null on marks submitted before 0019. */
+  generalComment: string | null;
 }
 
 export interface InstrumentReport {
@@ -118,7 +129,9 @@ export async function getReportData(
       .order('order_index'),
     supabase
       .from('assessment_marks')
-      .select('id, instrument_id, slot, total, submitted_at, supervisor:users(name)')
+      .select(
+        'id, instrument_id, slot, total, submitted_at, general_comment, supervisor:users(name)',
+      )
       .eq('trainee_id', traineeId)
       .not('submitted_at', 'is', null),
   ]);
@@ -138,6 +151,20 @@ export async function getReportData(
     const byCriterion = itemsByMarkId.get(item.assessment_mark_id) ?? new Map();
     byCriterion.set(item.criterion_id, { score: Number(item.score), comment: item.comment });
     itemsByMarkId.set(item.assessment_mark_id, byCriterion);
+  }
+
+  const sectionCommentsRes = markIds.length
+    ? await supabase
+        .from('assessment_mark_section_comments')
+        .select('assessment_mark_id, section_code, comment')
+        .in('assessment_mark_id', markIds)
+    : { data: [] };
+
+  const sectionCommentsByMarkId = new Map<string, Map<string, string>>();
+  for (const row of sectionCommentsRes.data ?? []) {
+    const bySection = sectionCommentsByMarkId.get(row.assessment_mark_id) ?? new Map();
+    bySection.set(row.section_code, row.comment);
+    sectionCommentsByMarkId.set(row.assessment_mark_id, bySection);
   }
 
   const criteriaByInstrument = new Map<string, CriterionRow[]>();
@@ -170,6 +197,8 @@ export async function getReportData(
         submittedAt: mark.submitted_at,
         total: mark.total === null ? null : Number(mark.total),
         itemsByCriterionId: itemsByMarkId.get(mark.id) ?? new Map(),
+        commentsBySectionCode: sectionCommentsByMarkId.get(mark.id) ?? new Map(),
+        generalComment: (mark as { general_comment?: string | null }).general_comment ?? null,
       };
     }
     return {

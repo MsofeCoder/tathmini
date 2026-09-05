@@ -8,12 +8,24 @@
  * local copy via TRAINEE_REGISTER_PATH; see .gitignore's `packages/db/data/`
  * entry for where to put it.
  *
- * Expected shape (one sheet, "Summary"), repeated per route:
- *   ROUTE <n> | | <Supervisor A1> & <Supervisor A2> | ...
- *   No. | Student Name | Registration Number | Course | Mode of Study |
- *     Occpation | Institution | District | Region | Email
- *   <data rows...>
- *   <blank row>
+ * Expected shape (one sheet), repeated per route. Two route-header layouts
+ * are accepted, because the College has now sent both:
+ *
+ *   ROUTE <n>              | | <Supervisor A1> & <Supervisor A2>   (original)
+ *   ROUTE <n>: <A1> & <A2>                                          (FINAL VERSION)
+ *
+ * The second puts everything in the first cell, and writes some routes
+ * without the space ("ROUTE5:"). Both are matched.
+ *
+ * Data columns are located by their HEADER TEXT, not by position. The
+ * September 2026 "FINAL VERSION" inserted `Sex` after Registration Number and
+ * `Mobile Number` before Email, which shifted every later column by one — a
+ * fixed-index parser reads Sex as Course, Course as Mode of Study, and so on
+ * down the row, silently, with no error to notice. Header lookup makes an
+ * inserted column a non-event and an absent one an explicit throw.
+ *
+ *   No. | Student Name | Registration Number | [Sex] | Course | Mode of Study |
+ *     Occpation | Institution | District | Region | [Mobile Number] | Email
  *
  * This script only READS the spreadsheet and VALIDATES it — see
  * validateRoster() below. It does not yet write to a database (no
@@ -38,6 +50,12 @@ export interface RosterRow {
   institution: string;
   district: string;
   region: string;
+  /** Present only in the FINAL VERSION register; '' when the column is absent. */
+  phone: string;
+  /** Present only in the FINAL VERSION register; '' when the column is absent.
+   * Nothing stores this yet — `trainees` has no sex column — but it is parsed
+   * so the data is not silently dropped on the floor. */
+  sex: string;
   email: string;
 }
 
@@ -82,7 +100,67 @@ function normalizeSpaces(value: string): string {
   return value.split(NBSP).join(' ').split(/\s+/).join(' ').trim();
 }
 
-const ROUTE_HEADER_PATTERN = new RegExp('^ROUTE\\s*\\d+$', 'i');
+/**
+ * A route header. Either `ROUTE 1` on its own (supervisors then live in the
+ * third cell) or `ROUTE 1: MKAMA MAUGO & YOHANA YONA` with everything in the
+ * first. The colon form is sometimes written without the space — `ROUTE5:` —
+ * in the September 2026 FINAL VERSION, hence `\s*` before the digits.
+ */
+const ROUTE_HEADER_PATTERN = new RegExp('^ROUTE\\s*(\\d+)\\s*(?::\\s*(.*))?$', 'i');
+
+/** Header text -> RosterRow field. Matched case-insensitively after collapsing
+ * whitespace, so "Institution  " and "institution" both land. "Occpation" is
+ * the College's own spelling in the register and is kept verbatim; the
+ * corrected spelling is accepted too, in case a later file fixes it. */
+const COLUMN_ALIASES: Record<string, keyof RosterRow> = {
+  'no.': 'no',
+  'student name': 'name',
+  'registration number': 'registrationNumber',
+  sex: 'sex',
+  course: 'course',
+  'mode of study': 'modeOfStudy',
+  occpation: 'occupation',
+  occupation: 'occupation',
+  institution: 'institution',
+  district: 'district',
+  region: 'region',
+  'mobile number': 'phone',
+  email: 'email',
+};
+
+/** The columns a row cannot be built without. `sex` and `phone` are absent
+ * from the original register, so they are optional by design. */
+const REQUIRED_COLUMNS: (keyof RosterRow)[] = [
+  'no',
+  'name',
+  'registrationNumber',
+  'course',
+  'modeOfStudy',
+  'occupation',
+  'institution',
+  'district',
+  'region',
+  'email',
+];
+
+type ColumnMap = Partial<Record<keyof RosterRow, number>>;
+
+function readHeaderRow(row: ExcelJS.Row): ColumnMap | null {
+  const map: ColumnMap = {};
+  let matched = 0;
+  row.eachCell({ includeEmpty: false }, (_cellValue, colNumber) => {
+    const label = normalizeSpaces(cell(row, colNumber)).toLowerCase();
+    const field = COLUMN_ALIASES[label];
+    if (field && map[field] === undefined) {
+      map[field] = colNumber;
+      matched += 1;
+    }
+  });
+  // "No." and "Student Name" together identify a header row without matching
+  // a data row that happens to hold similar text.
+  if (map.no === undefined || map.name === undefined || matched < 4) return null;
+  return map;
+}
 
 export async function parseRoster(filePath: string): Promise<RosterRow[]> {
   const workbook = new ExcelJS.Workbook();
@@ -93,35 +171,61 @@ export async function parseRoster(filePath: string): Promise<RosterRow[]> {
   const rows: RosterRow[] = [];
   let currentRoute: string | null = null;
   let currentSupervisors: [string, string] | null = null;
+  let columns: ColumnMap | null = null;
 
   sheet.eachRow((row) => {
-    const first = cell(row, 1);
-    const normalizedFirst = normalizeSpaces(first);
-    if (ROUTE_HEADER_PATTERN.test(normalizedFirst)) {
-      currentRoute = normalizedFirst;
-      const pair = normalizeSpaces(cell(row, 3))
+    const normalizedFirst = normalizeSpaces(cell(row, 1));
+
+    const routeMatch = ROUTE_HEADER_PATTERN.exec(normalizedFirst);
+    if (routeMatch) {
+      currentRoute = `ROUTE ${routeMatch[1]}`;
+      // Supervisors come from after the colon when the header carries them,
+      // and from the third cell otherwise.
+      const pairText = routeMatch[2]?.trim() ? routeMatch[2] : normalizeSpaces(cell(row, 3));
+      const pair = normalizeSpaces(pairText)
         .split('&')
-        .map((s) => s.trim());
+        .map((part) => part.trim());
       currentSupervisors = [pair[0] ?? '', pair[1] ?? ''];
       return;
     }
-    if (first === 'No.' || first === '') return;
-    const no = Number(first);
-    if (!Number.isFinite(no) || !currentRoute || !currentSupervisors) return;
+
+    const header = readHeaderRow(row);
+    if (header) {
+      const missing = REQUIRED_COLUMNS.filter((field) => header[field] === undefined);
+      if (missing.length > 0) {
+        throw new Error(
+          `Header row is missing required column(s): ${missing.join(', ')} — in ${filePath}`,
+        );
+      }
+      columns = header;
+      return;
+    }
+
+    if (normalizedFirst === '') return;
+    if (!currentRoute || !currentSupervisors || !columns) return;
+    const no = Number(normalizedFirst);
+    if (!Number.isFinite(no)) return;
+
+    const at = (field: keyof RosterRow): string => {
+      const col = columns![field];
+      return col === undefined ? '' : cell(row, col);
+    };
 
     rows.push({
       route: currentRoute,
       supervisors: currentSupervisors,
       no,
-      name: cell(row, 2),
-      registrationNumber: cell(row, 3),
-      course: cell(row, 4),
-      modeOfStudy: cell(row, 5),
-      occupation: cell(row, 6),
-      institution: cell(row, 7),
-      district: cell(row, 8),
-      region: cell(row, 9),
-      email: cell(row, 10).toLowerCase(),
+      name: at('name'),
+      registrationNumber: at('registrationNumber'),
+      course: at('course'),
+      modeOfStudy: at('modeOfStudy'),
+      occupation: at('occupation'),
+      institution: at('institution'),
+      district: at('district'),
+      region: at('region'),
+      phone: at('phone'),
+      sex: at('sex'),
+      email: at('email').toLowerCase(),
     });
   });
 

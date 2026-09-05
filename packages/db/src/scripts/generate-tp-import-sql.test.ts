@@ -18,6 +18,8 @@ function row(overrides: Partial<RosterRow>): RosterRow {
     registrationNumber: 'REG-0001',
     course: 'CAVT',
     modeOfStudy: 'In-Campus',
+    phone: '',
+    sex: '',
     occupation: 'Food Production',
     institution: 'Arusha VTC',
     district: 'Arusha',

@@ -12,6 +12,14 @@ export interface SubmitItemInput {
   comment: string;
 }
 
+/** One comment against a whole criterion — the TP forms' merged COMMENTS
+ * cell. Empty comments are dropped before submission rather than stored as
+ * blank rows. */
+export interface SubmitSectionCommentInput {
+  sectionCode: string;
+  comment: string;
+}
+
 export interface SubmitAssessmentInput {
   traineeId: string;
   instrumentId: string;
@@ -19,6 +27,10 @@ export interface SubmitAssessmentInput {
   slot: 'a1' | 'a2';
   criteria: { id: string; itemMax: number }[];
   items: SubmitItemInput[];
+  /** TP only — the IPT form has no per-criterion comments column. */
+  sectionComments: SubmitSectionCommentInput[];
+  /** SUPERVISOR'S GENERAL COMMENTS. Optional on both tracks. */
+  generalComment: string;
 }
 
 /**
