@@ -120,6 +120,20 @@
       "when": 1788590521380,
       "tag": "0016_reports_grouped_by_route",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1788590581380,
+      "tag": "0017_users_contact_email",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1788590641380,
+      "tag": "0018_test_route_ipt_trainees",
+      "breakpoints": true
     }
   ]
 }
