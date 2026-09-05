@@ -181,9 +181,7 @@ export async function parseRoster(filePath: string): Promise<RosterRow[]> {
       currentRoute = `ROUTE ${routeMatch[1]}`;
       // Supervisors come from after the colon when the header carries them,
       // and from the third cell otherwise.
-      const pairText = routeMatch[2]?.trim()
-        ? routeMatch[2]
-        : normalizeSpaces(cell(row, 3));
+      const pairText = routeMatch[2]?.trim() ? routeMatch[2] : normalizeSpaces(cell(row, 3));
       const pair = normalizeSpaces(pairText)
         .split('&')
         .map((part) => part.trim());

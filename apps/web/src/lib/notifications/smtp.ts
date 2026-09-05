@@ -58,8 +58,7 @@ export interface SmtpConfig {
 }
 
 export type SmtpConfigOutcome =
-  | { ok: true; config: SmtpConfig }
-  | { ok: false; missing: readonly string[] };
+  { ok: true; config: SmtpConfig } | { ok: false; missing: readonly string[] };
 
 /**
  * Reads SMTP settings from the environment.

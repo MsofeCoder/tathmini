@@ -68,7 +68,9 @@ export function ReportDownloadButton({
         <p className="text-[14px] font-bold text-[#1c6650]">
           {sent?.status === 'failed' ? 'Report saved' : 'Report saved and sent ✓'}
         </p>
-        <p className="mt-1.5 text-[13px] leading-relaxed text-[#3c4c58]">{doneDetail(sent, alreadySentAt)}</p>
+        <p className="mt-1.5 text-[13px] leading-relaxed text-[#3c4c58]">
+          {doneDetail(sent, alreadySentAt)}
+        </p>
 
         {/* The next thing a supervisor needs is the next trainee, not this
             screen. Offering it here is what stops them tapping back into the

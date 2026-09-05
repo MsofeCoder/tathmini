@@ -399,9 +399,7 @@ function TraineeProfile({
           <div className="mt-1 rounded-xl border border-[#e1e9e6] bg-white p-3.5">
             <p className="text-[13px] font-semibold text-[#3c4c58]">Report</p>
             {reportState === 'sent' ? (
-              <p className="mt-1.5 text-[12.5px] leading-relaxed text-[#1c6650]">
-                Report sent.
-              </p>
+              <p className="mt-1.5 text-[12.5px] leading-relaxed text-[#1c6650]">Report sent.</p>
             ) : reportState === 'queued' ? (
               <p className="mt-1.5 text-[12.5px] leading-relaxed text-[#6b4400]">
                 Report waiting to send. It goes on its own as soon as there is a connection — you do

@@ -47,8 +47,7 @@ export interface EmailMessage {
 }
 
 export type SendResult =
-  | { ok: true; providerMessageId: string | null }
-  | { ok: false; error: string };
+  { ok: true; providerMessageId: string | null } | { ok: false; error: string };
 
 export interface EmailProvider {
   send(message: EmailMessage): Promise<SendResult>;

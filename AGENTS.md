@@ -64,7 +64,10 @@ Rejected on purpose, do not propose: React Native, Flutter, Firebase, Prisma,
 - **PR required. No direct commits to `main`.** Short-lived branches.
 - **ESLint + Prettier** must pass before you call anything done.
 - **Every PR containing a migration** gets the SQL quoted in its description.
-- `pnpm lint && pnpm test && pnpm typecheck` green before you report completion.
+- `pnpm format:check && pnpm lint && pnpm test && pnpm typecheck` green before you
+  report completion. CI runs `format:check` inside the `lint` job, so a branch
+  that passes the other three still fails the build on formatting alone.
+  `pnpm format` fixes it.
 - Add or update tests for what you change, even when nobody asked.
 
 ## Testing expectations
