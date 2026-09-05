@@ -47,6 +47,66 @@ the diff. This file is for knowledge that would otherwise be lost.
 
 ---
 
+## 2026-09-05 · ops · Functions moved to Cape Town; compute and database were on different continents
+
+**Kind:** ops
+**Phase:** 1
+**Commit / PR:** #30
+
+**What changed**
+`apps/web/vercel.json` now pins `"regions": ["cpt1"]`. One line.
+
+**Why this way**
+Nothing had ever set a region, so Vercel defaulted to `iad1` —
+Washington DC. Supabase is in `af-south-1`, Cape Town, and the
+supervisors are in Tanzania. Every page load therefore went
+Tanzania → Washington → Cape Town → Washington → Tanzania: the data
+travelled roughly 25,000 km to answer a question asked 3,000 km from
+where it is stored.
+
+Measured against production before the change, from a low-latency
+connection:
+
+| Route | TTFB |
+| --- | --- |
+| `manifest.webmanifest` (static, no database) | 276 ms |
+| `/login` (middleware runs) | 527 ms |
+| `/home` (middleware + queries) | 713 ms |
+
+So roughly **440 ms per navigation was the trans-Atlantic round trip
+alone**, before a supervisor's own 300–500 ms on 3G to reach Washington
+in the first place.
+
+It is worse than a single hop because `middleware.ts` calls
+`supabase.auth.getUser()` on every request — a network call to the Auth
+server, not a cookie read — and that completes *before* the page starts
+its own queries. The round trips are sequential, not parallel.
+
+Cape Town is the right choice rather than a European region: it puts the
+functions next to the database, which is where the chatty traffic is
+(one navigation is several Supabase calls), while the user's single hop
+to reach them is the cheaper leg.
+
+**Watch out for**
+Edge Middleware still runs at a PoP near the user and cannot be pinned,
+so it keeps its own hop to Cape Town. That is fine — from Tanzania it is
+a short hop — but it means this change does **not** eliminate the auth
+round trip, only the trans-Atlantic page-render leg.
+
+The other two candidates identified in the same investigation are
+deliberately NOT in this change: making middleware's auth check cheaper
+is auth code and needs the stop-and-ask treatment, and caching the
+criteria (89 seed rows re-fetched on every marking screen) may prove
+unnecessary once the geography is fixed. Measure again before doing
+either.
+
+**Verified by**
+Vercel's preview deployment on the PR accepts the region — an invalid
+region fails the deployment rather than degrading silently. Re-measured
+against production after the merge.
+
+---
+
 ## 2026-09-05 · decision · the deadline is Sunday 6 September before lunch, not Monday
 
 **Kind:** decision
