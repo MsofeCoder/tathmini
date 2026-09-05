@@ -8,7 +8,7 @@ import { loadOfflineBundle } from '@/lib/offline-cache';
 import { listQueued } from '@/lib/outbox';
 import { enqueueReport, traineeIdsWithQueuedReports } from '@/lib/report-outbox';
 import { readyToSendReport } from '@/lib/report-readiness';
-import { generateReport } from '@/app/trainee/[id]/actions';
+import type { ReportAttemptResult } from '@/lib/outbox-drain';
 import {
   initials,
   routeProgress,
@@ -278,7 +278,12 @@ function TraineeProfile({
 
     if (!navigator.onLine) return;
     try {
-      const result = await generateReport(trainee.id);
+      // The route handler, not the Server Action: this page is a client
+      // component and cannot declare a maxDuration, so an action invoked here
+      // inherits a budget a Chromium cold start exceeds.
+      const response = await fetch(`/api/reports/${trainee.id}`, { method: 'POST' });
+      if (!response.ok) return; // stays queued for the drainer
+      const result = (await response.json()) as ReportAttemptResult;
       if ('error' in result) {
         // Left queued deliberately: the usual cause is that the marks
         // themselves have not drained yet, which the next pass fixes.
