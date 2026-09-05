@@ -51,6 +51,12 @@ export const users = pgTable('users', {
   role: appRoleEnum('role').notNull(),
   name: text('name').notNull(),
   email: text('email').notNull().unique(),
+  /**
+   * Real, reachable address. NOT used for sign-in — `email` above is the
+   * synthetic @tathmini.internal identifier that authenticates. Nullable:
+   * most accounts have none on file.
+   */
+  contactEmail: text('contact_email'),
   active: boolean('active').notNull().default(true),
   // True until the holder signs in and sets their own password (accounts
   // are admin-provisioned with a generated one-time password — no
