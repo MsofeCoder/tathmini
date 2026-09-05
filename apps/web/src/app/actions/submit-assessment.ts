@@ -151,16 +151,14 @@ export async function submitAssessment(
     .filter((s) => s.comment.length > 0);
 
   if (sectionComments.length > 0) {
-    const { error: commentsError } = await supabase
-      .from('assessment_mark_section_comments')
-      .upsert(
-        sectionComments.map((s) => ({
-          assessment_mark_id: markId,
-          section_code: s.sectionCode,
-          comment: s.comment,
-        })),
-        { onConflict: 'assessment_mark_id,section_code', ignoreDuplicates: true },
-      );
+    const { error: commentsError } = await supabase.from('assessment_mark_section_comments').upsert(
+      sectionComments.map((s) => ({
+        assessment_mark_id: markId,
+        section_code: s.sectionCode,
+        comment: s.comment,
+      })),
+      { onConflict: 'assessment_mark_id,section_code', ignoreDuplicates: true },
+    );
     if (commentsError) {
       return { ok: false, code: 'server', error: commentsError.message };
     }

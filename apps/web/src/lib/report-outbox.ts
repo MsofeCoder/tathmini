@@ -22,10 +22,7 @@ export interface EnqueueReportInput {
   traineeName: string;
 }
 
-export async function enqueueReport({
-  traineeId,
-  traineeName,
-}: EnqueueReportInput): Promise<void> {
+export async function enqueueReport({ traineeId, traineeName }: EnqueueReportInput): Promise<void> {
   await db.reportOutbox.put({
     key: traineeId,
     traineeName,

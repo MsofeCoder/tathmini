@@ -38,13 +38,13 @@ database state you have not seen.
 
 Migrations **0022–0027 applied**, plus main's 0016/0017/0018. Specifically:
 
-| | |
-|---|---|
-| `0022` | Supervisor addresses — **superseded and wrong**, see traps |
-| `0023` + `0026` | TP roster at the College's FINAL VERSION, all 364 trainees |
-| `0024` | 42 test trainees, three on each of the 14 real routes |
-| `0025` | `assessment_mark_section_comments` + `assessment_marks.general_comment` |
-| `0027` | Restores `users.email`, moves real addresses to `contact_email` |
+|                 |                                                                         |
+| --------------- | ----------------------------------------------------------------------- |
+| `0022`          | Supervisor addresses — **superseded and wrong**, see traps              |
+| `0023` + `0026` | TP roster at the College's FINAL VERSION, all 364 trainees              |
+| `0024`          | 42 test trainees, three on each of the 14 real routes                   |
+| `0025`          | `assessment_mark_section_comments` + `assessment_marks.general_comment` |
+| `0027`          | Restores `users.email`, moves real addresses to `contact_email`         |
 
 Vercel env is set: `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM_NAME`,
 `RESULT_COORDINATOR_EMAIL=lyimos673@gmail.com`. Sending from
@@ -83,7 +83,7 @@ conflict-free as of `bb19499`. **#30 is hygiene — do not let it block this.**
 This is the only step that proves the deploy actually works.
 
 **3 · Delete the test trainees.** Query below. **This is not optional and it is
-the most visible defect if missed** — 43 of the 46 sit on *real* routes, so
+the most visible defect if missed** — 43 of the 46 sit on _real_ routes, so
 every supervisor opening the app tomorrow sees fake trainees mixed into their
 own list, and their progress counters are wrong by three.
 
@@ -103,8 +103,8 @@ a cleanup that took too much.
 ### What NOT to drop
 
 **The offline outbox test.** Go offline, mark, submit, reconnect, confirm
-*exactly one* row lands — never two, never zero. It has never been done, it is
-Phase 1's exit gate in `ROADMAP.md`, and offline is the *normal* case in a
+_exactly one_ row lands — never two, never zero. It has never been done, it is
+Phase 1's exit gate in `ROADMAP.md`, and offline is the _normal_ case in a
 workshop, not an edge case. If only one optional thing survives the morning,
 make it this: a double-submitted or lost assessment is the one failure the
 College cannot recover from in the field.
@@ -126,7 +126,7 @@ supervisor. Another agent queried the database, found no coordinator, and
 declared the feature broken. It is not.
 
 **IPT reports do go by e-mail** — To the assessor, Cc the Coordinator. It is
-IPT *trainees* who are never e-mailed, because their register holds a phone and
+IPT _trainees_ who are never e-mailed, because their register holds a phone and
 no address.
 
 **Do not renumber the migrations again.** They were renumbered once, to
