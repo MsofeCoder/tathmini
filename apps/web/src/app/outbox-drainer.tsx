@@ -4,11 +4,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { clearDraft } from '@/lib/drafts';
 import { listDue, recordAttempt, removeQueued } from '@/lib/outbox';
-import {
-  listQueuedReports,
-  recordReportAttempt,
-  removeQueuedReport,
-} from '@/lib/report-outbox';
+import { listQueuedReports, recordReportAttempt, removeQueuedReport } from '@/lib/report-outbox';
 import { drainOutcomeFor } from '@/lib/submission';
 import { submitAssessment } from './actions/submit-assessment';
 import { generateReport } from './trainee/[id]/actions';

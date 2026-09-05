@@ -21,9 +21,7 @@ import type { EmailMessage } from './types';
 const COLLEGE = 'Chuo cha Ualimu wa Elimu ya Ufundi Morogoro (MVTTC)';
 
 function trackLabelEnglish(track: 'TP' | 'IPT'): string {
-  return track === 'IPT'
-    ? 'Industrial Practical Training (IPT)'
-    : 'Teaching Practice (TP)';
+  return track === 'IPT' ? 'Industrial Practical Training (IPT)' : 'Teaching Practice (TP)';
 }
 
 function trackLabelSwahili(track: 'TP' | 'IPT'): string {

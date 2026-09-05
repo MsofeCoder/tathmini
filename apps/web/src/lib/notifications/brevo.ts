@@ -23,8 +23,7 @@ export interface BrevoConfig {
 }
 
 export type ConfigOutcome =
-  | { ok: true; config: BrevoConfig }
-  | { ok: false; missing: readonly string[] };
+  { ok: true; config: BrevoConfig } | { ok: false; missing: readonly string[] };
 
 export function resolveBrevoConfig(
   env: Readonly<Record<string, string | undefined>> = process.env,

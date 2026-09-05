@@ -145,9 +145,7 @@ describe('resolveResultRecipients', () => {
         ASSESSOR,
         COORD,
       );
-      const all = out.ok
-        ? [...out.recipients.to, ...out.recipients.cc, ...out.recipients.bcc]
-        : [];
+      const all = out.ok ? [...out.recipients.to, ...out.recipients.cc, ...out.recipients.bcc] : [];
       expect(all).not.toContain('trainee@example.ac.tz');
     });
 
