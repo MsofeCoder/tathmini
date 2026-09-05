@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { AssessmentActions, type AssessmentAction } from '@/components/assessment-actions';
 import { createClient } from '@/lib/supabase/server';
 import { traineeParticulars, trackChipStyle, trackPointsLabel } from '@/lib/trainees';
+import { ReportDownloadButton } from './report-download-button';
 
 const ASSESSOR_SLOT_LABELS: Record<string, string> = {
   a1: 'Assessor 1',
@@ -153,6 +154,7 @@ export default async function TraineeProfilePage({ params }: { params: Promise<{
               This assessment was submitted and is read-only. Corrections require an Administrator
               override.
             </p>
+            <ReportDownloadButton traineeId={id} />
           </div>
         ) : null}
 

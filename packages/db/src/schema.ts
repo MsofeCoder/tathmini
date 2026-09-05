@@ -289,6 +289,31 @@ export const resultRevisions = pgTable('result_revisions', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+/**
+ * One row per generated PDF, never updated or deleted — a trainee's result
+ * can be regenerated (e.g. after a `result_revisions` correction), and every
+ * past copy stays on record with its own hash, matching the 24-month VETA
+ * audit retention in CONTEXT.md. `storagePath` points into the private
+ * `reports` Storage bucket; RLS on `storage.objects` mirrors `resultsSelect`
+ * below, so a signed URL is only ever mintable by someone who could already
+ * read that trainee's result.
+ */
+export const reports = pgTable('reports', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  traineeId: uuid('trainee_id')
+    .notNull()
+    .references(() => trainees.id, { onDelete: 'cascade' }),
+  resultId: uuid('result_id')
+    .notNull()
+    .references(() => results.id, { onDelete: 'cascade' }),
+  storagePath: text('storage_path').notNull(),
+  sha256Hash: text('sha256_hash').notNull(),
+  generatedById: uuid('generated_by_id')
+    .notNull()
+    .references(() => users.id),
+  generatedAt: timestamp('generated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 // ── Reassignment ────────────────────────────────────────────────
 
 export const reassignments = pgTable('reassignments', {
@@ -381,4 +406,10 @@ export const assessmentMarkItemsRelations = relations(assessmentMarkItems, ({ on
 export const resultsRelations = relations(results, ({ many, one }) => ({
   trainee: one(trainees, { fields: [results.traineeId], references: [trainees.id] }),
   revisions: many(resultRevisions),
+  reports: many(reports),
+}));
+
+export const reportsRelations = relations(reports, ({ one }) => ({
+  trainee: one(trainees, { fields: [reports.traineeId], references: [trainees.id] }),
+  result: one(results, { fields: [reports.resultId], references: [results.id] }),
 }));
