@@ -2,11 +2,17 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { MarkingForm } from '@/components/marking-form';
-import type { OfflineBundle, OfflineInstrument, OfflineTrainee } from '@/lib/db';
-import { draftKey } from '@/lib/drafts';
+import type { OfflineBundle, OfflineInstrument, OfflineTrainee, OutboxRecord } from '@/lib/db';
+import { draftKey, traineeIdsWithDrafts } from '@/lib/drafts';
 import { loadOfflineBundle } from '@/lib/offline-cache';
 import { listQueued } from '@/lib/outbox';
-import { initials, trackChipStyle } from '@/lib/trainees';
+import {
+  initials,
+  routeProgress,
+  statusMeta,
+  trackChipStyle,
+  traineeParticulars,
+} from '@/lib/trainees';
 
 /**
  * The no-signal entry point. Deliberately a client-rendered, statically
@@ -23,17 +29,38 @@ import { initials, trackChipStyle } from '@/lib/trainees';
  */
 export default function OfflinePage() {
   const [bundle, setBundle] = useState<OfflineBundle | null | undefined>(undefined);
-  const [queuedKeys, setQueuedKeys] = useState<Set<string>>(new Set());
+  const [queued, setQueued] = useState<OutboxRecord[]>([]);
+  const [draftTraineeIds, setDraftTraineeIds] = useState<Set<string>>(new Set());
   const [traineeId, setTraineeId] = useState<string | null>(null);
   const [instrumentId, setInstrumentId] = useState<string | null>(null);
+  const [showQueue, setShowQueue] = useState(false);
   const [search, setSearch] = useState('');
 
   useEffect(() => {
     void loadOfflineBundle().then((found) => setBundle(found ?? null));
-    void listQueued().then((queued) => setQueuedKeys(new Set(queued.map((r) => r.key))));
+    void listQueued().then(setQueued);
+    void traineeIdsWithDrafts().then(setDraftTraineeIds);
   }, []);
 
-  const queuedCount = queuedKeys.size;
+  const queuedKeys = useMemo(() => new Set(queued.map((r) => r.key)), [queued]);
+  const queuedCount = queued.length;
+
+  // The SAME pure function the online route list uses, fed the same counts —
+  // so the offline tiles cannot drift from the online ones. That parity is the
+  // point: a supervisor who loses signal mid-route must not see their progress
+  // change underneath them.
+  const progress = useMemo(
+    () =>
+      routeProgress(
+        (bundle?.trainees ?? []).map((t) => ({
+          status: t.status,
+          ownSubmittedCount: t.ownSubmittedCount,
+          requiredCount: t.requiredCount,
+          hasDraft: draftTraineeIds.has(t.id),
+        })),
+      ),
+    [bundle, draftTraineeIds],
+  );
 
   const trainee = bundle?.trainees.find((t) => t.id === traineeId) ?? null;
   const instrument = bundle?.instruments.find((i) => i.id === instrumentId) ?? null;
@@ -64,6 +91,10 @@ export default function OfflinePage() {
     );
   }
 
+  if (showQueue) {
+    return <QueueView records={queued} onBack={() => setShowQueue(false)} />;
+  }
+
   if (trainee && instrument && trainee.slot) {
     return (
       <MarkingForm
@@ -81,10 +112,11 @@ export default function OfflinePage() {
 
   if (trainee) {
     return (
-      <InstrumentPicker
+      <TraineeProfile
         trainee={trainee}
         instruments={bundle.instruments.filter((i) => i.track === trainee.track)}
         queuedKeys={queuedKeys}
+        supervisorName={bundle.supervisorName}
         onPick={setInstrumentId}
         onBack={() => setTraineeId(null)}
       />
@@ -105,11 +137,38 @@ export default function OfflinePage() {
           this device · saved {new Date(bundle.cachedAt).toLocaleString()}
         </p>
         {queuedCount > 0 ? (
-          <p className="mt-2 rounded-lg bg-[#fffaf0] px-3 py-2 text-[12.5px] font-semibold text-[#6b4400]">
-            {queuedCount} completed {queuedCount === 1 ? 'assessment is' : 'assessments are'}{' '}
-            waiting to send. They will go automatically when there is signal.
-          </p>
+          <button
+            type="button"
+            onClick={() => setShowQueue(true)}
+            className="focus:outline-accent mt-2 flex min-h-11 w-full items-center justify-between gap-3 rounded-lg bg-[#fffaf0] px-3 py-2 text-left focus:outline focus:outline-[3px] focus:outline-offset-2"
+          >
+            <span className="text-[12.5px] font-semibold text-[#6b4400]">
+              {queuedCount} completed {queuedCount === 1 ? 'assessment is' : 'assessments are'}{' '}
+              waiting to send. They go automatically when there is signal.
+            </span>
+            <span className="shrink-0 text-[13px] font-bold text-[#6b4400]">View ›</span>
+          </button>
         ) : null}
+
+        {/* The same three tiles as the online route list, from the same
+            routeProgress() call, so the numbers agree in both modes. */}
+        <div className="mt-3 flex gap-2">
+          <Tile value={progress.assessed} label="Assessed" />
+          <Tile value={progress.inProgress} label="In progress" />
+          <Tile value={progress.notStarted} label="Not started" />
+        </div>
+        <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#e1e9e6]">
+          <div
+            className="bg-teal-mid h-full rounded-full"
+            style={{ width: `${progress.pct}%` }}
+            role="progressbar"
+            aria-valuenow={progress.pct}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label="Route completion"
+          />
+        </div>
+        <p className="mt-1 text-[12px] text-[#5f6f7c]">{progress.pct}% of your route assessed</p>
         <div className="focus-within:border-teal-mid mt-3 flex items-center gap-2 rounded-xl border border-[#ccd7d4] bg-white px-3 py-2.5">
           <input
             type="text"
@@ -141,11 +200,22 @@ export default function OfflinePage() {
                   <p className="truncate text-[13px] text-[#5b6b78]">{t.occupation}</p>
                   <p className="truncate text-[12.5px] text-[#5f6f7c]">{t.institution}</p>
                 </div>
-                <span
-                  className="shrink-0 rounded-full px-2 py-1 text-[10.5px] font-extrabold tracking-[0.5px]"
-                  style={{ background: track.bg, color: track.fg }}
-                >
-                  {t.track}
+                <span className="flex shrink-0 flex-col items-end gap-1">
+                  <span
+                    className="rounded-full px-2 py-1 text-[10.5px] font-extrabold tracking-[0.5px]"
+                    style={{ background: track.bg, color: track.fg }}
+                  >
+                    {t.track}
+                  </span>
+                  <span
+                    className="rounded-full px-2 py-0.5 text-[10px] font-bold"
+                    style={{
+                      background: statusMeta(t.status).bg,
+                      color: statusMeta(t.status).fg,
+                    }}
+                  >
+                    {statusMeta(t.status).short}
+                  </span>
                 </span>
               </button>
             </li>
@@ -156,19 +226,41 @@ export default function OfflinePage() {
   );
 }
 
-function InstrumentPicker({
+/**
+ * The offline trainee profile. Shows the same pre-loaded particulars as the
+ * online /trainee/[id] screen, built by the same traineeParticulars() helper
+ * from the register columns cached in the route snapshot — "nothing is typed
+ * in the field" has to hold with no signal too, which is when it matters most.
+ */
+function TraineeProfile({
   trainee,
   instruments,
   queuedKeys,
+  supervisorName,
   onPick,
   onBack,
 }: {
   trainee: OfflineTrainee;
   instruments: OfflineInstrument[];
   queuedKeys: Set<string>;
+  supervisorName: string;
   onPick: (id: string) => void;
   onBack: () => void;
 }) {
+  const rows = traineeParticulars({
+    track: trainee.track,
+    registrationNumber: trainee.registrationNumber,
+    occupation: trainee.occupation,
+    course: trainee.course,
+    modeOfStudy: trainee.modeOfStudy,
+    institution: trainee.institution,
+    region: trainee.region,
+    district: trainee.district,
+    email: trainee.email,
+    phone: trainee.phone,
+    assessedByLabel: supervisorName,
+  });
+
   return (
     <main className="min-h-dvh bg-[#eceff0]">
       <div className="border-b border-[#e1e9e6] bg-white p-4">
@@ -185,6 +277,30 @@ function InstrumentPicker({
         </h1>
         <p className="mt-1 text-[13px] text-[#5f6f7c]">
           {trainee.occupation} · {trainee.institution}
+        </p>
+      </div>
+
+      <div className="p-4 pb-0">
+        <div className="overflow-hidden rounded-2xl border border-[#e1e9e6] bg-white">
+          <div className="border-b border-[#f1f5f4] px-4 py-3">
+            <p className="text-[12px] font-extrabold tracking-[0.6px] text-[#5b6b78]">
+              PRE-LOADED PARTICULARS
+            </p>
+          </div>
+          {rows.map((row) => (
+            <div
+              key={row.label}
+              className="flex justify-between gap-4 border-b border-[#f1f5f4] px-4 py-3.5 last:border-b-0"
+            >
+              <span className="shrink-0 text-[13px] font-semibold text-[#5b6b78]">{row.label}</span>
+              <span className="text-right text-[14px] font-semibold text-[#14232e]">
+                {row.value}
+              </span>
+            </div>
+          ))}
+        </div>
+        <p className="mt-3 text-[12.5px] leading-relaxed text-[#5f6f7c]">
+          Saved on this phone from your last online visit. Nothing here needs typing in the field.
         </p>
       </div>
 
@@ -235,6 +351,66 @@ function InstrumentPicker({
           connection.
         </p>
       </div>
+    </main>
+  );
+}
+
+/** One of the three route-progress tiles, mirroring the online route list. */
+function Tile({ value, label }: { value: number; label: string }) {
+  return (
+    <div className="flex-1 rounded-xl border border-[#e1e9e6] bg-white px-2 py-2 text-center">
+      <p className="text-[18px] font-bold text-[#14232e]">{value}</p>
+      <p className="text-[11px] font-semibold text-[#5f6f7c]">{label}</p>
+    </div>
+  );
+}
+
+/**
+ * The pending-sync queue — ROADMAP.md Phase 1's last unbuilt line. A count
+ * alone is not enough in the field: a supervisor who marked six trainees in a
+ * dead zone needs to see WHICH six are safe, by name, or they will reasonably
+ * assume work was lost and mark somebody twice. Everything shown is read from
+ * the outbox record itself, so it needs no network to describe.
+ */
+function QueueView({ records, onBack }: { records: OutboxRecord[]; onBack: () => void }) {
+  return (
+    <main className="min-h-dvh bg-[#eceff0]">
+      <div className="border-b border-[#e1e9e6] bg-white p-4">
+        <button
+          type="button"
+          onClick={onBack}
+          className="text-teal-mid min-h-11 text-[14px] font-semibold"
+        >
+          ‹ My route
+        </button>
+        <h1 className="mt-1 text-[21px] font-bold tracking-[-0.2px] text-neutral-900">
+          Waiting to send
+        </h1>
+        <p className="mt-1 text-[13px] leading-relaxed text-[#5b6b78]">
+          {records.length} completed {records.length === 1 ? 'assessment' : 'assessments'} saved on
+          this phone. They send themselves when there is signal — you do not need to do anything,
+          and you must not mark these trainees again.
+        </p>
+      </div>
+
+      <ul className="flex flex-col gap-2.5 p-4">
+        {records.map((record) => (
+          <li key={record.key} className="rounded-2xl border border-[#f0dcb4] bg-[#fffaf0] p-3.5">
+            <p className="text-[15px] font-semibold text-[#14232e]">{record.traineeName}</p>
+            <p className="mt-0.5 text-[13px] text-[#6b4400]">{record.instrumentLabel}</p>
+            <p className="mt-1.5 text-[12px] text-[#5f6f7c]">
+              Marked {new Date(record.queuedAt).toLocaleString()}
+            </p>
+            {record.attempts > 0 ? (
+              <p className="mt-1.5 text-[12px] leading-relaxed text-[#8a3a2a]">
+                {record.attempts} send {record.attempts === 1 ? 'attempt' : 'attempts'} so far —
+                still saved here, nothing is lost.
+                {record.lastError ? ` Last error: ${record.lastError}` : ''}
+              </p>
+            ) : null}
+          </li>
+        ))}
+      </ul>
     </main>
   );
 }
