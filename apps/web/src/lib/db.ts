@@ -173,10 +173,57 @@ class TathminiDb extends Dexie {
       cache: 'key',
       reportOutbox: 'key',
     });
-    // v5 adds reportDrafts — a report finished but held back. Same rule as
-    // every upgrade before it: the earlier stores are carried forward, so a
-    // supervisor mid-route loses nothing.
-    this.version(5).stores({
+    /**
+     * v6 exists only because v5 shipped and was withdrawn.
+     *
+     * Between this morning and this revert, a build was live that declared
+     * version 5 and created a table per entity (trainees, assignments,
+     * instruments, criteria, marks, results, reports, meta). Every phone that
+     * opened it has an IndexedDB stamped 5. IndexedDB refuses to open a
+     * database whose stored version is HIGHER than the one the code asks for,
+     * so a build declaring 4 would throw VersionError on exactly those devices
+     * — the app would not start at all, and the supervisor would have no way
+     * to reach their queued work.
+     *
+     * Declaring 6 makes it an upgrade rather than a downgrade. The v5 tables
+     * are dropped by giving them a null schema, which is Dexie's own way of
+     * saying "this store is gone". `drafts`, `outbox`, `cache` and
+     * `reportOutbox` are untouched, so nothing a supervisor has marked or
+     * queued is lost by the revert.
+     *
+     * A phone that never opened the v5 build skips straight from 4 to 6 and
+     * has nothing to drop.
+     */
+    this.version(6).stores({
+      drafts: 'key',
+      outbox: 'key',
+      cache: 'key',
+      reportOutbox: 'key',
+      trainees: null,
+      assignments: null,
+      instruments: null,
+      criteria: null,
+      marks: null,
+      results: null,
+      reports: null,
+      meta: null,
+    });
+
+    /**
+     * v7 adds `reportDrafts` — a report the supervisor has finished and chosen
+     * not to send yet.
+     *
+     * It is 7 rather than 5 because 5 and 6 are both spent: 5 by the withdrawn
+     * local-database build, 6 by the migration that undoes it. A version number
+     * is never reused once a build carrying it has reached a device, or a phone
+     * that opened the earlier one would be told its database is already newer
+     * than the code and refuse to open at all.
+     *
+     * Every earlier store is carried forward, as at every upgrade before this:
+     * a supervisor mid-route keeps their drafts, their queued marks and their
+     * route snapshot.
+     */
+    this.version(7).stores({
       drafts: 'key',
       outbox: 'key',
       cache: 'key',
