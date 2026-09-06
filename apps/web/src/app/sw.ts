@@ -1,69 +1,34 @@
 import { defaultCache } from '@serwist/next/worker';
 import type { PrecacheEntry } from 'serwist';
 import { NetworkOnly, Serwist } from 'serwist';
-import { isShellPath } from '../lib/local/route-match';
 
 /**
- * What makes the app work with the radio off — in one rule.
+ * What makes marking possible with the radio off.
  *
- * Every screen a supervisor uses renders from IndexedDB and needs no server
- * data. What it still needs is an html document, and that is what this
- * provides: ONE precached shell, replayed for every navigation.
+ * Every screen except /offline and /login is server-rendered against
+ * Supabase, and middleware.ts validates the session over the network on
+ * every request — so with no connection the device cannot produce them at
+ * all. Precaching the build's own assets here, and falling back to the
+ * statically prerendered /offline page whenever a navigation fails, is what
+ * lets a supervisor open the app cold in a dead zone and keep working from
+ * the route snapshot in IndexedDB.
  *
- * The previous design cached a document per url, and all three offline
- * failures this project has had were that decision failing in different
- * ways — a fallback document served at another route's url, which App Router
- * refused to hydrate; a rewrite that hid the trainee id from the browser; and
- * a cache that only ever held the screens somebody had already opened online,
- * so anything else fell through to a "this screen needs a connection" page.
- *
- * With one shell there is nothing to enumerate, nothing to warm and nothing
- * to forget. If the worker installed, every screen works — including screens
- * added in a later release and trainees added this morning.
- *
- * Deliberately NOT caching Supabase responses or any per-user data: those are
- * RLS-scoped and often personal, and an opaque http cache on a shared device
- * is the wrong place for them. The shell carries no data at all, which is
- * what makes caching it safe.
+ * Deliberately NOT caching Supabase API responses or any server-rendered
+ * HTML: those are per-user, RLS-scoped and often personal data, and an
+ * opaque HTTP cache on a shared device is the wrong place for them.
+ * Offline data comes from IndexedDB, which the app writes deliberately.
  *
  * `self` is typed inline rather than via `declare const self:
- * ServiceWorkerGlobalScope`, which would need the WebWorker lib — and adding
- * that to this app's tsconfig collides with the DOM lib every other file
- * depends on.
+ * ServiceWorkerGlobalScope`, which would need the WebWorker lib — and
+ * adding that to this app's tsconfig collides with the DOM lib every other
+ * file depends on. This file is bundled by Serwist's own worker pass, so
+ * only the manifest global actually needs describing here.
  */
 const swSelf = self as unknown as {
   __SW_MANIFEST: (PrecacheEntry | string)[] | undefined;
 };
 
-/** The precached document that answers every in-app navigation. `/` is the
- * catch-all route (app/[[...slug]]/page.tsx), prerendered at build. */
-const SHELL_URL = '/';
-
-/**
- * Whether this navigation is one the shell can answer.
- *
- * An ALLOWLIST, asking `route-match.ts` — the same function the shell's own
- * link interceptor uses, so there is one definition of what the shell serves.
- * It was a denylist of server-only paths for about an hour, and that hour is
- * the argument: two new server-rendered areas (`/admin`, and a Coordinator
- * dashboard behind it) appeared on main in a single morning, and a denylist
- * silently swallows every one of them — the shell would render "Screen not
- * found" over a console that works perfectly.
- *
- * With an allowlist the default is safe. A route nobody told this file about
- * goes to the network, which is what an unknown route should do.
- */
-function isShellNavigation(request: Request, url: URL): boolean {
-  return request.mode === 'navigate' && isShellPath(url.pathname);
-}
-
-/**
- * The shell handler below closes over this before it is assigned. That is
- * safe, and deliberate: the closure only runs at fetch time, long after
- * construction returns. The indirection exists because the handler needs to
- * read the instance's own precache, and the instance needs the handler.
- */
-const serwist: Serwist = new Serwist({
+const serwist = new Serwist({
   precacheEntries: swSelf.__SW_MANIFEST,
   skipWaiting: true,
   clientsClaim: true,
@@ -80,45 +45,26 @@ const serwist: Serwist = new Serwist({
      * itself came back 405, because a cache cannot serve one.
      *
      * Every non-GET is excluded too, not just /api. A Server Action is a POST
-     * to a page url, so a rule written only for /api would leave the same
-     * hole one route over. `/api/sync` and `/api/ping` depend on this as
-     * well: a sync served from cache would write yesterday's route over
-     * today's, and a cached probe would report a healthy network at the exact
-     * moment there is none.
+     * to a page URL, so a rule written only for /api would leave the same hole
+     * one route over. Nothing that mutates data should ever be answered from a
+     * cache, and offline data in this app comes from IndexedDB deliberately —
+     * never from an opaque HTTP cache on a shared device.
      */
     {
       matcher: ({ url, request }: { url: URL; request: Request }) =>
         url.pathname.startsWith('/api/') || request.method !== 'GET',
       handler: new NetworkOnly(),
     },
-
-    /**
-     * Every in-app navigation, answered from the precached shell.
-     *
-     * ORDER IS LOAD-BEARING: this must sit ahead of `defaultCache`, which
-     * carries its own navigation and RSC rules for an ordinary
-     * server-rendered Next app. Serwist tries routes in registration order,
-     * so registering this afterwards — with `serwist.registerRoute` — would
-     * mean `defaultCache` claimed the navigation first, went to the network,
-     * missed its cache offline, and left the browser on its own error page.
-     * The whole offline story would be dead, silently, on a line of code
-     * that looked equivalent.
-     *
-     * Cache first, network never: the shell is a static document with no data
-     * in it, so there is nothing to be stale about, and going to the network
-     * would put a doomed request in front of every screen change in a dead
-     * zone. A new build reaches the device through the precache revision
-     * (next.config.ts), which is what that mechanism is for.
-     */
-    {
-      matcher: ({ request, url }: { request: Request; url: URL }) =>
-        isShellNavigation(request, url),
-      handler: async ({ request }: { request: Request }) =>
-        (await serwist.matchPrecache(SHELL_URL)) ?? fetch(request),
-    },
-
     ...defaultCache,
   ],
+  fallbacks: {
+    entries: [
+      {
+        url: '/offline',
+        matcher: ({ request }) => request.destination === 'document',
+      },
+    ],
+  },
 });
 
 serwist.addEventListeners();

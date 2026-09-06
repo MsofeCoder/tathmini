@@ -1,70 +1,70 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { forgetReachability, isReachable, PROBE_TTL_MS } from '@/lib/reachability';
+import { usePathname, useRouter } from 'next/navigation';
+import { isProtectedFromRedirect } from '@/lib/navigation';
 
 /**
- * The "NO SIGNAL" banner — and, since the local-first rebuild, nothing else.
+ * Switches the app between its online and offline screens on its own, so a
+ * supervisor never has to know which mode they are in — the prototype's
+ * manual Online/Offline toggle is gone.
  *
- * It used to REDIRECT. Every screen was server-rendered, so when the
- * connection dropped the app moved the supervisor to `/offline` before they
- * could tap into a navigation that would fail. That was a workaround for
- * screens that could not render without a network, and it caused as much
- * trouble as it prevented: it fired on `navigator.onLine`, which is true on a
- * workshop wifi that routes nowhere, so it both missed the case it existed
- * for and interrupted supervisors when signal flapped. `/trainee/**` had to
- * be excluded from it to stop it throwing away half-finished assessments,
- * which meant the crash it was meant to prevent was still reachable from
- * exactly the screens that mattered.
+ * Every screen except /offline and the marking form is server-rendered
+ * against Supabase, and middleware.ts validates the session over the network,
+ * so those pages simply cannot be produced with no signal. Rather than let a
+ * supervisor tap into a failed navigation and see the service worker's
+ * fallback, this moves them to /offline the moment the connection drops.
  *
- * There is nothing left to redirect to or from. Every screen reads the device
- * and renders the same with or without a connection, so losing signal changes
- * one thing only: whether the supervisor should expect their work to have
- * left the phone yet. That is what the banner says, and it is all it says.
+ * TWO PLACES IT DELIBERATELY DOES NOTHING:
  *
- * It reports REACHABILITY, not `navigator.onLine` — see lib/reachability.ts
- * for why the difference is the normal case here rather than an edge case.
+ * 1. While marking. The marking form is client-rendered and keeps working
+ *    with no signal, drafts and all. Navigating away from it mid-assessment
+ *    to "helpfully" show the offline screen would throw away what is on
+ *    screen and is exactly the interruption `reloadOnOnline: false` was
+ *    disabled to prevent (see next.config.ts). Signal flaps constantly in the
+ *    field; a supervisor must be able to finish the trainee in front of them.
+ *
+ * 2. On the sign-in screens. A supervisor with no signal cannot sign in
+ *    anyway, and bouncing them to /offline would hide the reason.
+ *
+ * navigator.onLine only reports whether the device has a network interface,
+ * not whether Supabase is reachable — it says "online" on a hotel wifi that
+ * routes nowhere. It is a good enough trigger for switching screens because
+ * the outbox is what actually guarantees delivery: a submission that fails
+ * despite navigator.onLine stays queued and is retried.
  */
+
 export function ConnectionWatcher() {
-  // Assume reachable until proven otherwise: flashing a "no signal" banner
-  // for a moment on every cold load would train supervisors to ignore it.
-  const [reachable, setReachable] = useState(true);
+  const router = useRouter();
+  const pathname = usePathname();
+  // Assume online until the browser says otherwise: rendering an offline
+  // banner for a split second on every cold load would train supervisors to
+  // ignore it.
+  const [online, setOnline] = useState(true);
 
   useEffect(() => {
-    let cancelled = false;
-
-    const check = async () => {
-      const result = await isReachable();
-      if (!cancelled) setReachable(result);
-    };
-
-    // The browser's own events are better information than any cached probe
-    // answer, so drop the cache before re-checking on one.
-    const onEvent = () => {
-      forgetReachability();
-      void check();
-    };
-
-    void check();
-    window.addEventListener('online', onEvent);
-    window.addEventListener('offline', onEvent);
-
-    // A connection can die without the browser noticing — signal lost inside
-    // a workshop, a data bundle running out mid-morning — and neither fires
-    // an event. Re-checking on the probe's own cadence is what turns the
-    // banner on in those cases; the probe itself is cached, so this is one
-    // tiny request a few times a minute, and none at all while offline.
-    const timer = setInterval(() => void check(), PROBE_TTL_MS * 3);
-
+    const sync = () => setOnline(navigator.onLine);
+    sync();
+    window.addEventListener('online', sync);
+    window.addEventListener('offline', sync);
     return () => {
-      cancelled = true;
-      window.removeEventListener('online', onEvent);
-      window.removeEventListener('offline', onEvent);
-      clearInterval(timer);
+      window.removeEventListener('online', sync);
+      window.removeEventListener('offline', sync);
     };
   }, []);
 
-  if (reachable) return null;
+  useEffect(() => {
+    if (online) {
+      // Back on the network: leave /offline for the real route list, but only
+      // from the list itself — the offline screen's own marking flow is
+      // client-side state this must not interrupt.
+      if (pathname === '/offline') router.replace('/home');
+      return;
+    }
+    if (!isProtectedFromRedirect(pathname)) router.replace('/offline');
+  }, [online, pathname, router]);
+
+  if (online) return null;
 
   return (
     <div

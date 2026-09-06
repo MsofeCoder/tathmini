@@ -178,16 +178,9 @@
       "breakpoints": true
     },
     {
-      "idx": 28,
-      "version": "7",
-      "when": 1788591061380,
-      "tag": "0028_realtime_publication",
-      "breakpoints": true
-    },
-    {
       "idx": 29,
       "version": "7",
-      "when": 1788591121380,
+      "when": 1788591061380,
       "tag": "0029_purge_test_trainees",
       "breakpoints": true
     },

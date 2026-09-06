@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   initials,
   routeProgress,
@@ -9,9 +10,8 @@ import {
   trackChipStyle,
   type TraineeStatus,
 } from '@/lib/trainees';
-import { useDraftTraineeIds, useSyncStatus } from '@/lib/local/use-device';
-import { requestSync } from '@/lib/sync/client';
-import { emptyRouteMessage } from '@/lib/local/route-status';
+import { saveOfflineBundle, type OfflineBundleInput } from '@/lib/offline-cache';
+import { traineeIdsWithDrafts } from '@/lib/drafts';
 
 export interface RouteListTrainee {
   id: string;
@@ -30,15 +30,8 @@ export interface RouteListProps {
   routeCode: string;
   routeLabel: string | null;
   trainees: RouteListTrainee[];
-  /**
-   * False until the device's first read resolves. Without it an empty array
-   * is ambiguous, and the two meanings are very different to a supervisor
-   * standing in a village: "still reading this phone" is fine, "no trainees
-   * assigned to this route" is alarming and, mid-read, false.
-   */
-  loaded: boolean;
-  /** When this device last heard from the server, or null if it never has. */
-  syncedAt: number | null;
+  /** Snapshot written to IndexedDB so the whole route can be marked with no signal. */
+  offlineBundle: OfflineBundleInput;
 }
 
 /** Highlights the first case-insensitive match of `query` inside `text`. */
@@ -63,15 +56,38 @@ function HighlightedName({ text, query }: { text: string; query: string }) {
 // prototype's fake one — see MEMORY.md: no filter-pill row (that only
 // exists on the coordinator's Phase 3 per-route drill-down, not this
 // supervisor screen).
-export function RouteList({ routeCode, routeLabel, trainees, loaded, syncedAt }: RouteListProps) {
+export function RouteList({ routeCode, routeLabel, trainees, offlineBundle }: RouteListProps) {
+  const router = useRouter();
   const [search, setSearch] = useState('');
 
-  // Live, so a trainee moves to "in progress" the moment the first score is
-  // tapped and back out when their marks drain — without this screen being
-  // reopened. The trainees themselves arrive the same way, from the same
-  // IndexedDB that Realtime writes into.
-  const draftTraineeIds = useDraftTraineeIds();
-  const syncStatus = useSyncStatus();
+  // Loading this screen with a connection is what arms the device for
+  // offline marking, in both halves: the route snapshot goes to IndexedDB,
+  // and prefetching /offline pulls that page's JavaScript into the service
+  // worker's cache. Without the prefetch a supervisor who never opened
+  // /offline while online would have the data but not the code to render
+  // it.
+  useEffect(() => {
+    void saveOfflineBundle(offlineBundle);
+    router.prefetch('/offline');
+  }, [offlineBundle, router]);
+
+  // Drafts live in IndexedDB, which does not exist during the server
+  // render, so the counters start from server state alone and refine once
+  // the device's drafts have been read. Starting empty rather than
+  // blocking on it keeps the list interactive offline-first; the only
+  // visible effect is a trainee moving from "not started" to "in
+  // progress" a moment after paint.
+  const [draftTraineeIds, setDraftTraineeIds] = useState<Set<string>>(() => new Set());
+
+  useEffect(() => {
+    let cancelled = false;
+    void traineeIdsWithDrafts().then((ids) => {
+      if (!cancelled) setDraftTraineeIds(ids);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [trainees]);
 
   const { assessed, inProgress, notStarted, pct } = useMemo(
     () =>
@@ -88,14 +104,6 @@ export function RouteList({ routeCode, routeLabel, trainees, loaded, syncedAt }:
   const outstanding = trainees.length - assessed;
 
   const institutionCount = new Set(trainees.map((t) => t.institution)).size;
-
-  const routeStatus = emptyRouteMessage({
-    loaded,
-    traineeCount: trainees.length,
-    outstanding,
-    syncedAt,
-    syncStatus,
-  });
 
   const query = search.trim().toLowerCase();
   const matched = useMemo(() => {
@@ -120,15 +128,6 @@ export function RouteList({ routeCode, routeLabel, trainees, loaded, syncedAt }:
           {trainees.length} {trainees.length === 1 ? 'trainee' : 'trainees'} · {institutionCount}{' '}
           {institutionCount === 1 ? 'center' : 'centers'}
         </p>
-        {/* How fresh this phone's copy is. Everything on this screen is read
-            from the device, so the supervisor is entitled to know when it last
-            heard from the College — especially after a morning with no signal,
-            where "up to date" and "up to date as of Tuesday" look identical. */}
-        {syncedAt !== null ? (
-          <p className="mt-0.5 text-[12px] text-[#5f6f7c]">
-            Updated {new Date(syncedAt).toLocaleString()}
-          </p>
-        ) : null}
 
         <div className="mt-3 rounded-xl border border-[#d5e6df] bg-[#f1f6f4] px-3.5 py-3">
           <div className="flex items-baseline justify-between">
@@ -143,19 +142,13 @@ export function RouteList({ routeCode, routeLabel, trainees, loaded, syncedAt }:
               style={{ width: `${pct}%`, background: pct === 100 ? '#1c7a5e' : '#12665b' }}
             />
           </div>
-          <p className="mt-2 text-[12px] font-semibold text-[#40614f]">{routeStatus.text}</p>
-          {/* Offered only when pressing it could change something. A retry on a
-              route that is simply empty would suggest the College's own record
-              is wrong. */}
-          {routeStatus.canRetry ? (
-            <button
-              type="button"
-              onClick={() => void requestSync()}
-              className="focus:outline-accent mt-2 min-h-11 w-full rounded-lg border border-[#b9d3c8] bg-white text-[13px] font-bold text-[#1c6650] focus:outline focus:outline-[3px] focus:outline-offset-2"
-            >
-              Try again
-            </button>
-          ) : null}
+          <p className="mt-2 text-[12px] font-semibold text-[#40614f]">
+            {trainees.length === 0
+              ? 'No trainees assigned to this route yet.'
+              : outstanding === 0
+                ? 'Route complete — you have assessed every trainee.'
+                : `${outstanding} still to assess`}
+          </p>
         </div>
 
         <div className="mt-3 flex gap-2">

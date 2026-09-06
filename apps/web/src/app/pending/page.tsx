@@ -19,7 +19,7 @@ import { listQueued } from '@/lib/outbox';
  * second time, and assessment_marks is append-only, so that duplicate is
  * permanent.
  */
-export function PendingScreen() {
+export default function PendingPage() {
   const [records, setRecords] = useState<OutboxRecord[] | null>(null);
 
   useEffect(() => {

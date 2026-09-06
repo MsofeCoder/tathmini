@@ -1,77 +1,77 @@
+import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
-/**
- * Guards the API. Nothing else.
- *
- * Two rounds of simplification got it here, and both were forced by the
- * field:
- *
- * 1. It used to call `supabase.auth.getUser()` on EVERY request — a network
- *    round trip to the Auth server before the page began its own queries.
- *    Measured against production: `/login` 527 ms TTFB, `/home` 713 ms,
- *    against 276 ms for a static file that skips middleware. Roughly 440 ms
- *    of every navigation was this call, before the supervisor's own 3G hop.
- *    Worse, it made the app unopenable offline by construction: every screen
- *    sat behind a check that itself required the network.
- * 2. It then gated page navigations on a session cookie. That is pointless
- *    now. The app is one shell document containing NO data — the screens fill
- *    themselves from IndexedDB, and IndexedDB is filled by `/api/sync`, which
- *    authenticates properly. Gating the shell only produced redirects: to
- *    `/login` for a supervisor whose cookie had lapsed while their marks sat
- *    unsent on the device, and, worst of all, for `/api/sync` itself, whose
- *    caller reads a redirect as "the network failed" and gives up silently.
- *
- * So: an unauthenticated request for a screen gets the shell, which finds no
- * session on the device, asks `/api/sync`, is told 401, and sends the person
- * to sign in. One place decides that, on the client, where it also works with
- * no signal.
- *
- * The boundary was never here. Every read is an RLS-scoped query made with
- * the caller's own session (AGENTS.md rule 1); a forged cookie gets past this
- * file and then reads nothing.
- */
+// /offline renders entirely from the device's own IndexedDB and carries no
+// server data, so it must stay reachable without a session check — the
+// service worker serves it precisely when the network (and therefore the
+// auth check itself) is unavailable. Gating it would make the offline
+// entry point require the very thing it exists to work without.
+//
+// "/" is the install-prompt splash (reference/Tathmini.dc.html's `install`
+// screen) — it has to render before sign-in, for exactly the signed-out
+// first-time visitor the install prompt targets. Matched by exact equality
+// below, never startsWith: every path starts with "/", so a prefix match
+// here would make the whole app public.
+const PUBLIC_PATHS = ['/login', '/offline'];
+const PUBLIC_EXACT_PATHS = ['/'];
 
 /**
- * Supabase's auth cookie is named `sb-<project-ref>-auth-token`, and is
- * chunked into `.0`, `.1` … when it exceeds the browser's per-cookie limit.
- * Matching on the shape rather than a hardcoded name keeps this working
- * across projects and across chunking.
+ * Refreshes the Supabase session cookie on every request (required by
+ * @supabase/ssr — a Server Component alone can't write cookies) and
+ * gates unauthenticated access to everything except /login.
+ *
+ * Deliberately does NOT check users.must_change_password here — that's
+ * a per-account data lookup, not something to embed in every request's
+ * middleware; the /home and /change-password pages themselves enforce
+ * it (see their layout logic).
  */
-function hasSessionCookie(request: NextRequest): boolean {
-  return request.cookies
-    .getAll()
-    .some((cookie) => cookie.name.startsWith('sb-') && cookie.name.includes('auth-token'));
-}
+export async function middleware(request: NextRequest) {
+  let supabaseResponse = NextResponse.next({ request });
 
-/** `/api/ping` is the reachability probe and must answer without a session —
- * its whole job is to prove the round trip completed. */
-const PUBLIC_API_PATHS = ['/api/ping'];
+  const supabase = createServerClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!, {
+    cookies: {
+      getAll() {
+        return request.cookies.getAll();
+      },
+      setAll(cookiesToSet) {
+        for (const { name, value } of cookiesToSet) {
+          request.cookies.set(name, value);
+        }
+        supabaseResponse = NextResponse.next({ request });
+        for (const { name, value, options } of cookiesToSet) {
+          supabaseResponse.cookies.set(name, value, options);
+        }
+      },
+    },
+  });
 
-export function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  // A status code, never a redirect. The sync fetches with `redirect:
-  // 'error'`, so a redirect THROWS, and a throw is read as "the network
-  // failed" — the one outcome that deliberately changes nothing and says
-  // nothing. That left supervisors whose session had lapsed on an empty route
-  // list with no error, no prompt to sign in and nothing to press.
-  if (
-    pathname.startsWith('/api/') &&
-    !PUBLIC_API_PATHS.includes(pathname) &&
-    !hasSessionCookie(request)
-  ) {
-    return Response.json({ error: 'unauthenticated' }, { status: 401 });
+  const isPublicPath =
+    PUBLIC_EXACT_PATHS.includes(request.nextUrl.pathname) ||
+    PUBLIC_PATHS.some((path) => request.nextUrl.pathname.startsWith(path));
+
+  if (!user && !isPublicPath) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/login';
+    return NextResponse.redirect(url);
   }
 
-  return NextResponse.next({ request });
+  return supabaseResponse;
 }
 
 export const config = {
-  // Only the API needs to reach this now, but the matcher still excludes the
-  // worker scripts and the manifest explicitly. Both have bitten this project
-  // before: a service worker script served as a redirect fails registration
-  // outright, and a manifest that returns anything but json makes the browser
-  // silently drop the install prompt.
+  // sw.js and Serwist's worker chunks MUST be excluded: this middleware
+  // redirects anything unauthenticated to /login, and a service worker
+  // script served as a redirect fails registration outright (the spec
+  // disallows it), which would silently disable offline support entirely.
+  //
+  // manifest.webmanifest needs the same treatment: a signed-out visitor is
+  // exactly who the install prompt targets, and a browser that fetches the
+  // manifest and gets a redirect body instead of JSON silently drops the
+  // install prompt rather than erroring loudly.
   matcher: [
     '/((?!_next/static|_next/image|favicon.ico|sw\\.js|swe-worker-.*\\.js|manifest\\.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],

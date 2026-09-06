@@ -1,30 +1,29 @@
 import { describe, expect, it } from 'vitest';
-import type { LocalTrainee } from './db';
-import { buildRouteRows, type DeviceRows } from './local/derive';
+import type { OfflineTrainee } from './db';
 import { routeProgress, statusMeta, traineeParticulars } from './trainees';
 
 /**
- * The screens are only as complete as the rows behind them: a field trimmed
- * from `LocalTrainee`, or dropped from the sync payload that fills it, does
- * not fail the build. It silently blanks a row of the trainee's particulars
- * in the one place a supervisor cannot recover it — in a village with no
- * signal, on the screen that exists so nothing has to be typed in the field.
+ * The offline screens are only as complete as the snapshot behind them: a
+ * field trimmed from OfflineTrainee does not fail the build, it silently
+ * blanks a row of the trainee's particulars in the one place a supervisor
+ * cannot recover it — in a village with no signal.
  *
- * This used to pin the old one-blob route snapshot, back when there were two
- * sets of screens and the risk was that they drifted apart. There is one set
- * now, so the risk moved: the replica in IndexedDB IS what every screen
- * renders, online and off, and these tests pin the contract between it and
- * the helpers that read it.
+ * These tests pin the contract between the cached shape and the helpers the
+ * offline route list and profile feed it, so a change to either side has to be
+ * deliberate. They deliberately use the real helpers the ONLINE screens use;
+ * that shared use is what keeps the two modes from drifting.
  */
 
-function stored(overrides: Partial<LocalTrainee> = {}): LocalTrainee {
+function cached(overrides: Partial<OfflineTrainee> = {}): OfflineTrainee {
   return {
     id: 't1',
     name: 'Asha Mwakalinga',
     occupation: 'Electrical Installation',
     institution: 'Morogoro VTC',
     track: 'TP',
-    routeId: 'r1',
+    status: 'pending',
+    slot: 'a1',
+    submittedInstrumentIds: [],
     registrationNumber: 'MVTTC/TP/2026/0142',
     course: 'TC-TVTE',
     modeOfStudy: 'Full Time',
@@ -32,38 +31,15 @@ function stored(overrides: Partial<LocalTrainee> = {}): LocalTrainee {
     district: 'Morogoro Municipal',
     email: 'asha@example.test',
     phone: null,
+    ownSubmittedCount: 0,
+    requiredCount: 2,
     ...overrides,
   };
 }
 
-const INSTRUMENTS = [
-  { id: 'i-theory', code: 'tp_theory', label: 'Theory', track: 'TP' as const, maxTotal: 50 },
-  {
-    id: 'i-practical',
-    code: 'tp_practical',
-    label: 'Practical Lesson',
-    track: 'TP' as const,
-    maxTotal: 50,
-  },
-];
-
-function device(trainees: LocalTrainee[], overrides: Partial<DeviceRows> = {}): DeviceRows {
-  return {
-    trainees,
-    assignments: [],
-    instruments: INSTRUMENTS,
-    criteria: [],
-    marks: [],
-    results: [],
-    reports: [],
-    session: null,
-    ...overrides,
-  };
-}
-
-describe('the device’s rows drive the screens completely', () => {
-  it('carry every particular the profile prints — no blank rows offline', () => {
-    const t = stored();
+describe('offline snapshot drives the same screens as online', () => {
+  it('carries every particular the profile prints — no blank rows offline', () => {
+    const t = cached();
     const rows = traineeParticulars({
       track: t.track,
       registrationNumber: t.registrationNumber,
@@ -79,7 +55,7 @@ describe('the device’s rows drive the screens completely', () => {
     });
 
     expect(rows.length).toBeGreaterThan(0);
-    // A missing stored field shows up as the em dash placeholder.
+    // A missing cached field shows up as the em dash placeholder.
     expect(rows.filter((r) => r.value === '—')).toHaveLength(0);
     expect(rows.map((r) => r.value)).toContain('MVTTC/TP/2026/0142');
     expect(rows.map((r) => r.value)).toContain('Morogoro · Morogoro Municipal');
@@ -87,45 +63,26 @@ describe('the device’s rows drive the screens completely', () => {
 
   it('gives an IPT trainee a phone row rather than an empty email row', () => {
     const rows = traineeParticulars({
-      ...stored({ track: 'IPT', email: null, phone: '0700000004' }),
+      ...cached({ track: 'IPT', email: null, phone: '0700000004' }),
       assessedByLabel: 'Denis Michael',
     });
     expect(rows.find((r) => r.label === 'Phone')?.value).toBe('0700000004');
     expect(rows.find((r) => r.label === 'Email')).toBeUndefined();
   });
 
-  it('produce the same tile counts the server used to compute', () => {
-    // Derived from raw rows now, not from counts carried alongside them, so
-    // a Realtime change to a single mark cannot leave a stale tile behind.
-    const rows = buildRouteRows(
-      device(
-        [
-          stored({ id: 'a', name: 'A' }),
-          stored({ id: 'b', name: 'B' }),
-          stored({ id: 'c', name: 'C' }),
-          stored({ id: 'd', name: 'D' }),
-        ],
-        {
-          results: [{ traineeId: 'a', lockedAt: '2026-09-06T08:00:00Z' }],
-          marks: [
-            // b: both instruments in — this supervisor's half is done.
-            { key: 'b:i-theory', traineeId: 'b', instrumentId: 'i-theory', submittedAt: 'now' },
-            {
-              key: 'b:i-practical',
-              traineeId: 'b',
-              instrumentId: 'i-practical',
-              submittedAt: 'now',
-            },
-            // c: half done — deriveStatus() collapses this to 'pending', so
-            // the raw counts are what tell it apart from untouched.
-            { key: 'c:i-theory', traineeId: 'c', instrumentId: 'i-theory', submittedAt: 'now' },
-          ],
-        },
-      ),
-    );
+  it('counts the route exactly as the online tiles do', () => {
+    // Same inputs the online page derives server-side; the offline snapshot
+    // has to carry ownSubmittedCount/requiredCount for this to agree, because
+    // deriveStatus() collapses a part-finished TP trainee to 'pending'.
+    const trainees = [
+      cached({ id: 'a', status: 'locked' }),
+      cached({ id: 'b', status: 'partial' }),
+      cached({ id: 'c', status: 'pending', ownSubmittedCount: 1, requiredCount: 2 }),
+      cached({ id: 'd', status: 'pending' }),
+    ];
 
     const progress = routeProgress(
-      rows.map((t) => ({
+      trainees.map((t) => ({
         status: t.status,
         ownSubmittedCount: t.ownSubmittedCount,
         requiredCount: t.requiredCount,
@@ -144,8 +101,8 @@ describe('the device’s rows drive the screens completely', () => {
     expect(progress.notStarted).toBe(0);
   });
 
-  it('renders the prototype’s own status badges', () => {
-    expect(statusMeta('partial').short).toBe('◑ 1 of 2 assessors');
-    expect(statusMeta('locked').short).toBe('✓ Assessed');
+  it('renders the same status badge offline as online', () => {
+    expect(statusMeta(cached({ status: 'partial' }).status).short).toBe('◑ 1 of 2 assessors');
+    expect(statusMeta(cached({ status: 'locked' }).status).short).toBe('✓ Assessed');
   });
 });
