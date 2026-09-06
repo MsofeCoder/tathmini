@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { navigateTo } from '@/lib/local/shell-navigation';
+import { useDeviceRows } from '@/lib/local/use-device';
 
 // Browsers stopped auto-prompting to install a PWA years ago (Chrome
 // dropped its mini-infobar in 2022); the only way a visitor sees an
@@ -23,8 +24,14 @@ const SEEN_KEY = 'tathmini:install-screen-seen';
  * every visit like the prototype's demo state machine does — a supervisor
  * signing in daily should not see an onboarding splash every time.
  */
-export function InstallGate({ destination }: { destination: string }) {
-  const router = useRouter();
+export function InstallScreen() {
+  // Where to go once the splash is done. Read from the device, not the
+  // server: a phone that has synced before knows who is signed in without
+  // asking, which is what lets "/" open with no signal at all. A device with
+  // no session goes to sign-in, where the network is needed anyway.
+  const rows = useDeviceRows();
+  const destination = rows?.session?.userId ? '/home' : '/login';
+
   const [visible, setVisible] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
@@ -44,13 +51,17 @@ export function InstallGate({ destination }: { destination: string }) {
     }
 
     if (standalone || seen) {
-      router.replace(destination);
+      navigateTo(destination, { replace: true });
       return;
     }
 
     setIsIOS(/iphone|ipad|ipod/i.test(navigator.userAgent));
     setVisible(true);
-  }, [destination, router]);
+    // Waits for the device read: `destination` is wrong until it resolves,
+    // and sending a signed-in supervisor to the sign-in screen because
+    // IndexedDB had not answered yet is the kind of bug that looks like a
+    // lost session.
+  }, [destination, rows]);
 
   useEffect(() => {
     function onBeforeInstallPrompt(event: Event) {
@@ -67,7 +78,7 @@ export function InstallGate({ destination }: { destination: string }) {
     } catch {
       // Nothing to do — the splash just reappears next visit.
     }
-    router.replace(destination);
+    navigateTo(destination, { replace: true });
   }
 
   async function handleInstallClick() {
@@ -79,7 +90,7 @@ export function InstallGate({ destination }: { destination: string }) {
     proceed();
   }
 
-  if (!visible) return null;
+  if (!rows || !visible) return null;
 
   return (
     <main className="from-teal-deep to-teal-mid flex min-h-dvh flex-col bg-gradient-to-b px-7 py-10 text-white">
