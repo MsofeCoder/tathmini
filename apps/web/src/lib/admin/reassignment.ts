@@ -121,3 +121,53 @@ export function planRouteMove(input: RouteMoveInput): RouteMoveDecision {
   }
   return { ok: true, a1: input.destinationA1Id, a2: input.destinationA2Id };
 }
+
+/**
+ * Changing ONE assessor for ONE trainee, leaving them on their route.
+ *
+ * This is the case the route template cannot express: a supervisor falls ill, or
+ * a trainee is placed with a specialist for one instrument, and a single slot has
+ * to move without disturbing the other forty people on the route. It writes
+ * `assignments` only — `routes` keeps its standing pair, because the route has not
+ * changed, and the next roster import must not be told otherwise.
+ *
+ * The two refusals are the same ones a route-wide slot change carries, for the
+ * same reasons: a submitted mark in this slot belongs to the assessor who made it,
+ * and one person cannot hold both slots for the same trainee
+ * (`assignments_trainee_supervisor_idx`).
+ */
+export interface TraineeSlotChangeInput {
+  slot: 'a1' | 'a2';
+  /** Who holds this slot now, if anyone. */
+  currentSupervisorId: string | null;
+  /** Who holds the trainee's OTHER slot, if anyone. */
+  otherSlotSupervisorId: string | null;
+  newSupervisorId: string;
+  /** Submitted marks by anyone in THIS slot for this trainee. */
+  submittedMarksInSlot: number;
+}
+
+export type TraineeSlotChangeDecision =
+  { ok: true; supervisorId: string; replaces: string | null } | { ok: false; error: string };
+
+export function planTraineeSlotChange(input: TraineeSlotChangeInput): TraineeSlotChangeDecision {
+  const label = input.slot === 'a1' ? 'Assessor 1' : 'Assessor 2';
+
+  if (input.newSupervisorId === input.currentSupervisorId) {
+    return { ok: false, error: `That supervisor already holds ${label} for this trainee.` };
+  }
+  if (input.submittedMarksInSlot > 0) {
+    return {
+      ok: false,
+      error: `${label} has already submitted a mark for this trainee. A mark belongs to the assessor who made it and cannot be handed on, so this slot can no longer be changed.`,
+    };
+  }
+  if (input.newSupervisorId === input.otherSlotSupervisorId) {
+    return {
+      ok: false,
+      error:
+        'That supervisor already assesses this trainee in the other slot. Two assessors means two people.',
+    };
+  }
+  return { ok: true, supervisorId: input.newSupervisorId, replaces: input.currentSupervisorId };
+}

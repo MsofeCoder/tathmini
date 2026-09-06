@@ -121,9 +121,24 @@ that is slightly less idiomatic.
 - The coordinator read-only path has never been exercised against a real
   session, because no coordinator account exists.
 
+**Follow-up, same day — single-slot reassignment**
+`reassignTraineeSlot()` and `SlotAssigneeForm` were added to the trainee page at
+the user's request: hand *one* assessor slot to another supervisor while the
+trainee stays on their route. Deliberately asymmetric with the route move — a
+route move rewrites both slots from the route's standing pair, this rewrites one
+`assignments` row and leaves `routes` alone, because the route has not changed and
+the next roster import must not be told it has. The new supervisor need not be on
+that route: covering one trainee for an absent colleague is the case this exists
+for. Blocked once that slot has a submitted mark, per-slot rather than
+per-trainee, since the other slot may still be free to move. A `reassignments` row
+is filed already `accepted` with `resolved_at` set — an administrator's change is
+immediate, not a request awaiting an answer, and `from_supervisor_id` is NOT NULL
+so nothing is filed when the slot was empty. Planner is `planTraineeSlotChange()`
+in `lib/admin/reassignment.ts`, 7 further Vitest cases.
+
 **Verified by**
 `pnpm format:check && pnpm lint && pnpm test && pnpm typecheck` green;
-222 Vitest cases, 44 of them new and covering access decisions, the test-row
+229 Vitest cases, 44 of them new and covering access decisions, the test-row
 predicate (including the null-registration rows), reassignment safety,
 duplicate grouping, validation and date formatting. `pnpm --filter
 @tathmini/web build` clean — admin pages are 107–109 kB first-load, under the

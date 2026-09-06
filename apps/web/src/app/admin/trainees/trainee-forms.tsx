@@ -3,7 +3,7 @@
 import { useActionState, useState } from 'react';
 import type { ActionResult } from '@/lib/admin/session';
 import { ActionNote, ConfirmSubmit, SubmitButton } from '../forms';
-import { moveTraineeToRoute, updateTraineeParticulars } from './actions';
+import { moveTraineeToRoute, reassignTraineeSlot, updateTraineeParticulars } from './actions';
 
 export interface ParticularsValues {
   name: string;
@@ -157,5 +157,98 @@ export function RouteMoveForm({
       </div>
       <ActionNote state={state} />
     </form>
+  );
+}
+
+export interface SupervisorChoice {
+  id: string;
+  name: string;
+}
+
+/**
+ * One assessor slot for one trainee. Sits beside the route move rather than
+ * inside it, because the two answer different questions: "this trainee is on the
+ * wrong route" and "this trainee needs a different assessor". Only the second
+ * leaves the route alone.
+ */
+export function SlotAssigneeForm({
+  traineeId,
+  traineeName,
+  slot,
+  currentName,
+  currentId,
+  supervisors,
+  blockedReason,
+  disabled,
+}: {
+  traineeId: string;
+  traineeName: string;
+  slot: 'a1' | 'a2';
+  currentName: string | null;
+  currentId: string | null;
+  supervisors: SupervisorChoice[];
+  /** Set when this slot can no longer change — a mark has been submitted in it. */
+  blockedReason: string | null;
+  disabled: boolean;
+}) {
+  const [state, formAction] = useActionState<ActionResult | null, FormData>(
+    reassignTraineeSlot,
+    null,
+  );
+  const [chosen, setChosen] = useState('');
+  const label = slot === 'a1' ? 'Assessor 1' : 'Assessor 2';
+  const chosenName = supervisors.find((s) => s.id === chosen)?.name ?? '';
+
+  return (
+    <div className="border-t border-[#f2f5f4] py-3 first:border-t-0">
+      <p className="text-[13px] text-[#14232e]">
+        <span className="text-[#5b6b78]">{label}: </span>
+        <span className="font-semibold">
+          {currentName ?? <span className="text-[#8a3a2a]">nobody assigned</span>}
+        </span>
+      </p>
+
+      {blockedReason ? (
+        <p className="mt-1 text-[12.5px] leading-relaxed text-[#5b6b78]">{blockedReason}</p>
+      ) : disabled ? null : (
+        <form action={formAction} className="mt-2">
+          <input type="hidden" name="traineeId" value={traineeId} />
+          <input type="hidden" name="slot" value={slot} />
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="sr-only" htmlFor={`assignee-${traineeId}-${slot}`}>
+              {label} for {traineeName}
+            </label>
+            <select
+              id={`assignee-${traineeId}-${slot}`}
+              name="supervisorId"
+              value={chosen}
+              onChange={(event) => setChosen(event.target.value)}
+              className="focus:outline-accent min-h-[44px] w-full min-w-[200px] max-w-[260px] rounded-[10px] border border-[#ccd7d4] bg-white px-2.5 text-[13px] text-[#14232e] focus:outline focus:outline-[3px] focus:outline-offset-1"
+            >
+              <option value="">Hand this slot to…</option>
+              {supervisors
+                .filter((s) => s.id !== currentId)
+                .map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+            </select>
+
+            {chosen ? (
+              <ConfirmSubmit
+                tone="primary"
+                label="Reassign"
+                confirmLabel={`Yes, ${chosenName} takes ${label}`}
+                question={`Give ${label} for ${traineeName} to ${chosenName}? Only this trainee changes — the route keeps its own pair of assessors, and everyone else on it is untouched. ${
+                  currentName ? `${currentName} will no longer see this trainee.` : ''
+                }`}
+              />
+            ) : null}
+          </div>
+          <ActionNote state={state} />
+        </form>
+      )}
+    </div>
   );
 }

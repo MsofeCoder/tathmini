@@ -3,6 +3,7 @@ import {
   blockReasonText,
   planRouteMove,
   planSlotReassignment,
+  planTraineeSlotChange,
   type MoveCandidate,
 } from './reassignment';
 
@@ -107,5 +108,57 @@ describe('planRouteMove', () => {
 
   it('refuses a move to the route the trainee is already on', () => {
     expect(planRouteMove({ ...base, destinationRouteId: 'r1' }).ok).toBe(false);
+  });
+});
+
+describe('planTraineeSlotChange', () => {
+  const base = {
+    slot: 'a1' as const,
+    currentSupervisorId: A1,
+    otherSlotSupervisorId: A2,
+    newSupervisorId: NEW,
+    submittedMarksInSlot: 0,
+  };
+
+  it('hands one slot to someone else and says who it replaced', () => {
+    expect(planTraineeSlotChange(base)).toEqual({ ok: true, supervisorId: NEW, replaces: A1 });
+  });
+
+  it('fills an empty slot, with nobody replaced', () => {
+    expect(planTraineeSlotChange({ ...base, currentSupervisorId: null })).toEqual({
+      ok: true,
+      supervisorId: NEW,
+      replaces: null,
+    });
+  });
+
+  it('refuses once that slot has submitted a mark', () => {
+    const decision = planTraineeSlotChange({ ...base, submittedMarksInSlot: 1 });
+    expect(decision.ok).toBe(false);
+    if (!decision.ok) expect(decision.error).toContain('Assessor 1');
+  });
+
+  it('refuses to put the other slot’s supervisor into this one', () => {
+    expect(planTraineeSlotChange({ ...base, newSupervisorId: A2 }).ok).toBe(false);
+  });
+
+  it('refuses a change that changes nothing', () => {
+    expect(planTraineeSlotChange({ ...base, newSupervisorId: A1 }).ok).toBe(false);
+  });
+
+  it('names the slot it is talking about', () => {
+    const decision = planTraineeSlotChange({
+      ...base,
+      slot: 'a2',
+      currentSupervisorId: A2,
+      otherSlotSupervisorId: A1,
+      submittedMarksInSlot: 1,
+    });
+    if (decision.ok) throw new Error('expected a refusal');
+    expect(decision.error).toContain('Assessor 2');
+  });
+
+  it('does not care whether the new supervisor is on the trainee’s route — that is the point', () => {
+    expect(planTraineeSlotChange({ ...base, newSupervisorId: 'someone-off-route' }).ok).toBe(true);
   });
 });

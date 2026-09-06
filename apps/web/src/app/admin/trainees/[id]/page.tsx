@@ -6,7 +6,7 @@ import { requireAdmin } from '@/lib/admin/session';
 import { isTestTrainee, TEST_TRAINEE_DELETE_SQL } from '@/lib/admin/test-data';
 import { isUuid } from '@/lib/admin/validation';
 import { Badge, Card, Code, EmptyRow, PageHeader, TableWrap, Td, Th } from '../../ui';
-import { ParticularsForm, RouteMoveForm } from '../trainee-forms';
+import { ParticularsForm, RouteMoveForm, SlotAssigneeForm } from '../trainee-forms';
 
 export const dynamic = 'force-dynamic';
 
@@ -69,6 +69,10 @@ export default async function AdminTraineePage({ params }: { params: Promise<{ i
   const routeById = new Map(routes.map((r) => [r.id, r]));
   const userById = new Map(users.map((u) => [u.id, u]));
   const instrumentById = new Map((instrumentsRes.data ?? []).map((i) => [i.id as string, i]));
+
+  const supervisorChoices = users
+    .filter((u) => u.role === 'supervisor' && u.active)
+    .map((u) => ({ id: u.id, name: u.name }));
 
   const route = routeById.get(trainee.route_id);
   const assignments = assignmentsRes.data ?? [];
@@ -147,22 +151,36 @@ export default async function AdminTraineePage({ params }: { params: Promise<{ i
             <strong>{route?.code ?? 'No route'}</strong>
             {route?.label ? ` · ${route.label}` : ''}
           </p>
-          <ul className="mt-2 space-y-1 text-[13px] text-[#14232e]">
+          <p className="mt-1 text-[12.5px] leading-relaxed text-[#5b6b78]">
+            Reassigning a slot here changes this trainee only. The route keeps its own standing pair
+            of assessors, and nobody else on it is affected — use the move below to change the route
+            itself.
+          </p>
+
+          <div className="mt-3">
             {(['a1', 'a2'] as const).map((slot) => {
               const assignment = assignments.find((a) => a.slot === slot);
               const supervisor = assignment ? userById.get(assignment.supervisor_id) : undefined;
+              const submittedInSlot = submitted.filter((m) => m.slot === slot).length;
               return (
-                <li key={slot}>
-                  <span className="text-[#5b6b78]">Assessor {slot === 'a1' ? '1' : '2'}: </span>
-                  {supervisor ? (
-                    supervisor.name
-                  ) : (
-                    <span className="text-[#8a3a2a]">nobody assigned</span>
-                  )}
-                </li>
+                <SlotAssigneeForm
+                  key={slot}
+                  traineeId={trainee.id}
+                  traineeName={trainee.name}
+                  slot={slot}
+                  currentId={assignment?.supervisor_id ?? null}
+                  currentName={supervisor?.name ?? null}
+                  supervisors={supervisorChoices}
+                  disabled={!canWrite}
+                  blockedReason={
+                    submittedInSlot > 0
+                      ? `This slot has already submitted ${submittedInSlot === 1 ? 'a mark' : `${submittedInSlot} marks`} for this trainee. A mark belongs to the assessor who made it, so the slot can no longer be handed on.`
+                      : null
+                  }
+                />
               );
             })}
-          </ul>
+          </div>
         </div>
         <RouteMoveForm
           traineeId={trainee.id}
