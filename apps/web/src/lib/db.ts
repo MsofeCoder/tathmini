@@ -48,6 +48,28 @@ export interface ReportOutboxRecord {
   lastError: string | null;
 }
 
+/**
+ * A report the supervisor has finished but chosen not to send yet.
+ *
+ * Deliberately holds NO document. Nothing is rendered when a draft is saved,
+ * so the PDF — and the submission date printed on it — is produced at the
+ * moment the supervisor actually sends, days later if they like. A draft that
+ * carried a pre-rendered report would carry the wrong date the moment it was
+ * left overnight.
+ *
+ * On the device rather than in the database, like every other draft here: the
+ * decision to hold a report back is personal to the supervisor and has to
+ * survive with no signal, which is exactly when it gets made.
+ */
+export interface ReportDraftRecord {
+  /** The trainee id — one report per trainee per assessor. */
+  key: string;
+  traineeName: string;
+  savedAt: number;
+  /** The supervisor's own note to themselves, e.g. "check the spelling first". */
+  note?: string;
+}
+
 export interface OutboxRecord {
   key: string;
   payload: SubmitAssessmentInput;
@@ -134,6 +156,7 @@ class TathminiDb extends Dexie {
   outbox!: Table<OutboxRecord, string>;
   cache!: Table<OfflineBundle, string>;
   reportOutbox!: Table<ReportOutboxRecord, string>;
+  reportDrafts!: Table<ReportDraftRecord, string>;
 
   constructor() {
     super('tathmini-drafts');
@@ -150,7 +173,6 @@ class TathminiDb extends Dexie {
       cache: 'key',
       reportOutbox: 'key',
     });
-
     /**
      * v6 exists only because v5 shipped and was withdrawn.
      *
@@ -185,6 +207,28 @@ class TathminiDb extends Dexie {
       results: null,
       reports: null,
       meta: null,
+    });
+
+    /**
+     * v7 adds `reportDrafts` — a report the supervisor has finished and chosen
+     * not to send yet.
+     *
+     * It is 7 rather than 5 because 5 and 6 are both spent: 5 by the withdrawn
+     * local-database build, 6 by the migration that undoes it. A version number
+     * is never reused once a build carrying it has reached a device, or a phone
+     * that opened the earlier one would be told its database is already newer
+     * than the code and refuse to open at all.
+     *
+     * Every earlier store is carried forward, as at every upgrade before this:
+     * a supervisor mid-route keeps their drafts, their queued marks and their
+     * route snapshot.
+     */
+    this.version(7).stores({
+      drafts: 'key',
+      outbox: 'key',
+      cache: 'key',
+      reportOutbox: 'key',
+      reportDrafts: 'key',
     });
   }
 }

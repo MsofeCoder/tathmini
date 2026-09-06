@@ -1,7 +1,14 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 import { generateReport } from './actions';
+import { getReportDownloadUrl } from './download-actions';
+import {
+  describeAge,
+  getReportDraft,
+  removeReportDraft,
+  saveReportDraft,
+} from '@/lib/report-drafts';
 import type { EmailOutcome } from '@/lib/notifications/send';
 
 /** Formatted on a fixed locale and the College's own timezone so the server
@@ -17,34 +24,58 @@ const SENT_DATE = new Intl.DateTimeFormat('en-GB', {
 });
 
 /**
- * Submits this supervisor's own VETA report — generates the PDF server-side,
- * stores it, sends it to the trainee (TP) or the assessor (IPT), and hands the
- * browser a short-lived signed URL for the supervisor's own copy.
+ * Everything a supervisor does with their own report: hold it back, send it,
+ * and afterwards take a copy.
  *
- * Once sent, the control is REPLACED rather than merely disabled. Sending is
- * irreversible and outward-facing: a second tap posts a second copy of a
- * trainee's result to their inbox. A disabled button still invites the tap
- * that a slow connection makes tempting; removing it entirely, and replacing
- * it with the next thing the supervisor actually needs, is what stops it.
+ * SAVING A DRAFT stores no document — only the fact that this one is finished
+ * and waiting. The PDF is rendered when they send, which is what makes the
+ * date on the page the date they actually submitted it rather than the day
+ * they set it aside. It is kept on the device, so the decision survives with
+ * no signal, which is when it usually gets made.
  *
- * `alreadySentAt` comes from the server for the same reason — this
- * component's own state dies on a reload, and a supervisor who refreshes
- * after sending must not be offered the button again.
+ * SENDING is still irreversible and still replaces its own control rather than
+ * disabling it: a second tap posts a second copy of a trainee's result to
+ * their inbox, and a disabled button invites exactly the tap a slow connection
+ * makes tempting.
+ *
+ * DOWNLOADING signs the stored file again. Nothing is regenerated, so the copy
+ * is byte-for-byte what was e-mailed, carrying its original submission date —
+ * a report downloaded next month is not silently re-dated to next month.
  */
 export function ReportDownloadButton({
   traineeId,
+  traineeName,
   alreadySentAt,
 }: {
   traineeId: string;
+  traineeName: string;
   alreadySentAt?: string | null;
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState<EmailOutcome | null>(null);
+  const [draftSavedAt, setDraftSavedAt] = useState<number | null>(null);
+  const [draftChecked, setDraftChecked] = useState(false);
 
   const done = sent !== null || !!alreadySentAt;
 
-  function handleClick() {
+  // IndexedDB is not readable on the server, so the held-back state arrives
+  // after the first paint. Until it does, neither the draft banner nor the
+  // send button is shown — offering "Save as draft" for a quarter of a second
+  // to someone who already saved one is worse than a beat of nothing.
+  useEffect(() => {
+    let live = true;
+    void getReportDraft(traineeId).then((draft) => {
+      if (!live) return;
+      setDraftSavedAt(draft?.savedAt ?? null);
+      setDraftChecked(true);
+    });
+    return () => {
+      live = false;
+    };
+  }, [traineeId]);
+
+  function handleSend() {
     if (pending || done) return;
     setError(null);
     startTransition(async () => {
@@ -53,11 +84,43 @@ export function ReportDownloadButton({
         setError(result.error);
         return;
       }
+      // The held-back marker has served its purpose the moment the report is
+      // away; leaving it would list a sent report as still waiting.
+      await removeReportDraft(traineeId);
+      setDraftSavedAt(null);
       // Set the outcome BEFORE handing over the signed URL: the link carries a
       // Content-Disposition attachment, so the browser downloads without
       // leaving the page and this stays on screen. A supervisor must not walk
       // away from a workshop unsure whether the result actually went out.
       setSent(result.email);
+      window.location.assign(result.url);
+    });
+  }
+
+  function handleSaveDraft() {
+    if (pending || done) return;
+    setError(null);
+    startTransition(async () => {
+      await saveReportDraft({ traineeId, traineeName });
+      setDraftSavedAt(Date.now());
+    });
+  }
+
+  function handleDiscardDraft() {
+    startTransition(async () => {
+      await removeReportDraft(traineeId);
+      setDraftSavedAt(null);
+    });
+  }
+
+  function handleDownload() {
+    setError(null);
+    startTransition(async () => {
+      const result = await getReportDownloadUrl(traineeId);
+      if ('error' in result) {
+        setError(result.error);
+        return;
+      }
       window.location.assign(result.url);
     });
   }
@@ -72,15 +135,74 @@ export function ReportDownloadButton({
           {doneDetail(sent, alreadySentAt)}
         </p>
 
+        <button
+          type="button"
+          onClick={handleDownload}
+          disabled={pending}
+          className="focus:outline-accent mt-3 flex min-h-[48px] w-full items-center justify-center rounded-xl border border-[#12665b] bg-white text-[15px] font-semibold text-[#12665b] focus:outline focus:outline-[3px] focus:outline-offset-2 disabled:opacity-70"
+        >
+          {pending ? 'Preparing your copy…' : 'Download my copy'}
+        </button>
+
+        {error ? (
+          <p role="alert" className="mt-2 text-[13px] leading-relaxed text-[#8a3a2a]">
+            {error}
+          </p>
+        ) : null}
+
         {/* The next thing a supervisor needs is the next trainee, not this
             screen. Offering it here is what stops them tapping back into the
             send control looking for a way onward. */}
         <a
           href="/home"
-          className="focus:outline-accent bg-teal-mid mt-3 flex min-h-[48px] items-center justify-center rounded-xl text-[15px] font-semibold text-white focus:outline focus:outline-[3px] focus:outline-offset-2"
+          className="focus:outline-accent bg-teal-mid mt-2.5 flex min-h-[48px] items-center justify-center rounded-xl text-[15px] font-semibold text-white focus:outline focus:outline-[3px] focus:outline-offset-2"
         >
           Back to my route
         </a>
+      </div>
+    );
+  }
+
+  if (!draftChecked) {
+    return <div className="mt-3 min-h-[48px]" aria-hidden="true" />;
+  }
+
+  if (draftSavedAt !== null) {
+    return (
+      <div className="mt-3 rounded-xl border border-[#e0c39a] bg-[#fff8ec] p-3.5">
+        <p className="text-[14px] font-bold text-[#7a5a12]">Saved as a draft</p>
+        <p className="mt-1.5 text-[13px] leading-relaxed text-[#5a4212]">
+          Held on this phone since {describeAge(draftSavedAt)}. Nothing has been sent yet. The date
+          on the report will be the day you send it, not today.
+        </p>
+
+        <button
+          type="button"
+          onClick={handleSend}
+          disabled={pending}
+          className="bg-teal-mid focus:outline-accent mt-3 min-h-[48px] w-full rounded-xl text-[15px] font-semibold text-white focus:outline focus:outline-[3px] focus:outline-offset-2 disabled:opacity-70"
+        >
+          {pending ? 'Submitting and sending…' : 'Send it now'}
+        </button>
+
+        <button
+          type="button"
+          onClick={handleDiscardDraft}
+          disabled={pending}
+          className="focus:outline-accent mt-2 min-h-[44px] w-full rounded-xl border border-[#d9c49c] bg-white text-[14px] font-semibold text-[#7a5a12] focus:outline focus:outline-[3px] focus:outline-offset-2 disabled:opacity-70"
+        >
+          Discard the draft
+        </button>
+        <p className="mt-1.5 text-[12px] leading-relaxed text-[#5a4212]">
+          Discarding removes the reminder only. Your marks are already submitted and are not
+          affected.
+        </p>
+
+        {error ? (
+          <p role="alert" className="mt-2 text-[13px] leading-relaxed text-[#8a3a2a]">
+            {error}
+          </p>
+        ) : null}
       </div>
     );
   }
@@ -89,14 +211,26 @@ export function ReportDownloadButton({
     <div className="mt-3">
       <button
         type="button"
-        onClick={handleClick}
+        onClick={handleSend}
         disabled={pending}
         className="bg-teal-mid focus:outline-accent min-h-[48px] w-full rounded-xl text-[15px] font-semibold text-white focus:outline focus:outline-[3px] focus:outline-offset-2 disabled:opacity-70"
       >
         {pending ? 'Submitting and sending…' : 'Submit and send report'}
       </button>
+
+      <button
+        type="button"
+        onClick={handleSaveDraft}
+        disabled={pending}
+        className="focus:outline-accent mt-2 min-h-[48px] w-full rounded-xl border border-[#ccd7d4] bg-white text-[15px] font-semibold text-[#3c4c58] focus:outline focus:outline-[3px] focus:outline-offset-2 disabled:opacity-70"
+      >
+        Save as a draft and send later
+      </button>
+
       <p className="mt-2 text-[12.5px] leading-relaxed text-[#5f6f7c]">
-        This stores the report and e-mails it. It can only be done once.
+        Sending stores the report and e-mails it, and can only be done once. Saving a draft sends
+        nothing — it keeps this report on your Pending list until you are ready, and the report will
+        be dated the day you send it.
       </p>
       {error ? (
         <p role="alert" className="mt-2 text-[13px] leading-relaxed text-[#8a3a2a]">

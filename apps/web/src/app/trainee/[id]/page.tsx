@@ -215,6 +215,7 @@ export default async function TraineeProfilePage({ params }: { params: Promise<{
             <ReportPreviewButton traineeId={id} />
             <ReportDownloadButton
               traineeId={id}
+              traineeName={trainee.name}
               alreadySentAt={existingReport?.generated_at ?? null}
             />
           </div>

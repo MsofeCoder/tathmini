@@ -57,7 +57,14 @@ export async function generateAndSendReport(
   }
 
   const reportRef = `TM-${new Date().getFullYear()}-${randomUUID().slice(0, 8).toUpperCase()}`;
-  const html = renderReportHtml(data, reportRef);
+  /**
+   * The moment of submission, taken once and printed on the document. Passed
+   * explicitly rather than left to a clock inside the renderer because a
+   * report may have been saved as a draft days ago — what belongs on the page
+   * is when the supervisor SENT it, which is now.
+   */
+  const submittedAt = new Date();
+  const html = renderReportHtml(data, reportRef, submittedAt);
   const pdf = await renderPdf(html);
   const hash = createHash('sha256').update(pdf).digest('hex');
 

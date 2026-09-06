@@ -278,3 +278,37 @@ describe('renderReportHtml — criterion and general comments', () => {
     expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
   });
 });
+
+describe('renderReportHtml — the date the report carries', () => {
+  /**
+   * The guarantee behind saving a report as a draft: a report set aside on
+   * Monday and submitted on Friday must be dated Friday. The submission date
+   * is therefore an input to the render, not a clock read inside it.
+   */
+  it('prints the submission moment it is given, not the moment it renders', () => {
+    const html = renderReportHtml(tpData(), 'TM-TEST', new Date('2026-09-11T09:30:00Z'));
+    expect(html).toContain('11 Sept 2026');
+  });
+
+  it('dates two renders of the same marks differently when they are submitted days apart', () => {
+    const monday = renderReportHtml(tpData(), 'TM-TEST', new Date('2026-09-07T08:00:00Z'));
+    const friday = renderReportHtml(tpData(), 'TM-TEST', new Date('2026-09-11T08:00:00Z'));
+    expect(monday).toContain('7 Sept 2026');
+    expect(friday).toContain('11 Sept 2026');
+    expect(monday).not.toContain('11 Sept 2026');
+  });
+
+  it('leaves the per-assessment date alone — that is when the marking happened', () => {
+    // tpData()'s marks were submitted on 1 January; submitting the report in
+    // September must not rewrite that.
+    const html = renderReportHtml(tpData(), 'TM-TEST', new Date('2026-09-12T08:00:00Z'));
+    expect(html).toContain('01/01/2026');
+  });
+
+  it('still dates itself now when no submission moment is given', () => {
+    const before = Date.now();
+    const html = renderReportHtml(tpData(), 'TM-TEST');
+    const year = new Date(before).getFullYear();
+    expect(html).toContain(String(year));
+  });
+});
