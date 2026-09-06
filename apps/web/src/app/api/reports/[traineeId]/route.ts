@@ -9,8 +9,8 @@ import { generateAndSendReport } from '@/lib/reports/generate';
  * A Server Action runs inside the serverless function of the route that
  * invoked it and inherits that route's `maxDuration`. OutboxDrainer is mounted
  * in the root layout, so on reconnect it fires from wherever the supervisor
- * happens to be — in practice `/trainee` or `/pending`, which are static
- * client pages and therefore cannot declare a duration at all. Those inherit the
+ * happens to be — in practice `/offline` or `/pending`, which are client
+ * components and therefore cannot declare a duration at all. Those inherit the
  * platform default, which a headless Chromium cold start alone exceeds. The
  * action timed out, the drainer caught the throw and moved on, and the report
  * sat in the queue having told the supervisor it was on its way.

@@ -1,7 +1,10 @@
 'use client';
 
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { activeNavHref } from '@/lib/navigation';
-import { usePendingCount } from '@/lib/local/use-device';
+import { listQueued } from '@/lib/outbox';
 
 /**
  * The prototype's bottom navigation (reference/Tathmini.dc.html lines
@@ -34,10 +37,15 @@ const TABS: Tab[] = [
   { href: '/account', label: 'Account', radius: '50% 50% 4px 4px' },
 ];
 
-export function BottomNav({ pathname }: { pathname: string }) {
-  // Live from IndexedDB: the count has to fall the moment the outbox drains
-  // and rise the moment something is queued, without this bar being remounted.
-  const pendingCount = usePendingCount();
+export function BottomNav() {
+  const pathname = usePathname();
+  const [pendingCount, setPendingCount] = useState(0);
+
+  useEffect(() => {
+    // Read on every navigation: a submission queued on the marking screen has
+    // to show up here the moment the supervisor comes back.
+    void listQueued().then((queued) => setPendingCount(queued.length));
+  }, [pathname]);
 
   const current = activeNavHref(pathname);
 
@@ -80,21 +88,15 @@ export function BottomNav({ pathname }: { pathname: string }) {
           );
         }
 
-        // A plain anchor, not next/link. A client-side navigation fetches the
-        // target route's payload from the server, which fails with no signal
-        // and takes the app down with it — the very thing this rebuild
-        // removes. A full navigation is answered by the service worker from
-        // the cached shell, so every tab works offline. Nothing is lost: the
-        // screens carry no server data, so there is no round trip to save.
         return (
-          <a
+          <Link
             key={tab.href}
             href={tab.href}
             aria-current={on ? 'page' : undefined}
             className={`${shared} ${tone}`}
           >
             {inner}
-          </a>
+          </Link>
         );
       })}
     </nav>

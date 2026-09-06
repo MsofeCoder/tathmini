@@ -17,8 +17,8 @@ export type GenerateReportResult = { url: string; email: EmailOutcome } | { erro
  * invoked it, and inherits that route's `maxDuration`. `trainee/[id]/page.tsx`
  * declares 60s, so tapping the button there worked. But OutboxDrainer is
  * mounted in the ROOT LAYOUT and fires wherever the supervisor happens to be —
- * in practice `/trainee` or `/pending`, which are static CLIENT pages and
- * therefore cannot export `maxDuration` at all. Those inherit the platform default,
+ * usually `/offline` or `/pending`, which are CLIENT components and therefore
+ * cannot export `maxDuration` at all. Those inherit the platform default,
  * which Chromium alone exceeds, so every queued report timed out, the drainer
  * caught the throw, and the entry sat in the queue looking like it had sent.
  *

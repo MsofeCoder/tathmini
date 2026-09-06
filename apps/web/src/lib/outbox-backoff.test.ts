@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { backoffDelayMs, belongsToCurrentUser, isDue } from './outbox';
+import { backoffDelayMs, isDue } from './outbox';
 
 /** No jitter, so the curve itself can be asserted. */
 const noJitter = () => 0.5;
@@ -62,27 +62,5 @@ describe('isDue', () => {
 
   it('sends a freshly queued submission on the very next pass', () => {
     expect(isDue({ nextAttemptAt: 0 }, 1)).toBe(true);
-  });
-});
-
-describe('belongsToCurrentUser', () => {
-  // Phones are shared between tutors. A queued submission carries an assessor
-  // slot belonging to one supervisor, so replaying Fatuma's marks under
-  // Juma's session cannot succeed — it can only fail against RLS on every
-  // pass while the attempt counter climbs, which reads as her work being
-  // retried when it is being refused.
-  it('sends the signed-in supervisor’s own queued marks', () => {
-    expect(belongsToCurrentUser({ userId: 'juma' }, 'juma')).toBe(true);
-  });
-
-  it('leaves another supervisor’s queued marks alone until they sign back in', () => {
-    expect(belongsToCurrentUser({ userId: 'fatuma' }, 'juma')).toBe(false);
-  });
-
-  // Entries queued before ownership was recorded have nobody on them.
-  // Stranding those would lose marks a supervisor cannot redo.
-  it('still sends an entry queued before owners were recorded', () => {
-    expect(belongsToCurrentUser({}, 'juma')).toBe(true);
-    expect(belongsToCurrentUser({ userId: undefined }, undefined)).toBe(true);
   });
 });

@@ -1,4 +1,4 @@
-import { db, type OutboxRecord, type SessionMeta } from './db';
+import { db, type OutboxRecord } from './db';
 import type { SubmitAssessmentInput } from './submission';
 
 /**
@@ -67,7 +67,6 @@ export async function enqueueSubmission({
   traineeName,
   instrumentLabel,
 }: EnqueueInput): Promise<void> {
-  const session = (await db.meta.get('session')) as SessionMeta | undefined;
   await db.outbox.put({
     key,
     payload,
@@ -78,30 +77,7 @@ export async function enqueueSubmission({
     lastError: null,
     // A fresh submission is sent on the very next drain, never delayed.
     nextAttemptAt: 0,
-    // Stamped here rather than passed in, so every caller gets it right.
-    userId: session?.userId || undefined,
   });
-}
-
-/**
- * Whether this queued submission may be replayed under the signed-in user.
- *
- * Phones are shared between tutors. A submission carries an assessor slot
- * that belongs to one supervisor, so replaying Fatuma's queued marks under
- * Juma's session cannot succeed — it can only fail against RLS on every pass
- * while the attempt counter climbs, making the real owner's work look like it
- * is being retried when in fact it is being refused. It waits, untouched,
- * until that person signs back in.
- *
- * A record with no owner is drained as it always was: entries queued before
- * this existed have nobody recorded, and stranding them would lose marks.
- */
-export function belongsToCurrentUser(
-  record: Pick<OutboxRecord, 'userId'>,
-  currentUserId: string | undefined,
-): boolean {
-  if (!record.userId) return true;
-  return record.userId === currentUserId;
 }
 
 export async function listQueued(): Promise<OutboxRecord[]> {
@@ -125,12 +101,7 @@ export async function recordAttempt(key: string, error: string): Promise<void> {
   });
 }
 
-/** Queued submissions whose backoff has elapsed, and which this signed-in
- * supervisor may actually send. */
+/** Queued submissions whose backoff has elapsed. */
 export async function listDue(now = Date.now()): Promise<OutboxRecord[]> {
-  const session = (await db.meta.get('session')) as SessionMeta | undefined;
-  const currentUserId = session?.userId || undefined;
-  return (await db.outbox.toArray()).filter(
-    (record) => isDue(record, now) && belongsToCurrentUser(record, currentUserId),
-  );
+  return (await db.outbox.toArray()).filter((record) => isDue(record, now));
 }
