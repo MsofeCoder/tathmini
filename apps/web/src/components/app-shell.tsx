@@ -6,7 +6,7 @@ import { AccountScreen } from './screens/account-screen';
 import { HomeScreen } from './screens/home-screen';
 import { InstallScreen } from './screens/install-screen';
 import { MarkScreen } from './screens/mark-screen';
-import { PendingScreen } from './screens/pending-screen';
+import { ReportsScreen } from './screens/reports-screen';
 import { TraineeScreen } from './screens/trainee-screen';
 import { isInternalNavigation, matchScreen } from '@/lib/local/route-match';
 import { setNavigationListener } from '@/lib/local/shell-navigation';
@@ -38,7 +38,7 @@ import { setNavigationListener } from '@/lib/local/shell-navigation';
 /** The four screens the prototype gives a bottom navigation bar. Marking is
  * excluded deliberately: one screen, one thing to tap (AGENTS.md), and a nav
  * bar there invites a supervisor to abandon a half-finished assessment. */
-const NAV_SCREENS = new Set(['home', 'pending', 'account']);
+const NAV_SCREENS = new Set(['home', 'reports', 'account']);
 
 export function AppShell() {
   const [pathname, setPathname] = useState<string | null>(null);
@@ -110,8 +110,8 @@ function renderScreen(screen: ReturnType<typeof matchScreen>) {
       return <TraineeScreen traineeId={screen.traineeId} />;
     case 'mark':
       return <MarkScreen traineeId={screen.traineeId} instrumentCode={screen.instrumentCode} />;
-    case 'pending':
-      return <PendingScreen />;
+    case 'reports':
+      return <ReportsScreen />;
     case 'account':
       return <AccountScreen />;
     default:

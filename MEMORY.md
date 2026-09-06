@@ -47,6 +47,97 @@ the diff. This file is for knowledge that would otherwise be lost.
 
 ---
 
+## 2026-09-06 · feature · The Reports screen (Drafted · Submitted · Pending), built on the app shell
+
+**Kind:** feature
+**Phase:** 1
+**Commit / PR:** (branch) claude/appshell-admin-dashboard-merge-opst7u —
+supersedes PR #46, which must be CLOSED rather than merged (see below)
+
+**What changed**
+The Pending tab becomes Reports, carrying three lists instead of one: DRAFTED
+(held back on purpose, nothing sends these), SUBMITTED (the marks reached the
+College, and the report with them if it has been sent) and PENDING (tapped
+send, could not go, sends itself). Moves is gone from the bottom bar. A new
+on-device receipt, `sentReports`, is what lets "Submitted" exist with no
+signal.
+
+The feature is PR #46's, ported. PR #46 itself was branched from `738426f` —
+main WITHOUT the app shell — so it was written against route files,
+`next/link`, `usePathname()` and `loadOfflineBundle()`, none of which exist
+here. `app/reports/page.tsx` became `components/screens/reports-screen.tsx`,
+`lib/reports-tabs.ts` became `lib/local/reports.ts` reading `DeviceRows`, and
+the manual `focus`/`online` listeners became one `liveQuery`.
+
+**Why this way**
+The user reported the app was slow after deploying #46 and asked whether it
+was aligned with the shell. It was not, and the slowness was not something #46
+did — it was where #46 branched from. Measured by building both:
+
+| | PR #46 | this branch |
+|---|---|---|
+| Middleware bundle | 93.5 kB | 34.2 kB |
+| `/home`, `/trainee/[id]`, `/trainee/[id]/mark/[instrument]`, `/account` | four `ƒ` server-rendered routes | one prerendered document |
+
+That middleware is the whole Supabase SSR client, calling `auth.getUser()`
+before every page begins its own queries — the ~440 ms per navigation measured
+against production. Every screen a supervisor touches paid it.
+
+Two deliberate improvements on the port rather than a straight copy:
+
+- **Submitted reads the replicated `reports` table as well as the receipt.**
+  The server's row is the authority and survives a reinstall; the receipt
+  covers the seconds-to-minutes before the next full sync carries it down.
+  `buildReportsView` takes the server's timestamp when it has both.
+- **The badge is derived from the same view the screen renders.** #46 summed
+  the three tables in `BottomNav`, which double-counts a trainee who has both a
+  held draft and a queued mark — a badge reading 3 over a list showing 2. It
+  now calls `waitingCount()` on the built view, so the two cannot disagree.
+
+`/pending` still serves the Reports screen rather than 404-ing or redirecting.
+Phones in the field have that url in their history, their precache and
+sometimes on their home screen, and a redirect costs a frame of the wrong
+screen — offline, one more thing to go wrong.
+
+**Watch out for**
+- **`sentReports` is Dexie v9, NOT a second v8.** PR #46 also declared a
+  `version(8)`, with a different schema — v8 here is the replica tables. Dexie
+  replays only versions ABOVE the one a phone holds, so whichever of the two
+  reached a device second would simply never run: no error, no upgrade, just
+  stores that quietly do not exist. If #46's v8 had landed first, `db.trainees`
+  would never be created and every supervisor would see an empty route list.
+  **PR #46 must be closed, not merged.** The rule is now written down in
+  `AGENTS.md` § "The app shell", rule 8.
+- `/moves` is no longer a shell path. The tab is gone (inert quarter of a bar
+  reads as broken, not as coming later), so the url goes to the server like any
+  other unbuilt one. `route-match.test.ts` asserts it.
+- The receipt is written BEFORE the queue entry is removed, in both send paths.
+  A failure between the two leaves the report queued — a re-drain is answered
+  by the server's own idempotency, whereas a lost entry is a report nobody
+  knows is missing.
+- `useReportsView` deliberately does not read `drafts`, the per-score-tap
+  table. Folding it in would re-run eight table reads against the 50 ms tap
+  budget, which is what `useDraftTraineeIds` exists to avoid.
+
+**Verified by**
+Four gates green: 411 tests in apps/web (20 new in `lib/local/reports.test.ts`,
+3 new for the drain receipt, plus updated routing and nav assertions), 112 in
+packages/db, 37 in packages/shared.
+
+A production build read directly: the field app is still ONE prerendered route,
+`● /[[...slug]]` at **171 kB** against the 180 KB budget — 2 kB smaller than
+before this feature, because the Reports screen replaced the Pending screen
+rather than adding to it. `/reports` is in `generateStaticParams`. Middleware
+stays at 34.2 kB.
+
+**Not verified in a browser.** The manual pass now also needs: open Reports
+offline, confirm all three tabs read from the device; send a report and watch
+it move from Pending to Submitted without a refresh; and open `/pending` on a
+phone that has it cached and confirm it still shows Reports with the right tab
+lit.
+
+---
+
 ## 2026-09-06 · decision · The app shell comes back on Dexie v8, alongside the admin console rather than instead of it
 
 **Kind:** decision

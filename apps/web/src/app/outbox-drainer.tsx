@@ -7,6 +7,7 @@ import { listDue, recordAttempt, removeQueued } from '@/lib/outbox';
 import { drainOutbox } from '@/lib/outbox-drain';
 import { listQueuedReports, recordReportAttempt, removeQueuedReport } from '@/lib/report-outbox';
 import { removeReportDraft } from '@/lib/report-drafts';
+import { recordSentReport } from '@/lib/sent-reports';
 import { submitAssessment } from './actions/submit-assessment';
 import type { ReportAttemptResult } from '@/lib/outbox-drain';
 
@@ -78,6 +79,7 @@ export function OutboxDrainer() {
           await removeReportDraft(key);
         },
         recordReportAttempt,
+        recordSentReport,
       });
       // No router.refresh(): every screen reads IndexedDB through liveQuery,
       // so removing an entry from the outbox re-renders the Pending count and

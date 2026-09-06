@@ -10,7 +10,7 @@ describe('matchScreen', () => {
   it('routes the top-level screens', () => {
     expect(matchScreen('/')).toEqual({ name: 'install' });
     expect(matchScreen('/home')).toEqual({ name: 'home' });
-    expect(matchScreen('/pending')).toEqual({ name: 'pending' });
+    expect(matchScreen('/reports')).toEqual({ name: 'reports' });
     expect(matchScreen('/account')).toEqual({ name: 'account' });
   });
 
@@ -40,6 +40,14 @@ describe('matchScreen', () => {
     });
   });
 
+  it('serves Reports at the old /pending url', () => {
+    // Phones in the field have /pending in their history, their precache and
+    // sometimes on their home screen. Renaming the tab must not 404 a url a
+    // supervisor has bookmarked.
+    expect(matchScreen('/pending')).toEqual({ name: 'reports' });
+    expect(matchScreen('/reports')).toEqual({ name: 'reports' });
+  });
+
   it('decodes an escaped segment', () => {
     expect(matchScreen('/trainee/a%20b')).toEqual({ name: 'trainee', traineeId: 'a b' });
   });
@@ -61,12 +69,17 @@ describe('matchScreen', () => {
 });
 
 describe('isShellPath', () => {
-  it.each(['/', '/home', '/pending', '/account', '/trainee/t1', '/trainee/t1/mark/ipt', '/moves'])(
-    'claims %s for the shell',
-    (path) => {
-      expect(isShellPath(path)).toBe(true);
-    },
-  );
+  it.each([
+    '/',
+    '/home',
+    '/reports',
+    '/pending',
+    '/account',
+    '/trainee/t1',
+    '/trainee/t1/mark/ipt',
+  ])('claims %s for the shell', (path) => {
+    expect(isShellPath(path)).toBe(true);
+  });
 
   // These must reach the server: sign-in needs the network, the API is
   // NetworkOnly, the report preview is rendered by the server, and the
@@ -89,6 +102,9 @@ describe('isShellPath', () => {
     '/admin/maintenance',
     '/coordinator',
     '/coordinator/',
+    // Moves lost its tab: the reassignment state machine is still unbuilt,
+    // and an inert quarter of the bar reads as broken rather than as coming.
+    '/moves',
     '/something-nobody-has-built-yet',
   ])('leaves %s to the server', (path) => {
     expect(isShellPath(path)).toBe(false);

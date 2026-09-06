@@ -30,14 +30,14 @@ export type Screen =
   | { name: 'home' }
   | { name: 'trainee'; traineeId: string }
   | { name: 'mark'; traineeId: string; instrumentCode: string }
-  | { name: 'pending' }
+  | { name: 'reports' }
   | { name: 'account' }
   | { name: 'not-found' };
 
 /** Paths that belong to the shell. Anything else is a real server route
  * (sign-in, the API, the report preview) and must reach the network. */
 export function isShellPath(pathname: string): boolean {
-  return matchScreen(pathname).name !== 'not-found' || pathname === '/moves';
+  return matchScreen(pathname).name !== 'not-found';
 }
 
 export function matchScreen(pathname: string): Screen {
@@ -46,7 +46,13 @@ export function matchScreen(pathname: string): Screen {
 
   if (path === '' || path === '/') return { name: 'install' };
   if (path === '/home') return { name: 'home' };
-  if (path === '/pending') return { name: 'pending' };
+  if (path === '/reports') return { name: 'reports' };
+  // The old Pending url still answers, with the same screen. Phones in the
+  // field have it in their history, in their precache and on their home
+  // screens; a url that a supervisor has bookmarked must not start 404-ing
+  // because a tab was renamed. It is not a redirect — a redirect costs a
+  // frame of the wrong screen, and offline it is one more thing to go wrong.
+  if (path === '/pending') return { name: 'reports' };
   if (path === '/account') return { name: 'account' };
 
   // Checked before the profile pattern, which also starts /trainee/.

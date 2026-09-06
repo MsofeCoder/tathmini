@@ -22,5 +22,9 @@
  */
 export function activeNavHref(pathname: string): string {
   if (pathname.startsWith('/trainee')) return '/home';
+  // /pending is the old Pending url, which still serves the Reports screen for
+  // phones that have it bookmarked or precached. The bar must light Reports
+  // there rather than blinking to no-tab-selected.
+  if (pathname === '/pending') return '/reports';
   return pathname;
 }

@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { db, type SessionMeta } from '../db';
 import { traineeIdsWithDrafts } from '../drafts';
 import { getSyncStatus, subscribeSyncStatus, type SyncStatus } from '../sync/client';
+import { buildReportsView, waitingCount, type ReportsView } from './reports';
 import type { DeviceRows } from './derive';
 
 /**
@@ -93,40 +94,58 @@ export function useDraftTraineeIds(): Set<string> {
 }
 
 /**
- * How much finished work is waiting to leave this phone.
+ * The Reports screen's three lists, live.
  *
- * Two kinds, deliberately counted as one number:
+ * One subscription over every source the screen needs: the device replica, the
+ * held drafts, both queues and the send receipts. `liveQuery` re-runs it
+ * whenever any of those tables changes, so a report that drains in the
+ * background moves from Pending to Submitted under the supervisor's thumb with
+ * no refresh, no focus listener and no polling.
  *
- * - `outbox` — completed assessments that could not be sent yet. These send
- *   themselves; the supervisor need do nothing.
- * - `reportDrafts` — reports the supervisor finished and chose to hold back.
- *   These send themselves NEVER, and are precisely the thing that gets
- *   forgotten.
- *
- * From the nav bar's point of view both are "work finished on this phone that
- * has not reached the College", which is what the badge is promising. The
- * Pending screen tells them apart in words; the bar only has a number.
- *
- * Live, because that number is a promise: it must fall the instant the outbox
- * drains and rise the instant something is queued, without the nav bar being
- * remounted. A supervisor who sees "Pending · 3" after walking back into
- * coverage, when it has actually sent, will mark somebody a second time.
+ * `drafts` — the per-score-tap table — is deliberately NOT a source here. It is
+ * written on every tap, and reading eight tables against the 50 ms tap budget
+ * in AGENTS.md is exactly what `useDraftTraineeIds` exists to avoid.
  */
-export function usePendingCount(): number {
-  const [count, setCount] = useState(0);
+export function useReportsView(): ReportsView | undefined {
+  const [view, setView] = useState<ReportsView | undefined>(undefined);
 
   useEffect(() => {
     const subscription = liveQuery(async () => {
-      const [queued, drafts] = await Promise.all([db.outbox.count(), db.reportDrafts.count()]);
-      return queued + drafts;
+      const [rows, drafts, queuedMarks, queuedReports, sentReports] = await Promise.all([
+        readDeviceRows(),
+        db.reportDrafts.toArray(),
+        db.outbox.toArray(),
+        db.reportOutbox.toArray(),
+        db.sentReports.toArray(),
+      ]);
+      return buildReportsView({ rows, drafts, queuedMarks, queuedReports, sentReports });
     }).subscribe({
-      next: setCount,
+      next: setView,
+      // A failed read leaves the last good lists on screen rather than
+      // blanking the page under a supervisor who is using it.
       error: () => {},
     });
     return () => subscription.unsubscribe();
   }, []);
 
-  return count;
+  return view;
+}
+
+/**
+ * How much finished work is waiting to leave this phone — the number on the
+ * Reports tab.
+ *
+ * Derived from the same view the screen renders, deliberately, rather than by
+ * adding up the queues here. A trainee can have a held draft AND a queued
+ * mark; counting the tables separately would say 2 where the screen shows 1,
+ * and a badge that disagrees with the list under it is worse than no badge.
+ *
+ * Submitted work never counts: a number that climbed all week would stop
+ * meaning anything.
+ */
+export function usePendingCount(): number {
+  const view = useReportsView();
+  return view ? waitingCount(view) : 0;
 }
 
 /**

@@ -6,6 +6,7 @@ import type { GenerateReportResult } from '@/lib/reports/generate';
 import { getReportDownloadUrl } from '@/app/trainee/[id]/download-actions';
 import { isReachable } from '@/lib/reachability';
 import { enqueueReport, removeQueuedReport } from '@/lib/report-outbox';
+import { recordSentReport } from '@/lib/sent-reports';
 import {
   describeAge,
   getReportDraft,
@@ -153,8 +154,11 @@ export function ReportDownloadButton({
       return;
     }
 
-    // Stored and sent. Drop the instruction before anything else, so no later
-    // drain can send a second copy.
+    // Stored and sent. The receipt goes in BEFORE the queue entry comes out,
+    // so a failure between the two leaves the report queued rather than
+    // vanished — and it is what lets the Reports screen say "this one went"
+    // later, standing in a dead zone, before the server's own row has synced.
+    await recordSentReport({ traineeId, traineeName });
     await removeQueuedReport(traineeId);
     // Set the outcome BEFORE handing over the signed URL: the link carries a
     // Content-Disposition attachment, so the browser downloads without leaving
@@ -322,8 +326,8 @@ export function ReportDownloadButton({
 
       <p className="mt-2 text-[12.5px] leading-relaxed text-[#5f6f7c]">
         Sending stores the report and e-mails it, and can only be done once. Saving a draft sends
-        nothing — it keeps this report on your Pending list until you are ready, and the report will
-        be dated the day you send it.
+        nothing — it keeps this report on the Drafted list in your Reports tab until you are ready,
+        and the report will be dated the day you send it.
       </p>
       {error ? (
         <p role="alert" className="mt-2 text-[13px] leading-relaxed text-[#8a3a2a]">

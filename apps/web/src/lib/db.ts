@@ -84,6 +84,29 @@ export interface ReportDraftRecord {
   note?: string;
 }
 
+/**
+ * A report this supervisor has actually sent from this device.
+ *
+ * The server is the record of truth — `reports` is replicated into this
+ * database like any other server-owned table — but a receipt is written here
+ * the moment the send is confirmed, and that gap is the whole point. The
+ * replica catches up at the next full sync; the supervisor is standing in a
+ * workshop NOW, having just pressed send, and the Reports tab has to be able
+ * to say so without a round trip. `buildReportsView` reads both and takes
+ * whichever it has.
+ *
+ * It holds no document and no marks: only that this trainee's report left the
+ * phone, and when. Nothing is derived from it — scores, grades and the
+ * Competent verdict are computed in Postgres (AGENTS.md rule 3) — so losing a
+ * receipt loses a line in a list and nothing else.
+ */
+export interface SentReportRecord {
+  /** The trainee id — one report per trainee per assessor. */
+  key: string;
+  traineeName: string;
+  sentAt: number;
+}
+
 export interface OutboxRecord {
   key: string;
   payload: SubmitAssessmentInput;
@@ -251,6 +274,7 @@ class TathminiDb extends Dexie {
   cache!: Table<OfflineBundle, string>;
   reportOutbox!: Table<ReportOutboxRecord, string>;
   reportDrafts!: Table<ReportDraftRecord, string>;
+  sentReports!: Table<SentReportRecord, string>;
 
   trainees!: Table<LocalTrainee, string>;
   assignments!: Table<LocalAssignment, string>;
@@ -479,6 +503,40 @@ class TathminiDb extends Dexie {
 
         await tx.table('cache').delete('route');
       });
+
+    /**
+     * v9 adds `sentReports` — the on-device receipt for a report that has
+     * actually gone, which is what lets the Reports screen's Submitted list
+     * exist with no signal.
+     *
+     * A NEW RUNG, not a second v8. v8 is spent by the replica tables above,
+     * and a version number is never reused once a build carrying it has
+     * reached a device: Dexie replays only the versions ABOVE the one a phone
+     * holds, so a second, different v8 would simply never run on a phone that
+     * already took the first — no error, no upgrade, just stores that quietly
+     * do not exist. Every feature that needs a new store takes the next
+     * number. Add rungs; never reuse, remove or renumber one.
+     *
+     * Additive, like every upgrade here: each earlier store is carried
+     * forward, so a supervisor mid-route keeps their drafts, their queued
+     * marks, their held reports and their route replica.
+     */
+    this.version(9).stores({
+      drafts: 'key',
+      outbox: 'key',
+      cache: 'key',
+      reportOutbox: 'key',
+      reportDrafts: 'key',
+      sentReports: 'key',
+      trainees: 'id, track, routeId',
+      assignments: 'traineeId',
+      instruments: 'id, code, track',
+      criteria: 'id, instrumentId',
+      marks: 'key, traineeId, instrumentId',
+      results: 'traineeId',
+      reports: 'traineeId',
+      meta: 'key',
+    });
   }
 }
 
