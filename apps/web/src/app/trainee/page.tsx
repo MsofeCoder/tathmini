@@ -1,11 +1,12 @@
 'use client';
 
-import { useSearchParams } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 import { AssessmentActions } from '@/components/assessment-actions';
 import { ReportPreviewButton } from '@/components/report-preview';
 import { ReportDownloadButton } from '@/components/report-download-button';
 import { buildProfile } from '@/lib/local/derive';
+import { resolveTraineeId } from '@/lib/local/route-params';
 import { useDeviceRows } from '@/lib/local/use-device';
 import { traineeParticulars, trackChipStyle, trackPointsLabel } from '@/lib/trainees';
 
@@ -37,7 +38,10 @@ export default function TraineeProfilePage() {
 }
 
 function Profile() {
-  const traineeId = useSearchParams().get('id') ?? '';
+  // From the PATH, not the query string. The url is `/trainee/<id>`; the
+  // `?id=` exists only in the rewrite's destination, which the browser never
+  // sees. See lib/local/route-params.ts.
+  const traineeId = resolveTraineeId(usePathname(), useSearchParams());
   const rows = useDeviceRows();
 
   // Still reading. Rendering "not found" here would tell a supervisor their

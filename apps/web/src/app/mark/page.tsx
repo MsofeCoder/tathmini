@@ -1,9 +1,10 @@
 'use client';
 
-import { useSearchParams } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 import { MarkingForm } from '@/components/marking-form';
 import { buildMarking } from '@/lib/local/derive';
+import { resolveMarkTarget } from '@/lib/local/route-params';
 import { useDeviceRows } from '@/lib/local/use-device';
 
 /**
@@ -30,9 +31,8 @@ export default function MarkPage() {
 }
 
 function Mark() {
-  const params = useSearchParams();
-  const traineeId = params.get('trainee') ?? '';
-  const instrumentCode = params.get('instrument') ?? '';
+  // From the PATH, not the query string — see lib/local/route-params.ts.
+  const { traineeId, instrumentCode } = resolveMarkTarget(usePathname(), useSearchParams());
   const rows = useDeviceRows();
 
   if (!rows) return <Blank />;
