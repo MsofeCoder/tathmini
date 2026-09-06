@@ -7,9 +7,14 @@ import { signOut } from './actions';
 import { RouteList, type RouteListTrainee } from './route-list';
 
 /**
- * Branches on role: supervisors get their real route list; coordinator/
- * super_admin keep the generic placeholder — their real dashboard is
- * separate, unbuilt Phase 3 work (ROADMAP.md).
+ * Branches on role: supervisors get their real route list; coordinator and
+ * super_admin go to /admin, the administration console, which is now built.
+ * (It used to be a placeholder card saying that dashboard did not exist.)
+ *
+ * The two never bounce: /admin sends a supervisor here, and this sends
+ * everyone else there, so no account is redirected by both. A deactivated
+ * administrator is sent to /login by the console's own guard rather than
+ * back here.
  */
 export default async function HomePage() {
   const supabase = await createClient();
@@ -27,9 +32,7 @@ export default async function HomePage() {
   if (!profile) redirect('/login');
   if (profile.must_change_password) redirect('/change-password');
 
-  if (profile.role !== 'supervisor') {
-    return <Placeholder name={profile.name} role={profile.role} />;
-  }
+  if (profile.role !== 'supervisor') redirect('/admin');
 
   // RLS scopes every one of these to exactly this signed-in supervisor —
   // see MEMORY.md for the status-derivation design. The assignments and
@@ -200,29 +203,5 @@ export default async function HomePage() {
         </form>
       </div>
     </div>
-  );
-}
-
-function Placeholder({ name, role }: { name: string; role: string }) {
-  return (
-    <main className="flex min-h-dvh items-center justify-center bg-[#eceff0] p-6">
-      <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-sm">
-        <p className="text-teal-mid text-[12px] font-extrabold tracking-[0.7px]">SIGNED IN</p>
-        <h1 className="mt-2 text-[22px] font-bold text-neutral-900">{name}</h1>
-        <p className="mt-1 text-sm capitalize text-[#5b6b78]">{role.replace('_', ' ')}</p>
-        <p className="mt-4 text-[13px] leading-relaxed text-[#5b6b78]">
-          The coordinator/admin dashboard isn&apos;t built yet — see ROADMAP.md Phase 3.
-        </p>
-
-        <form action={signOut} className="mt-6">
-          <button
-            type="submit"
-            className="focus:outline-accent min-h-[48px] w-full rounded-xl border border-[#e0b6ab] bg-white text-[15px] font-semibold text-[#8a3a2a] focus:outline focus:outline-[3px] focus:outline-offset-2"
-          >
-            Sign out
-          </button>
-        </form>
-      </div>
-    </main>
   );
 }

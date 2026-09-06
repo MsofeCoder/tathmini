@@ -5,6 +5,14 @@ previous phase's exit gate passes** — the gates are the point, not the tasks.
 
 Six phases, ~20 weeks to institutional handover, pilot at week 14.
 
+> **The phase plan is not the current schedule.** The College goes live on
+> Monday 7 September 2026, and the system must be production-ready on the
+> **evening of Sunday 6 September 2026** — see `HANDOFF.md` for what that means
+> and what has been cut to reach it. Phases 4 and 5 happen *after* a live
+> cohort is already being assessed, which is not how this was planned; the
+> pilot-then-rollout order in Phase 4 no longer describes reality. Read
+> `HANDOFF.md` first and this file second.
+
 Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 
 ---
@@ -71,17 +79,19 @@ field for field.
 
 ## Phase 3 — Admin console (weeks 10–12)
 
-- [ ] Super Admin: account creation, password set, deactivate
+- [~] Super Admin: account creation, password set, deactivate — **deactivate/reactivate built** (`/admin/users`, and `users.active` is now actually checked at sign-in, which it never was before); creation and password-setting deliberately stay in `packages/db/src/scripts` because both need the service-role key, which is kept out of the deployed app (see `MEMORY.md` 2026-09-06)
 - [ ] TOTP second factor for both Super Admin accounts
-- [ ] Route management and assignment of assessor slots — including manually placing a trainee missing from any route (import gap) and moving a trainee to a different route (real September 2026 IPT roster had genuine duplicate-entry defects; no UI for this exists yet, but the DB/RLS layer already supports it — `trainees_admin_write` (migration `0001`) grants `super_admin` `UPDATE` on `trainees`, and it's the only role/action never `REVOKE`d there — see MEMORY.md)
-- [ ] Reassignment state machine: requested → accepted / declined, with inbox badge
+- [x] Route management and assignment of assessor slots — `/admin/routes` reassigns either slot on a route, and `/admin/trainees/[id]` moves one trainee to another route; both rewrite `routes` **and** `assignments` together, since `assignments` is what RLS reads. A slot carrying a submitted mark is refused and named, not silently moved (`lib/admin/reassignment.ts`, unit-tested). Creating/renaming a route is deliberately not offered — a route code is matched verbatim by the roster importers
+- [~] Reassignment state machine: requested → accepted / declined, with inbox badge — the **administrator's half is built**: `/admin/trainees/[id]` hands a single assessor slot to another supervisor without moving the trainee off their route, refusing once that slot has submitted a mark, and files a `reassignments` row already `accepted` for provenance. The supervisor-initiated half — a request another assessor accepts or declines, with an inbox badge — is still unbuilt, and the `/moves` tab stays inert
 - [ ] Override as a superseding revision with mandatory typed reason
-- [ ] Coordinator read-only dashboard (no write grant exists for the role)
+- [x] Coordinator read-only dashboard (no write grant exists for the role) — the whole console renders read-only for `coordinator` (`lib/admin/access.ts`); every write is refused twice, once with a readable message and once by Postgres. No coordinator account exists yet, so this is unexercised against a real session
 - [ ] Excel export — assessor marks sheet + official averages sheet + provenance
-- [ ] Audit log viewer, filterable by actor, action, trainee, date
+- [x] Audit log viewer, filterable by actor, action, trainee, date — `/admin/audit`, filterable by table and paged; actor names resolved, trainee rows linked. Filtering by actor and by date range is not built (the table filter covers the cases that have come up)
 - [ ] **Backup panel:** last backup status, 30-day outcome calendar, run-now,
       gated download, last restore-rehearsal result
 - [ ] Nightly `pg_dump` → `age`-encrypted off-site storage; failure alerts
+- [x] Register correction and register health — not originally listed, but it is what a Super Admin actually spends time on: `/admin/trainees` searches all 546 rows and `/admin/trainees/[id]` corrects particulars and moves routes, replacing the hand-written migrations that did this (0023, 0026, the IPT update). `/admin` counts the defects that have really occurred — test rows on real routes, trainees sharing an e-mail address, empty assessor slots, unassigned trainees — every time it is opened
+- [ ] Deleting a trainee from the console — blocked on purpose: `delete on trainees` is revoked from every signed-in role because it cascades to marks. Needs a reviewed migration adding a guarded, audit-logging function; the console explains this and shows the SQL instead of pretending the button is missing
 
 **Exit gate:** a restore rehearsal completes into a scratch database, row counts
 and checksums verify, and the panel reports the result.

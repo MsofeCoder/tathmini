@@ -1,157 +1,47 @@
-# HANDOFF — 5 September 2026, evening
+# HANDOFF — 6 September 2026, midday
 
-Disposable briefing. Read `AGENTS.md` and `CONTEXT.md` first; this only says
-where the work stands tonight and what will bite you.
+Disposable briefing. Read `AGENTS.md` and `CONTEXT.md` first; this only says what
+must be true by tonight and what has been cut to get there.
 
-> ## ⚠ DEADLINE: tomorrow, Sunday 6 September 2026, BEFORE LUNCH
+> ## ⚠ DEADLINE: TONIGHT — the evening of Sunday 6 September 2026
 >
-> Not Monday. Earlier notes and older `MEMORY.md` entries say Monday — they are
-> out of date and were written before the date moved. This is roughly **half a
-> working day** from the evening of the 5th.
+> The system must be **production-ready this evening**. There is no time after
+> it: the College uses the app for real assessment on Monday morning, and
+> supervisors are already marking against production.
+>
+> The deadline has moved twice. Earlier notes saying **Monday 7 September** or
+> **"Sunday before lunch"** are both dead — do not act on either. Older
+> `MEMORY.md` entries carry the old dates because that file is append-only; this
+> line is the live one.
 
-Everything below is ordered by what that deadline needs. The critical path is
-short; most of what remains is optional and is marked so.
+## What "production-ready" means tonight
 
----
+Only this, and nothing else counts:
 
-## Verify before you trust this
+1. A supervisor can sign in, mark a real trainee on both instruments, and submit
+   — online and offline.
+2. Two assessors' marks average into a locked result, and the report reaches the
+   right people.
+3. **The live register contains no fake data and no trainee who would receive
+   another trainee's marks.**
+4. Nothing a supervisor sees this morning has been broken by today's work.
 
-This file was accurate when written and will rot. Two agents worked this repo
-today and both reported stale facts at least once. Before acting:
-
-```bash
-git fetch origin && git log --oneline -5 origin/main
-gh pr list --state open
-git ls-tree --name-only origin/main packages/db/migrations/ | tail -8
-```
-
-**The Supabase MCP in this session returns `Unauthorized`** — it cannot read
-the database. Every database claim here came from queries the user ran in the
-SQL editor and pasted back. Do the same rather than guessing, and never report
-database state you have not seen.
-
----
-
-## Where it stands
-
-### Live in production (`azlwxriyhdshfhklonrx`)
-
-Migrations **0022–0027 applied**, plus main's 0016/0017/0018. Specifically:
-
-|                 |                                                                         |
-| --------------- | ----------------------------------------------------------------------- |
-| `0022`          | Supervisor addresses — **superseded and wrong**, see traps              |
-| `0023` + `0026` | TP roster at the College's FINAL VERSION, all 364 trainees              |
-| `0024`          | 42 test trainees, three on each of the 14 real routes                   |
-| `0025`          | `assessment_mark_section_comments` + `assessment_marks.general_comment` |
-| `0027`          | Restores `users.email`, moves real addresses to `contact_email`         |
-
-Vercel env is set: `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM_NAME`,
-`RESULT_COORDINATOR_EMAIL=lyimos673@gmail.com`. Sending from
-`mvttc.assessment@gmail.com` over Gmail SMTP.
-
-**The e-mail path has sent successfully in production at least once** — the
-user saw "Report saved and sent." against `msofedesigner@gmail.com`.
-
-### On a branch, not yet merged
-
-**PR #25** — `feat/result-email-and-criterion-comments`. Conflict-free as of
-`bb19499`. It carries nearly everything from today:
-
-- result e-mail on submit (`apps/web/src/lib/notifications/`)
-- the TP roster parser rewrite (header-based column mapping)
-- one comment per criterion, never compulsory
-- auto-comment suggestions, ported from the prototype's 89-phrase bank
-- the duplicate-send fix
-- **PR #28 is already merged into this branch** — there is no ordering problem
-
-Until #25 merges and deploys, **none of the e-mail or comment work is live**.
+Anything that does not serve those four is out of scope until next week, however
+good an idea it is.
 
 ---
 
-## The critical path — in this order, nothing skipped
+## The critical path, in order
 
-Four steps. They are sequential: the test needs the deploy, and the cleanup
-destroys what the test uses.
+**1 · Merge PR #37 and deploy.** The administration console. All checks green,
+mergeable, no conflicts. It is already doing real work from the preview: staff
+without a reachable e-mail dropped from 10 to 3 this morning because the console
+was used to fix seven of them. Until it lands, every register correction is a
+hand-written migration again.
 
-**1 · Merge #25 and deploy.** ~15 minutes. Until this lands, none of the
-e-mail work, the criterion comments or the duplicate-send fix is live. It is
-conflict-free as of `bb19499`. **#30 is hygiene — do not let it block this.**
-
-**2 · One end-to-end e-mail test.** Sign in, open a `TEST TP R…` trainee, mark
-**both** instruments, tap Submit and send report. Confirm the mail arrives.
-This is the only step that proves the deploy actually works.
-
-**3 · Delete the test trainees.** Query below. **This is not optional and it is
-the most visible defect if missed** — 43 of the 46 sit on _real_ routes, so
-every supervisor opening the app tomorrow sees fake trainees mixed into their
-own list, and their progress counters are wrong by three.
-
-**4 · Confirm a real trainee still looks right.** Open one real trainee on one
-real route and check the particulars and counters. Two minutes, and it catches
-a cleanup that took too much.
-
-### What to drop if time runs out
-
-- **The 9 missing supervisor addresses.** Marking is unaffected. TP reports
-  still send, minus the assessor's Cc. Only the six IPT assessors genuinely
-  cannot send a report — tell those six, and fix it next week.
-- **PR #30** (migration guard, CONTEXT decisions). Pure hygiene.
-- **The auto-comment**, if anything about it misbehaves. It is a suggestion
-  layer; the comment boxes work without it.
-
-### What NOT to drop
-
-**The offline outbox test.** Go offline, mark, submit, reconnect, confirm
-_exactly one_ row lands — never two, never zero. It has never been done, it is
-Phase 1's exit gate in `ROADMAP.md`, and offline is the _normal_ case in a
-workshop, not an edge case. If only one optional thing survives the morning,
-make it this: a double-submitted or lost assessment is the one failure the
-College cannot recover from in the field.
-
----
-
-## Traps that have already caught someone today
-
-**Never write a real address to `users.email`.** It is the sign-in identifier,
-mirroring `auth.users.email`, which `usernameToEmail()` builds and
-`signInWithPassword()` authenticates against. Migration 0022 did exactly this;
-0027 undid it. Reachable addresses live in `users.contact_email`.
-
-**The Coordinator is configuration, not a user row.** `RESULT_COORDINATOR_EMAIL`
-(`lib/notifications/recipients.ts`). There is deliberately no coordinator
-account: `users_select` means a supervisor cannot read another user's row, and
-widening that to find one address would expose every staff address to every
-supervisor. Another agent queried the database, found no coordinator, and
-declared the feature broken. It is not.
-
-**IPT reports do go by e-mail** — To the assessor, Cc the Coordinator. It is
-IPT _trainees_ who are never e-mailed, because their register holds a phone and
-no address.
-
-**Do not renumber the migrations again.** They were renumbered once, to
-0022–0027, after three collisions with main. The order encodes dependencies:
-0022 sets the addresses 0027 moves; 0023 imports the roster 0026 repairs.
-Applying a fix before its subject silently does nothing.
-
-**A migration number is not yours until its branch is on main.** Three
-collisions today (0016, two 0017s, two 0018s) came from claiming numbers early.
-
-**Match `trainees.name` verbatim, including double spaces.** Six names carry
-them (`'EMMANUEL  MAKANTA'`). A whitespace-normalised join key silently missed
-those six rows in 0023, and the Supabase results grid renders HTML, so the
-defect is invisible on screen. Compare with
-`regexp_replace(name, '\s+', ' ', 'g')` on **both** sides, or use the stored
-form exactly.
-
-**Every data migration ships with the query that proves it worked.** The above
-was found only by counting rows afterwards.
-
----
-
-## Test data cleanup
-
-46 test trainees exist in four shapes. This covers all of them:
+**2 · Delete the 46 test trainees.** Not optional, and still not done. 43 sit on
+_real_ routes, so every supervisor opening the app tomorrow sees fake trainees in
+their own list with their counters three too high.
 
 ```sql
 delete from trainees
@@ -159,48 +49,95 @@ where registration_number ~ '^TEST-(TP|IPT)-'
    or route_id in (select id from routes where code = 'TEST ROUTE');
 ```
 
-A narrower regex misses `TEST-IPT-0001`/`0002` and the two rows from 0011 whose
-`registration_number` is **null** (`null ~ '...'` is null, not true).
+Cascades to roughly 13 test marks — expected, not a no-op. A narrower regex
+misses `TEST-IPT-0001`/`0002` and the two rows whose `registration_number` is
+NULL (`null ~ '...'` is null, not true), which is why the route clause is there.
 
-**This cascades to marks** — about 8 test marks. Fine, they are test marks, but
-it is not a no-op. **Run it only after the end-to-end test** (step 2 above),
-and before the College opens the app tomorrow morning: 43 of the 46 sit on
-real routes, so every supervisor would otherwise find fake trainees in their
-own list with their counters three too high.
+**Run it after any last end-to-end e-mail test, and after the test steps in the
+console's test pass** — B1–B4 and C1/C5/C6 use those rows and will stop working
+once they are gone.
 
----
+**3 · Fix the four trainee pairs sharing an e-mail address.** Result e-mail is
+live and 16 reports have been generated. Each pair would receive the other's
+marks. This is the one defect that sends a real person the wrong result.
+`/admin/trainees` → open → correct the address.
 
-## Known data defects the College must decide on
+**4 · Confirm one real trainee still looks right.** One real route, one real
+trainee: particulars, counters, both assessor names. Two minutes, and it catches
+a clean-up that took too much.
 
-- **Pato Mohele.** `RAFAEL` and `RAPHAEL PATO MOHELE` are two Route 2 rows
-  sharing one registration number, two e-mails and **the same phone number**.
-  Almost certainly one person entered twice. `registration_number` is UNIQUE so
-  only one holds it. Removing the duplicate is a Super Admin action — a trainee
-  delete cascades to marks.
-- **Two trainees share `rashidmujwahuzi@gmail.com`** (Mudabiru Mujwahuzi Musssa
-  and Benard Tiago Raulenti). With result e-mail live, **each would receive the
-  other's marks.** Fix one address before TP e-mail goes wide, or exclude them.
-- **`CONTEXT.md` is out of date**: it says the TP register has no phone column.
-  The FINAL VERSION carries 364 phone numbers. The channel decision is the
-  College's, but the premise behind it has changed.
+**5 · Decide `0028_ipt_roster_final.sql`.** Still uncommitted. It moves 40 IPT
+trainees between routes, which changes who assesses them. Marking has started, so
+every hour it waits, more of those trainees become unmovable — the console
+refuses to move anyone already marked, and the migration would not. Apply it
+tonight or drop it; do not leave it in the working tree unresolved.
 
 ---
 
-## Working with a second agent
+## Cut — deliberately not being built before Monday
 
-Today's confusion was almost entirely one cause: two agents on one working tree
-and one production database, with intent recorded only in code comments.
+Each of these is real work that the College will want. None of it is required for
+a supervisor to mark and for a result to reach the right person.
 
-- Declare ownership of an area before starting. Contested today:
-  `packages/db/migrations/`, `marking-form.tsx`, `lib/notifications/`.
-- Do not re-do work another agent has offered to do. Duplicating is the failure
-  being avoided.
-- Put decisions where a cold agent looks — `CONTEXT.md`, not a code comment.
-  The three at the top of "Traps" all belong there and are not yet written up.
+- **SMS to IPT trainees.** 155 people are currently told nothing at all. The
+  largest functional gap in the product, and still not a Monday blocker: the IPT
+  _assessor_ receives the report by e-mail, which is what the College needs on
+  the day.
+- **Swahili interface strings.** Phase 4.
+- **The backup panel and nightly encrypted `pg_dump`.** The first thing to build
+  next week — until it exists, a bad afternoon loses the College's assessment
+  records.
+- **TOTP on the two administrator accounts.**
+- **Excel export, the result-override screen, trainee deletion from the
+  console.** Deletion needs a reviewed migration: `delete on trainees` is revoked
+  from every signed-in role because it cascades to marks.
+- **The supervisor-initiated reassignment flow** (request → accept/decline). The
+  administrator's half is built; the `/moves` tab stays inert.
+- **PR #2**, open since 4 September and long superseded. Close it.
 
-Two agreed but unbuilt (nobody has started them):
+---
 
-1. A CI check failing the build on duplicate migration numbers or a missing
-   journal entry. Ten lines, and it would have caught all three collisions.
-2. A "Where the facts live" section in `CONTEXT.md` carrying the three
-   decisions above.
+## Verification still owed
+
+- **The offline exit gate, on a real device.** Airplane mode, mark, force-quit,
+  reopen, reconnect — exactly one submission lands, never two, never zero. There
+  is an automated test; it has never been done on a phone. Offline is the normal
+  case in a workshop, and a double-submitted or lost assessment is the one
+  failure the College cannot recover from in the field. **If one optional thing
+  survives tonight, make it this.**
+- **Single-slot reassignment** (`/admin/trainees/[id]` → "Hand this slot to…").
+  Deployed, never run: `reassignments` is still empty. Steps B4 and C6 of the
+  test pass cover it.
+
+---
+
+## Traps that have already caught someone
+
+**Never write a real address to `users.email`.** It is the sign-in identifier
+mirroring `auth.users.email`. Migration 0022 did this; 0027 undid it. Reachable
+addresses live in `users.contact_email`, which is what the console edits.
+
+**The Coordinator is configuration, not a user row.** `RESULT_COORDINATOR_EMAIL`
+in `lib/notifications/recipients.ts`. There is deliberately no coordinator
+account, and widening `users_select` to find one would expose every staff address
+to every supervisor.
+
+**IPT reports do go by e-mail** — to the assessor, Cc the Coordinator. It is IPT
+_trainees_ who are never e-mailed, because their register holds a phone and no
+address.
+
+**Do not renumber the migrations again.** Their order encodes dependencies, and a
+number is not yours until its branch is on `main`.
+
+**Match `trainees.name` verbatim, double spaces included.** Six names carry them
+(`'EMMANUEL  MAKANTA'`). A whitespace-normalised join key silently missed exactly
+those six in migration 0023, and the Supabase grid renders HTML so the defect is
+invisible on screen.
+
+**A submitted mark cannot be reassigned.** It belongs to the assessor who made
+it. The console refuses a route move or a slot hand-over once a mark is in; that
+is not a bug to work around tonight.
+
+**Deadline pressure does not waive `AGENTS.md`.** Migrations, RLS, auth and
+anything touching a stored mark still need the user's explicit approval, and the
+service-role key still never enters the deployed application.
