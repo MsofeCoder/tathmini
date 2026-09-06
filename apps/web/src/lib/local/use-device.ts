@@ -4,6 +4,7 @@ import { liveQuery } from 'dexie';
 import { useEffect, useState } from 'react';
 import { db, type SessionMeta } from '../db';
 import { traineeIdsWithDrafts } from '../drafts';
+import { getSyncStatus, subscribeSyncStatus, type SyncStatus } from '../sync/client';
 import type { DeviceRows } from './derive';
 
 /**
@@ -112,4 +113,23 @@ export function usePendingCount(): number {
   }, []);
 
   return count;
+}
+
+/**
+ * What the app is doing about the device's copy, live.
+ *
+ * Read by the route list so an empty screen can say WHY it is empty. The
+ * difference between "downloading your route" and "you have no students" is
+ * the difference between waiting and giving up, and until now a supervisor
+ * upgrading from the previous build saw the second while the first was true.
+ */
+export function useSyncStatus(): SyncStatus {
+  const [status, setStatus] = useState<SyncStatus>(() => getSyncStatus());
+
+  useEffect(() => {
+    setStatus(getSyncStatus());
+    return subscribeSyncStatus(setStatus);
+  }, []);
+
+  return status;
 }

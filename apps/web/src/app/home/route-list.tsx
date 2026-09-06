@@ -9,7 +9,9 @@ import {
   trackChipStyle,
   type TraineeStatus,
 } from '@/lib/trainees';
-import { useDraftTraineeIds } from '@/lib/local/use-device';
+import { useDraftTraineeIds, useSyncStatus } from '@/lib/local/use-device';
+import { requestSync } from '@/lib/sync/client';
+import { emptyRouteMessage } from '@/lib/local/route-status';
 
 export interface RouteListTrainee {
   id: string;
@@ -69,6 +71,7 @@ export function RouteList({ routeCode, routeLabel, trainees, loaded, syncedAt }:
   // reopened. The trainees themselves arrive the same way, from the same
   // IndexedDB that Realtime writes into.
   const draftTraineeIds = useDraftTraineeIds();
+  const syncStatus = useSyncStatus();
 
   const { assessed, inProgress, notStarted, pct } = useMemo(
     () =>
@@ -85,6 +88,14 @@ export function RouteList({ routeCode, routeLabel, trainees, loaded, syncedAt }:
   const outstanding = trainees.length - assessed;
 
   const institutionCount = new Set(trainees.map((t) => t.institution)).size;
+
+  const routeStatus = emptyRouteMessage({
+    loaded,
+    traineeCount: trainees.length,
+    outstanding,
+    syncedAt,
+    syncStatus,
+  });
 
   const query = search.trim().toLowerCase();
   const matched = useMemo(() => {
@@ -132,17 +143,19 @@ export function RouteList({ routeCode, routeLabel, trainees, loaded, syncedAt }:
               style={{ width: `${pct}%`, background: pct === 100 ? '#1c7a5e' : '#12665b' }}
             />
           </div>
-          <p className="mt-2 text-[12px] font-semibold text-[#40614f]">
-            {!loaded
-              ? 'Reading your route from this phone…'
-              : trainees.length === 0
-                ? syncedAt === null
-                  ? 'Your route has not reached this phone yet. Open this screen once with a connection.'
-                  : 'No trainees assigned to this route yet.'
-                : outstanding === 0
-                  ? 'Route complete — you have assessed every trainee.'
-                  : `${outstanding} still to assess`}
-          </p>
+          <p className="mt-2 text-[12px] font-semibold text-[#40614f]">{routeStatus.text}</p>
+          {/* Offered only when pressing it could change something. A retry on a
+              route that is simply empty would suggest the College's own record
+              is wrong. */}
+          {routeStatus.canRetry ? (
+            <button
+              type="button"
+              onClick={() => void requestSync()}
+              className="focus:outline-accent mt-2 min-h-11 w-full rounded-lg border border-[#b9d3c8] bg-white text-[13px] font-bold text-[#1c6650] focus:outline focus:outline-[3px] focus:outline-offset-2"
+            >
+              Try again
+            </button>
+          ) : null}
         </div>
 
         <div className="mt-3 flex gap-2">

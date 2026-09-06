@@ -47,6 +47,82 @@ the diff. This file is for knowledge that would otherwise be lost.
 
 ---
 
+## 2026-09-06 · bugfix · Every trainee reported "not on your route"; and an empty route list could not say why
+
+**Kind:** bugfix
+**Phase:** 1
+**Commit / PR:** feat/local-first-offline-architecture
+
+**What changed**
+Three fixes to the local-first build, all reported from the field the same
+morning it went out.
+
+1. **The trainee id was read from the wrong place.** `/trainee/<id>` and
+   `/trainee/<id>/mark/<code>` are static pages reached through a rewrite, and
+   they read the id with `useSearchParams()`. A rewrite is resolved on the
+   SERVER: the browser's address bar still says `/trainee/<id>` with no query
+   string, and a statically prerendered page has no server render to inject
+   one. The id came back empty and `buildProfile()` found nothing, so every
+   trainee, for every supervisor, reported "not on your route" one tap after
+   the route list had shown them. The parse now reads the PATH and lives in
+   `lib/local/route-params.ts` with 15 tests.
+2. **A lapsed session was a permanent dead end.** `middleware.ts` redirected
+   `/api/sync` to `/login`; `runFullSync` fetches with `redirect: 'error'`, so
+   the fetch threw, and a throw is read as `unreachable` — the one outcome that
+   deliberately changes nothing and says nothing. The supervisor sat on an
+   empty route list with no error, no prompt to sign in and nothing to press,
+   permanently, because every retry took the same path. Middleware now answers
+   any `/api/*` request without a session cookie with a 401, which the sync
+   already knows means "sign in again".
+3. **An empty route list had four meanings and one sentence.** It said "Your
+   route has not reached this phone yet" while the sync was still downloading
+   it — the device reads in a couple of milliseconds and the network does not.
+   `lib/local/route-status.ts` now gives each state its own words, and offers a
+   retry only where pressing it could change the answer.
+
+**Why this way**
+The id parse is a separate, tested module rather than a regex inside a
+component because the difference between the two spellings was the difference
+between the app working and every trainee reporting "not found", and nothing in
+the type system or the build was going to catch it. The query string is kept as
+a fallback for a direct visit to the rewrite target.
+
+Middleware answering 401 rather than redirecting is the general rule, not a
+patch for one route: an API caller wants a status code. It also keeps
+`/api/ping` honest, since the reachability probe counts a 401 as "the server
+answered" — which it did.
+
+The retry button is deliberately absent once a sync has succeeded and found
+nobody. The College's roster is what it is, and a retry there would suggest the
+app was broken rather than the route empty.
+
+**Watch out for**
+- **This middleware does NOT refresh the session cookie** — the old one did, on
+  every request, via `@supabase/ssr`. Refreshing now happens only when
+  `/api/sync` or a Server Action runs. That is fine for a phone in use, which
+  syncs on open, focus and reconnect, but it is why lapsed sessions appeared at
+  all: supervisors carried a cookie the old build had been quietly renewing.
+- `SyncStatus` is module state in `lib/sync/client.ts`, with `resetSyncStatus()`
+  as the test seam. A failed sync never downgrades a device that already has
+  data — it is holding a good copy and can work from it all day.
+- The register-wide sync discussed alongside these was **not built**. The
+  working theory was that the empty lists came from the device holding only the
+  supervisor's own trainees; it did not — it was the id bug above — so RLS is
+  unchanged and `trainees_select` still scopes to `is_assigned_to_trainee(id)`.
+  If a trainee is ever moved between routes mid-week, the receiving supervisor
+  needs one online sync before that trainee appears. Revisit then, not before.
+
+**Verified by**
+`pnpm format:check && pnpm lint && pnpm test && pnpm typecheck` green — 378
+tests, 24 new (`route-params.test.ts` 15, `route-status.test.ts` 9). A
+production build passes with `/home`, `/trainee`, `/mark`, `/pending` and
+`/account` still **static** and every route inside the 180 KB budget.
+
+**Still not verified in a real browser.** The id fix in particular deserves the
+30 seconds it takes: sign in, tap a trainee, confirm the profile opens.
+
+---
+
 ## 2026-09-06 · feature · Local-first: every screen reads IndexedDB, Realtime keeps it current
 
 **Kind:** feature

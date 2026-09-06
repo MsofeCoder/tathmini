@@ -61,6 +61,25 @@ export function middleware(request: NextRequest) {
   const isPublicPath =
     PUBLIC_EXACT_PATHS.includes(pathname) || PUBLIC_PATHS.some((path) => pathname.startsWith(path));
 
+  // An API caller gets a status code, never a redirect.
+  //
+  // This was a dead end for anyone whose session had lapsed — which is most of
+  // the supervisors who signed in on the previous build, since the old
+  // middleware refreshed the cookie on every request and this one does not.
+  // `/api/sync` was redirected to `/login`; the sync fetches with
+  // `redirect: 'error'`, so the fetch THREW; a throw is read as "the network
+  // failed", which is the one outcome that deliberately changes nothing and
+  // says nothing. The result was a supervisor sitting on an empty route list
+  // with no error, no prompt to sign in, and nothing to press — permanently,
+  // because every retry took the same path.
+  //
+  // 401 is what the caller already knows how to act on: it means the session
+  // is genuinely gone, and the app sends them to sign in. It also keeps
+  // `/api/ping` honest, since the probe counts a 401 as "the server answered".
+  if (!isPublicPath && !hasSessionCookie(request) && pathname.startsWith('/api/')) {
+    return Response.json({ error: 'unauthenticated' }, { status: 401 });
+  }
+
   if (!isPublicPath && !hasSessionCookie(request)) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';

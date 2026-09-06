@@ -16,7 +16,72 @@ import type { SyncPayload } from './types';
  */
 export type SyncOutcome = 'synced' | 'unauthenticated' | 'unreachable';
 
+/**
+ * What the app is doing about the device's copy right now, so a screen can
+ * say so.
+ *
+ * This exists because of what a supervisor upgrading from the previous build
+ * actually saw. Their phone had a session but an empty IndexedDB, so `/home`
+ * read it in a couple of milliseconds, found nothing, and said "Your route has
+ * not reached this phone yet" — while the sync that would fill it was still
+ * in flight. The screen was telling them they had no students at the exact
+ * moment it was downloading them, and if the sync then failed it said the same
+ * thing forever, with nothing to press.
+ *
+ * `never` rather than `idle` for the opening state: it distinguishes a device
+ * that has genuinely never heard from the College from one between syncs, and
+ * those two deserve different words on screen.
+ */
+export type SyncStatus = 'never' | 'syncing' | 'synced' | 'unreachable' | 'signed-out';
+
+let status: SyncStatus = 'never';
+const listeners = new Set<(value: SyncStatus) => void>();
+
+export function getSyncStatus(): SyncStatus {
+  return status;
+}
+
+/** Subscribe to status changes. Returns the unsubscribe function. */
+export function subscribeSyncStatus(listener: (value: SyncStatus) => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+function setStatus(next: SyncStatus): void {
+  if (next === status) return;
+  status = next;
+  for (const listener of listeners) listener(next);
+}
+
+/** Test seam — the status is module state, and a test that changes it must be
+ * able to put it back. */
+export function resetSyncStatus(): void {
+  status = 'never';
+  listeners.clear();
+}
+
+function statusFor(outcome: SyncOutcome, previous: SyncStatus): SyncStatus {
+  if (outcome === 'synced') return 'synced';
+  if (outcome === 'unauthenticated') return 'signed-out';
+  // A failed sync must never downgrade a device that HAS data. It is still
+  // holding a good copy; it simply could not check for a newer one, which is
+  // the ordinary state of a working day on a College route.
+  return previous === 'synced' ? 'synced' : 'unreachable';
+}
+
 export async function runFullSync(): Promise<SyncOutcome> {
+  // Captured before the run, so a failure can be judged against what the
+  // device already had rather than against 'syncing'.
+  const before = status;
+  setStatus('syncing');
+  const outcome = await attemptSync();
+  setStatus(statusFor(outcome, before));
+  return outcome;
+}
+
+async function attemptSync(): Promise<SyncOutcome> {
   let response: Response;
   try {
     response = await fetch('/api/sync', {
