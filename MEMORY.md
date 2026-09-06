@@ -47,6 +47,60 @@ the diff. This file is for knowledge that would otherwise be lost.
 
 ---
 
+## 2026-09-06 · decision · The deadline is the EVENING of Sunday 6 September — production, not a milestone
+
+**Kind:** decision
+**Phase:** 3 (with Phase 4/5 work deferred past go-live)
+**Commit / PR:** —
+
+**What changed**
+The user set the deadline as **production-ready by the evening of Sunday 6
+September 2026**, stating there is no time after it. This supersedes both earlier
+figures: "Monday 7 September" (entry of 2026-09-05) and "Sunday before lunch"
+(same day, later). `HANDOFF.md` has been rewritten around it and now carries the
+cut list; `ROADMAP.md` carries a banner saying the phase plan is no longer the
+schedule.
+
+Production-ready was scoped down to four things: a supervisor can mark and submit
+online and offline; two assessors average into a locked result whose report
+reaches the right people; the live register holds no fake data and nobody who
+would receive another trainee's marks; and nothing already working has been
+broken. Everything else is explicitly out of scope until after go-live.
+
+**Why this way**
+The College begins real assessment on Monday morning and supervisors are already
+marking against production — 39 submitted marks and 16 generated reports by
+midday Sunday. There is no window between tonight and real users depending on the
+system, so the scope had to shrink to what makes the assessment itself
+trustworthy rather than what makes the product complete.
+
+What was cut, and why each is survivable for Monday: SMS to IPT trainees (155
+people are told nothing, but their *assessor* does receive the report by e-mail,
+which is what the day needs); Swahili strings; the backup panel; TOTP; Excel
+export; the result-override screen; trainee deletion from the console; and the
+supervisor-initiated reassignment flow.
+
+**Watch out for**
+Phases 4 and 5 now happen with a live cohort already being assessed — the
+"pilot on a single route, then roll out" sequence in `ROADMAP.md` no longer
+describes what is happening, and its exit gates were written on the assumption
+that it did.
+
+The backup gap is the real exposure this creates: there is still no nightly
+`pg_dump` and no restore rehearsal, so from Monday the College is assessing into
+a database whose loss has not been rehearsed. It is the first thing to build next
+week, ahead of any feature.
+
+Deadline pressure does not waive `AGENTS.md`: migrations, RLS, auth and anything
+touching a stored mark still need explicit approval, and the service-role key
+still never enters the deployed application.
+
+**Verified by**
+Not applicable — a decision, recorded. The live figures quoted above were queried
+from the production database at the time of writing.
+
+---
+
 ## 2026-09-06 · feature · Administration console built (/admin) — Phase 3's core, without the service-role key
 
 **Kind:** feature

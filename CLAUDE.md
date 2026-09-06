@@ -6,6 +6,11 @@ Claude Code entry point for Tathmini.
 > it's a dated, disposable briefing for a session that just picked this
 > project up mid-sprint. It doesn't override anything below; it just says
 > where to start.
+>
+> **This project goes to production on the evening of Sunday 6 September
+> 2026**, and the College assesses real trainees on it from Monday morning.
+> `HANDOFF.md` carries the cut list: what is in scope for go-live and what
+> was deliberately dropped. Anything not on it waits until after go-live.
 
 **All working rules live in [`AGENTS.md`](./AGENTS.md). Read it before anything
 else.** This file exists only because Claude Code loads `CLAUDE.md` by name.

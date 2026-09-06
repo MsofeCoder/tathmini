@@ -5,6 +5,14 @@ previous phase's exit gate passes** — the gates are the point, not the tasks.
 
 Six phases, ~20 weeks to institutional handover, pilot at week 14.
 
+> **The phase plan is not the current schedule.** The College goes live on
+> Monday 7 September 2026, and the system must be production-ready on the
+> **evening of Sunday 6 September 2026** — see `HANDOFF.md` for what that means
+> and what has been cut to reach it. Phases 4 and 5 happen *after* a live
+> cohort is already being assessed, which is not how this was planned; the
+> pilot-then-rollout order in Phase 4 no longer describes reality. Read
+> `HANDOFF.md` first and this file second.
+
 Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 
 ---
