@@ -47,6 +47,130 @@ the diff. This file is for knowledge that would otherwise be lost.
 
 ---
 
+## 2026-09-06 · feature · Voiding one trainee's assessment: an assessed trainee can be returned to "Not yet assessed"
+
+**Kind:** feature
+**Phase:** 3
+**Commit / PR:** (branch) feat/void-assessment — **migration 0031 APPLIED LIVE
+2026-09-06** to `azlwxriyhdshfhklonrx`, with the user's explicit approval
+
+**What changed**
+`/admin/trainees/[id]` now carries a "Void this assessment" card: a Super
+Administrator types a reason, confirms, and the trainee goes back to "Not yet
+assessed" with both assessors free to mark them again. A "Voided assessments"
+card above it lists every void already on that trainee's record.
+
+The work is in three pieces: `void_trainee_assessment(trainee_id, reason)` and
+the `voided_assessments` table (migration **0031, written and NOT applied**),
+`voidTraineeAssessment()` in `admin/trainees/actions.ts`, and the pure planner
+`lib/admin/void-assessment.ts`. Until the migration is applied the card reports
+that it is not enabled and does nothing — the same shape as the test-data purge
+in 0029.
+
+**Why this way**
+*A void, not a delete.* The obvious implementation — delete the marks — throws
+away the append-only record that AGENTS.md rule 2 exists to protect, and the
+whole reason the College left paper was that a disputed grade could not be
+reconstructed. So the function copies the entire assessment into
+`voided_assessments.snapshot` — every mark, every criterion score, every
+comment, the computed result, its revisions and every report row with its hash
+— and only then clears the live rows. Both happen in one transaction, so an
+assessment that could not be archived is not cleared.
+
+*Why the live rows must actually go, rather than carry a flag.* Three things
+downstream key off their presence, and a `voided` column would mean teaching all
+three about it: `assessment_marks_trainee_instrument_slot_idx` is unique, so
+the same slot cannot submit twice; `validate_and_finalize_mark()` refuses a
+mark that is already submitted; and `deriveStatus()` reads `results.locked_at`.
+A flag would also need an UPDATE grant on `assessment_marks`, which is the one
+thing rule 2 forbids outright. Copy-then-clear leaves the grant table exactly as
+0001 left it.
+
+*The result row is cleared explicitly, not by trigger.*
+`assessment_marks_recompute_result` fires on INSERT and UPDATE only, never on
+DELETE. Removing the marks alone would leave a locked result computed from marks
+that no longer exist — the worst possible state. `delete from results` inside
+the function is what actually returns the trainee to unassessed, and the app
+already renders a trainee with no `results` row as "Not yet assessed".
+
+*Assessors cannot read the archive.* `voided_assessments_select` is coordinator
+and super_admin only, deliberately not the trainee's own assessors. A snapshot
+holds BOTH slots' marks, and after a void those two people are about to mark the
+trainee again — letting assessor 2 read assessor 1's voided scores would defeat
+rule 4 by the back door, on the one occasion it matters most. A supervisor just
+sees the trainee back in their list, unmarked.
+
+*The PDF files are kept.* The `reports` ROWS cascade away with the result, but
+the objects stay in the private bucket: a report already e-mailed to a trainee
+is a thing that happened, and the file is the only copy of what they received.
+`reports_bucket_select` (0014) keys off the trainee-id folder rather than the
+result row, so a Super Administrator can still fetch it, and the snapshot keeps
+the path and the SHA-256. This is the opposite of the test-data purge, which
+does delete its files — there the trainee never existed.
+
+*Reason first, confirmation second.* The confirm button stays disabled until the
+reason is typed, so the justification is written while the decision is being
+made rather than invented after it. Eight characters minimum, enforced in the
+form, in the Server Action (`validateReason`) and again in Postgres.
+
+**Applied live, and what applying it taught us**
+0031 went to production on the user's explicit instruction. Before/after row
+counts were identical — 546 trainees, 47 marks, 29 results, 19 reports, 3 locked
+— and `assessment_marks` still has no UPDATE and no DELETE grant, `delete on
+results` and `delete on trainees` are still revoked. Note 0030 is still NOT
+applied; 0031 does not depend on it.
+
+One real defect surfaced only by applying it. **`revoke all on function ... from
+public` does not remove the EXECUTE grant Supabase's default privileges hand to
+`anon`** at creation time — `public` is the pseudo-role, `anon` is an explicit
+grantee, and reading `information_schema.routine_privileges` afterwards showed
+`anon:EXECUTE` still standing on the one function in the schema that can clear a
+mark. Not exploitable (`is_super_admin()` is checked first and returns false when
+`auth.uid()` is null, so an anonymous call raises insufficient_privilege before
+reading a row) but wrong, and `purge_test_trainees()` from 0029 does not carry
+it. Revoked in a follow-up migration and added to the 0031 file, guarded by a
+`pg_roles` check because `anon` does not exist in the plain Postgres container
+the pgTAP CI job builds — an unguarded REVOKE there fails the whole run on
+`ON_ERROR_STOP`. **Check `routine_privileges` after adding any SECURITY DEFINER
+function; the revoke you wrote is probably not the revoke you got.**
+
+**Watch out for**
+- **The happy path has never run against production data.** The intended proof
+  was a dry run on `TEST IPT R1A` inside a self-rolling-back block; the agent
+  harness refused the statement because it is write-shaped against a live
+  database, and it was not worked around. What IS proven is structural (the
+  checks above) plus 30/30 pgTAP assertions and a full locked-trainee round trip
+  against an identical schema in a Postgres 16 container built exactly as the CI
+  job builds it. The first real void will be a Super Admin pressing the button.
+- The `voided_assessments` snapshot is a jsonb blob at `schema_version: 1`.
+  Nothing reads it back into tables yet; restoring a voided assessment would be
+  a new piece of work, and the console deliberately offers no undo.
+- A supervisor's device caches the route list in Dexie. After a void, that
+  device may still show "✓ Assessed" until it next reaches the network — the
+  void is not pushed to anyone. Tell the assessors when you void.
+- This is NOT trainee deletion. `delete on trainees` stays revoked and that card
+  on the same page still says so; the void card now points at itself as the
+  thing people usually actually want.
+
+**Verified by**
+`pnpm format:check && pnpm lint && pnpm test && pnpm typecheck` all green;
+300 Vitest cases, 12 of them new for the planner. The database half was proven
+for real in a Postgres 16 container built exactly as the `pgtap` CI job builds
+it (auth stub, every migration in order, pgTAP): **30 of 30 assertions pass**,
+12 of them new — a supervisor is refused, a short reason is refused, the marks
+and the result are cleared, both marks and all their criterion scores survive in
+the snapshot, the void is attributed in `audit_log`, the same slot can be marked
+again afterwards, a supervisor cannot read the archive, and DELETE on it is
+denied for every role. Separately, a full round trip on a genuinely locked TP
+trainee (4 marks, 41 criteria each, 100/100 grade A Competent, one report row):
+after the void, marks 0, results 0, report rows 0, **assignments still 2 and the
+register entry still there**, the archive carrying 100.00 / A / Competent /
+was_locked, the report's storage path preserved, one `VOID_ASSESSMENT` audit
+line, and a fresh mark accepted for the same slot. Not yet exercised through the
+browser as a real Super Admin — that check is the user's.
+
+---
+
 ## 2026-09-06 · decision · The deadline is the EVENING of Sunday 6 September — production, not a milestone
 
 **Kind:** decision

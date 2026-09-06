@@ -6,6 +6,11 @@
 -- provides the real one). Every assertion here was first proven by hand
 -- against a live Postgres 16 container; see MEMORY.md for that session.
 --
+-- The final block also exercises `void_trainee_assessment()` from migration
+-- 0031, so run the whole of packages/db/migrations/*.sql, in order, before
+-- this file — which is what the `pgtap` CI job does. Against 0000/0001 alone
+-- those last twelve assertions fail on a missing function, not on a defect.
+--
 -- select plan(N) below must match the number of assertions actually run.
 --
 -- throws_ok's 3-arg form is (sql, errcode, errmsg) on the pgTAP actually
@@ -18,7 +23,7 @@
 -- errmsg to check the code only, with a real description as the 4th arg.
 
 begin;
-select plan(18);
+select plan(30);
 
 -- ── Fixtures ─────────────────────────────────────────────────────
 insert into auth.users (id) values
@@ -247,6 +252,122 @@ select is(
   '00000000-0000-0000-0000-000000000004'::uuid,
   'a super_admin write is attributed to them in audit_log'
 );
+
+-- ── 0031 void_trainee_assessment ─────────────────────────────────
+--
+-- Deliberately last in the file: it clears the fixture trainee's marks and
+-- result, so nothing above it can run after this point.
+--
+-- What matters is that voiding is not a way around rule 2. The marks are not
+-- edited and not merely deleted — they land in `voided_assessments` first, in
+-- the same transaction, and only a Super Administrator can do it at all.
+
+set role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', false);
+select throws_ok(
+  $$ select * from void_trainee_assessment(
+       '20000000-0000-0000-0000-000000000001', 'Marked the wrong trainee entirely') $$,
+  '42501',
+  null,
+  'a supervisor cannot void an assessment'
+);
+reset role;
+
+set role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000004', false);
+
+select throws_ok(
+  $$ select * from void_trainee_assessment(
+       '20000000-0000-0000-0000-000000000001', 'oops') $$,
+  'P0001',
+  null,
+  'a void with too short a reason is refused'
+);
+
+select is(
+  (select marks_voided from void_trainee_assessment(
+     '20000000-0000-0000-0000-000000000001',
+     'Marked against the wrong trainee; scores belong to another candidate')),
+  2,
+  'a super_admin void reports the two marks it cleared'
+);
+reset role;
+
+select is(
+  (select count(*)::int from assessment_marks
+   where trainee_id = '20000000-0000-0000-0000-000000000001'),
+  0,
+  'the trainee has no marks left'
+);
+
+select is(
+  (select count(*)::int from results
+   where trainee_id = '20000000-0000-0000-0000-000000000001'),
+  0,
+  'the result row is cleared, returning the trainee to Not yet assessed'
+);
+
+select is(
+  (select jsonb_array_length(snapshot -> 'marks') from voided_assessments
+   where trainee_id = '20000000-0000-0000-0000-000000000001'),
+  2,
+  'both marks survive whole in the archive snapshot'
+);
+
+select is(
+  (select jsonb_array_length(snapshot -> 'marks' -> 0 -> 'items')
+   from voided_assessments where trainee_id = '20000000-0000-0000-0000-000000000001'),
+  2,
+  'every criterion score survives with its mark'
+);
+
+-- The computed result is preserved as it stood, not recalculated: this is the
+-- figure a dispute would be argued from.
+--
+-- Note it is 3.00 and NOT locked. The fixture trainee is TP, and the real
+-- seeds (0005, 0006) give the TP track two instruments — theory AND practical
+-- — so recompute_result() expects four submitted marks before it stamps
+-- locked_at, while this fixture submits two against one instrument. Both slots
+-- scored the full 3, so theory_total averages to 3 and the total is 3.
+select is(
+  (select result_total from voided_assessments
+   where trainee_id = '20000000-0000-0000-0000-000000000001'),
+  3.00::numeric,
+  'the computed result that was cleared is preserved in the archive'
+);
+
+select is(
+  (select actor_id from audit_log where action = 'VOID_ASSESSMENT'
+   order by created_at desc limit 1),
+  '00000000-0000-0000-0000-000000000004'::uuid,
+  'the void is attributed to the super_admin who made it'
+);
+
+-- Both assessors can now mark again: the unique (trainee, instrument, slot)
+-- index that would have refused a second submission is free, because the row
+-- it was protecting has gone to the archive.
+select lives_ok(
+  $$ insert into assessment_marks (trainee_id, instrument_id, supervisor_id, slot)
+     values ('20000000-0000-0000-0000-000000000001',
+             '30000000-0000-0000-0000-000000000001',
+             '00000000-0000-0000-0000-000000000001', 'a1') $$,
+  'the same slot can be marked again after a void'
+);
+
+set role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', false);
+select is(
+  (select count(*)::int from voided_assessments),
+  0,
+  'a supervisor cannot read the voided marks of a trainee they are about to re-mark'
+);
+select throws_ok(
+  $$ delete from voided_assessments $$,
+  '42501',
+  null,
+  'DELETE on voided_assessments is denied for every role'
+);
+reset role;
 
 select * from finish();
 rollback;

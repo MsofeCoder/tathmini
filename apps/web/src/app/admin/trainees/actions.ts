@@ -3,13 +3,21 @@
 import { revalidatePath } from 'next/cache';
 import { requireAdminWriter, type ActionResult } from '@/lib/admin/session';
 import { planRouteMove, planTraineeSlotChange } from '@/lib/admin/reassignment';
-import { isUuid, validateTraineeParticulars } from '@/lib/admin/validation';
+import { planAssessmentVoid } from '@/lib/admin/void-assessment';
+import { isUuid, validateReason, validateTraineeParticulars } from '@/lib/admin/validation';
 
 /**
  * Trainee corrections — the register work that is currently done by writing
  * a migration by hand (see packages/db/migrations/0023, 0026 and the IPT
- * roster update). Particulars and route membership only: nothing here can
- * touch a mark, a total or a verdict.
+ * roster update).
+ *
+ * Particulars, route membership and assessor slots are ordinary writes through
+ * the administrator's own session, and none of them can touch a mark, a total
+ * or a verdict. `voidTraineeAssessment()` at the foot of this file is the one
+ * exception and is deliberately unlike the rest: it changes what a trainee's
+ * record says, so it does not write anything itself — it calls a guarded,
+ * audit-logging database function that archives the assessment before clearing
+ * it. Nothing here ever edits a score.
  */
 
 export async function updateTraineeParticulars(
@@ -269,5 +277,115 @@ export async function reassignTraineeSlot(
     message: `${supervisor.name} now assesses ${trainee.name} as ${
       slot === 'a1' ? 'Assessor 1' : 'Assessor 2'
     }. The route itself is unchanged.`,
+  };
+}
+
+/**
+ * Voiding one trainee's assessment: returning an assessed trainee to "Not yet
+ * assessed" so they can be marked again.
+ *
+ * The clearing itself happens in Postgres, in `void_trainee_assessment()`
+ * (migration 0031). It has to: `assessment_marks` has neither an UPDATE nor a
+ * DELETE grant for any role and `delete on results` is revoked from
+ * `authenticated`, and all of that stays. The function is the one narrow,
+ * audited exception, and it archives the whole assessment into
+ * `voided_assessments` before it clears anything — in the same transaction, so
+ * a void that could not be archived does not happen.
+ *
+ * The checks below are therefore not the security boundary; Postgres is. They
+ * exist so that a mistake is caught with a sentence the administrator can act
+ * on, before a real trainee's marks are cleared.
+ */
+export async function voidTraineeAssessment(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  const auth = await requireAdminWriter();
+  if (!auth.ok) return auth;
+  const supabase = auth.session.supabase;
+
+  // A Server Action is a POST endpoint like any other, and this one is
+  // irreversible. The token means a request that did not come from the
+  // confirmed button does nothing.
+  if (formData.get('confirm') !== 'void-assessment') {
+    return { ok: false, error: 'Confirmation missing — nothing was voided.' };
+  }
+
+  const traineeId = String(formData.get('traineeId') ?? '');
+  if (!isUuid(traineeId)) return { ok: false, error: 'That trainee could not be identified.' };
+
+  const reason = validateReason(String(formData.get('reason') ?? ''));
+  if (!reason.ok) return { ok: false, error: reason.error };
+
+  // Re-read rather than trust the form: the confirmation the administrator is
+  // looking at may have been rendered before the second assessor submitted.
+  const [traineeRes, marksRes, reportsRes, resultRes] = await Promise.all([
+    supabase.from('trainees').select('id, name, track').eq('id', traineeId).maybeSingle(),
+    supabase.from('assessment_marks').select('id, submitted_at').eq('trainee_id', traineeId),
+    supabase
+      .from('reports')
+      .select('id', { count: 'exact', head: true })
+      .eq('trainee_id', traineeId),
+    supabase.from('results').select('locked_at').eq('trainee_id', traineeId).maybeSingle(),
+  ]);
+
+  const trainee = traineeRes.data;
+  if (!trainee) return { ok: false, error: 'That trainee no longer exists.' };
+
+  const marks = marksRes.data ?? [];
+  const decision = planAssessmentVoid({
+    traineeName: trainee.name as string,
+    track: trainee.track as 'TP' | 'IPT',
+    markCount: marks.length,
+    submittedMarkCount: marks.filter((m) => m.submitted_at).length,
+    reportCount: reportsRes.count ?? 0,
+    lockedAt: (resultRes.data?.locked_at as string | null) ?? null,
+    hasResult: Boolean(resultRes.data),
+  });
+  if (!decision.ok) return { ok: false, error: decision.error };
+
+  const { data, error } = await supabase.rpc('void_trainee_assessment', {
+    p_trainee_id: traineeId,
+    p_reason: reason.value,
+  });
+
+  if (error) {
+    // The function does not exist yet — migration 0031 has not been applied.
+    // Said plainly, because "could not find the function" is not something an
+    // administrator can act on.
+    if (error.code === 'PGRST202' || error.message.includes('void_trainee_assessment')) {
+      return {
+        ok: false,
+        error:
+          'This is not enabled yet: migration 0031 has not been applied to the database. Nothing was voided.',
+      };
+    }
+    if (error.code === '42501') {
+      return { ok: false, error: 'Only a Super Administrator may void an assessment.' };
+    }
+    // P0001 is the function's own refusal — no such trainee, nothing to void,
+    // or a reason it would not accept. Its wording is already for a human.
+    return { ok: false, error: `The void was refused: ${error.message}` };
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  const marksVoided = Number(row?.marks_voided ?? 0);
+  const reportsVoided = Number(row?.reports_voided ?? 0);
+
+  revalidatePath(`/admin/trainees/${traineeId}`);
+  revalidatePath('/admin/trainees');
+  revalidatePath('/admin/results');
+  revalidatePath('/admin/audit');
+  revalidatePath('/admin');
+
+  return {
+    ok: true,
+    message: `${trainee.name} is back to “Not yet assessed”. ${marksVoided} ${
+      marksVoided === 1 ? 'mark' : 'marks'
+    }${
+      reportsVoided > 0
+        ? ` and ${reportsVoided} report ${reportsVoided === 1 ? 'record' : 'records'}`
+        : ''
+    } went to the void archive, with your reason and your name. Both assessors can now mark ${trainee.name} again.`,
   };
 }

@@ -66,7 +66,18 @@ marks. This is the one defect that sends a real person the wrong result.
 trainee: particulars, counters, both assessor names. Two minutes, and it catches
 a clean-up that took too much.
 
-**5 · Decide `0028_ipt_roster_final.sql`.** Still uncommitted. It moves 40 IPT
+**5 · Try one void, on a test row, in the browser.** `0031_void_trainee_assessment.sql`
+was **applied live today**: an administrator can now return one assessed trainee
+to "Not yet assessed" from `/admin/trainees/[id]`, archiving the whole
+assessment into `voided_assessments` first, so a supervisor who marked the wrong
+person is undone from the console instead of by a hand-written migration. The
+database half is verified structurally and by 30 pgTAP assertions, but **the
+happy path has never run against real data** — do one void on a `TEST-` row
+before the test rows are purged, confirm the trainee reads "Not yet assessed"
+and can be marked again, and that is this feature closed out. Note it does NOT
+delete a trainee; `delete on trainees` is still revoked, and that is still cut.
+
+**6 · Decide `0028_ipt_roster_final.sql`.** Still uncommitted. It moves 40 IPT
 trainees between routes, which changes who assesses them. Marking has started, so
 every hour it waits, more of those trainees become unmovable — the console
 refuses to move anyone already marked, and the migration would not. Apply it

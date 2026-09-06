@@ -7,6 +7,7 @@ import { isTestTrainee, TEST_TRAINEE_DELETE_SQL } from '@/lib/admin/test-data';
 import { isUuid } from '@/lib/admin/validation';
 import { Badge, Card, Code, EmptyRow, PageHeader, TableWrap, Td, Th } from '../../ui';
 import { ParticularsForm, RouteMoveForm, SlotAssigneeForm } from '../trainee-forms';
+import { VoidAssessmentForm } from '../void-form';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,6 +21,12 @@ export const dynamic = 'force-dynamic';
  * missing feature: `assessment_marks` has no UPDATE grant for any role
  * (AGENTS.md rule 2), and a correction is a superseding revision with a typed
  * reason, which is its own screen and is not built yet.
+ *
+ * The one thing an administrator CAN do to an assessment is void it whole —
+ * archive it and return the trainee to "Not yet assessed" so both assessors
+ * mark them again. That is not an edit either: nothing is changed, nothing is
+ * thrown away, and the marks that were cleared stay readable in
+ * `voided_assessments`.
  */
 export default async function AdminTraineePage({ params }: { params: Promise<{ id: string }> }) {
   const { supabase, canWrite } = await requireAdmin();
@@ -35,6 +42,7 @@ export default async function AdminTraineePage({ params }: { params: Promise<{ i
     resultRes,
     reportsRes,
     instrumentsRes,
+    voidsRes,
   ] = await Promise.all([
     supabase
       .from('trainees')
@@ -61,6 +69,21 @@ export default async function AdminTraineePage({ params }: { params: Promise<{ i
       .eq('trainee_id', id)
       .order('generated_at', { ascending: false }),
     supabase.from('instruments').select('id, label, code'),
+    /**
+     * Voids already on record for this trainee. Selected with the rest rather
+     * than behind a condition, because a trainee being assessed for the second
+     * time looks exactly like one being assessed for the first — the archive is
+     * the only thing that says otherwise. `error` rather than a throw when
+     * migration 0031 has not been applied: the table simply does not exist yet,
+     * and the card below is then not drawn.
+     */
+    supabase
+      .from('voided_assessments')
+      .select(
+        'id, marks_voided, reports_voided, result_total, result_pct, result_grade, result_competent, was_locked_at, reason, voided_by_id, voided_at',
+      )
+      .eq('trainee_id', id)
+      .order('voided_at', { ascending: false }),
   ]);
 
   const trainee = traineeRes.data;
@@ -80,7 +103,9 @@ export default async function AdminTraineePage({ params }: { params: Promise<{ i
   const result = resultRes.data;
   const reports = reportsRes.data ?? [];
 
+  const voids = voidsRes.data ?? [];
   const submitted = marks.filter((m) => m.submitted_at);
+  const canVoid = marks.length > 0 || Boolean(result);
   const isTest = isTestTrainee({
     registrationNumber: trainee.registration_number,
     routeCode: route?.code,
@@ -279,8 +304,78 @@ export default async function AdminTraineePage({ params }: { params: Promise<{ i
         </TableWrap>
       </Card>
 
+      {voids.length > 0 ? (
+        <Card
+          title="Voided assessments"
+          description="Assessments cleared so this trainee could be marked again. Kept whole, and never removed."
+        >
+          <TableWrap>
+            <thead>
+              <tr>
+                <Th>Voided</Th>
+                <Th>By</Th>
+                <Th>What it held</Th>
+                <Th>Reason</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {voids.map((voided) => (
+                <tr key={voided.id as string}>
+                  <Td className="whitespace-nowrap">
+                    {formatTimestamp(voided.voided_at as string)}
+                  </Td>
+                  <Td>{userById.get(voided.voided_by_id as string)?.name ?? '—'}</Td>
+                  <Td>
+                    {voided.marks_voided} {voided.marks_voided === 1 ? 'mark' : 'marks'}
+                    {voided.reports_voided ? `, ${voided.reports_voided} report` : ''}
+                    {(voided.reports_voided as number) > 1 ? 's' : ''}
+                    <p className="mt-0.5 text-[12px] text-[#5b6b78]">
+                      {voided.result_total != null
+                        ? `${voided.result_total} · ${voided.result_pct}% · ${
+                            voided.result_grade ?? '—'
+                          } · ${voided.result_competent ? 'Competent' : 'Not Competent'}`
+                        : 'no result computed'}
+                      {voided.was_locked_at ? ' · was locked' : ''}
+                    </p>
+                  </Td>
+                  <Td className="max-w-[24rem]">{voided.reason}</Td>
+                </tr>
+              ))}
+            </tbody>
+          </TableWrap>
+        </Card>
+      ) : null}
+
+      {canVoid ? (
+        <Card
+          title="Void this assessment"
+          description="Returns this trainee to “Not yet assessed” so both assessors can mark them again. The marks are archived, not destroyed."
+          tone="warning"
+        >
+          <VoidAssessmentForm
+            traineeId={trainee.id}
+            disabled={!canWrite}
+            target={{
+              traineeName: trainee.name,
+              track: trainee.track as 'TP' | 'IPT',
+              markCount: marks.length,
+              submittedMarkCount: submitted.length,
+              reportCount: reports.length,
+              lockedAt: (result?.locked_at as string | null) ?? null,
+              hasResult: Boolean(result),
+            }}
+          />
+        </Card>
+      ) : null}
+
       <Card title="Removing a trainee" tone="warning">
         <div className="space-y-2 p-4 text-[12.5px] leading-relaxed text-[#4d5f6c]">
+          <p>
+            <strong>If the assessment is wrong, void it above instead.</strong> That is almost
+            always what is wanted: it clears the marks and the result, returns the trainee to
+            &ldquo;Not yet assessed&rdquo;, and keeps them on the register where their supervisors
+            can mark them again. Deleting the register entry loses the person as well as the marks.
+          </p>
           <p>
             Deleting a trainee is not offered here, and the database would refuse it if it were:{' '}
             <Code>delete on trainees</Code> is revoked from every signed-in role, deliberately,
