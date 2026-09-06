@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { AssessmentActions, type AssessmentAction } from '@/components/assessment-actions';
+import { ReportCorrection } from './report-correction';
 import { createClient } from '@/lib/supabase/server';
 import { traineeParticulars, trackChipStyle, trackPointsLabel } from '@/lib/trainees';
 import { ReportDownloadButton } from './report-download-button';
@@ -184,6 +185,14 @@ export default async function TraineeProfilePage({ params }: { params: Promise<{
           printed report carries the full VETA heading without the supervisor typing anything in the
           field.
         </p>
+
+        {/*
+          Read-only does not mean unchallengeable. The person who notices a wrong
+          e-mail address is the supervisor standing in front of the trainee, and
+          until this existed they had nowhere to put that. It asks; only a Super
+          Administrator can change the register.
+        */}
+        <ReportCorrection traineeId={id} />
 
         {locked ? (
           <div className="mt-4 rounded-xl border border-[#dae3e0] bg-[#f1f3f4] px-4 py-3.5">
