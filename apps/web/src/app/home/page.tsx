@@ -32,6 +32,11 @@ export default async function HomePage() {
   if (!profile) redirect('/login');
   if (profile.must_change_password) redirect('/change-password');
 
+  // A coordinator's whole role is oversight, so they land on the read-only
+  // dashboard rather than a console whose every control is disabled for them.
+  // Carried over from the app shell, which this revert removes — without it the
+  // Coordinator dashboard is built and unreachable.
+  if (profile.role === 'coordinator') redirect('/coordinator');
   if (profile.role !== 'supervisor') redirect('/admin');
 
   // RLS scopes every one of these to exactly this signed-in supervisor —
