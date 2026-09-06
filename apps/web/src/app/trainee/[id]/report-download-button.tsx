@@ -9,6 +9,7 @@ import {
   removeReportDraft,
   saveReportDraft,
 } from '@/lib/report-drafts';
+import { recordSentReport } from '@/lib/sent-reports';
 import type { EmailOutcome } from '@/lib/notifications/send';
 
 /** Formatted on a fixed locale and the College's own timezone so the server
@@ -85,8 +86,11 @@ export function ReportDownloadButton({
         return;
       }
       // The held-back marker has served its purpose the moment the report is
-      // away; leaving it would list a sent report as still waiting.
+      // away; leaving it would list a sent report as still waiting. The
+      // receipt takes its place: it is what lets the Reports tab say "this one
+      // went" later, standing in a dead zone.
       await removeReportDraft(traineeId);
+      await recordSentReport({ traineeId, traineeName });
       setDraftSavedAt(null);
       // Set the outcome BEFORE handing over the signed URL: the link carries a
       // Content-Disposition attachment, so the browser downloads without
@@ -229,8 +233,8 @@ export function ReportDownloadButton({
 
       <p className="mt-2 text-[12.5px] leading-relaxed text-[#5f6f7c]">
         Sending stores the report and e-mails it, and can only be done once. Saving a draft sends
-        nothing — it keeps this report on your Pending list until you are ready, and the report will
-        be dated the day you send it.
+        nothing — it keeps this report on the Drafted list in your Reports tab until you are ready,
+        and the report will be dated the day you send it.
       </p>
       {error ? (
         <p role="alert" className="mt-2 text-[13px] leading-relaxed text-[#8a3a2a]">

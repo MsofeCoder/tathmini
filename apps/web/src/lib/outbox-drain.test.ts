@@ -34,6 +34,7 @@ function harness(options: {
   const order: string[] = [];
   const clearedDrafts: string[] = [];
   const attempts: { key: string; error: string }[] = [];
+  const sentReceipts: string[] = [];
 
   const deps: DrainDeps = {
     listDue: async () => [...queue.values()],
@@ -58,10 +59,11 @@ function harness(options: {
       return (await options.generateReport?.(traineeId)) ?? { url: 'https://signed' };
     }),
     removeQueuedReport: async (key) => void reports.delete(key),
+    recordSentReport: async ({ traineeId }) => void sentReceipts.push(traineeId),
     recordReportAttempt: async (key, error) => void attempts.push({ key, error }),
   };
 
-  return { deps, queue, reports, order, clearedDrafts, attempts };
+  return { deps, queue, reports, order, clearedDrafts, attempts, sentReceipts };
 }
 
 /**
@@ -181,5 +183,36 @@ describe('drainOutbox — reports', () => {
     await drainOutbox(h.deps);
 
     expect(h.deps.generateReport).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * The Reports tab's "Submitted" list has to be readable with no signal, so a
+ * report that drains from the queue leaves a receipt on the device. Without
+ * it, a report sent by the drainer — the whole offline case — would show as
+ * still pending until the phone next reached the server.
+ */
+describe('drainOutbox — the on-device receipt', () => {
+  it('records a receipt for a report that actually sent', async () => {
+    const h = harness({ reports: ['t1'] });
+    await drainOutbox(h.deps);
+    expect(h.sentReceipts).toEqual(['t1']);
+  });
+
+  it('records nothing for a report the server refused', async () => {
+    const h = harness({
+      reports: ['t1'],
+      generateReport: async () => ({ error: 'submit your assessment first' }),
+    });
+    await drainOutbox(h.deps);
+    expect(h.sentReceipts).toEqual([]);
+  });
+
+  it('records one receipt however many times connectivity returns', async () => {
+    const h = harness({ reports: ['t1'] });
+    await drainOutbox(h.deps);
+    await drainOutbox(h.deps);
+    await drainOutbox(h.deps);
+    expect(h.sentReceipts).toEqual(['t1']);
   });
 });

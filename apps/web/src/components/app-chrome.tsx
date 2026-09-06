@@ -17,8 +17,11 @@ import { ConnectionWatcher } from './connection-watcher';
  * supervisor to walk away from a half-finished assessment.
  *
  * /offline counts as the Trainees tab: it IS the route list, without signal.
+ * /pending is kept because the service worker has precached it on phones
+ * already running the app; it redirects into the Reports tab, and keeping the
+ * bar there stops the shell flickering on the way through.
  */
-const NAV_PATHS = new Set(['/home', '/pending', '/account', '/offline', '/moves']);
+const NAV_PATHS = new Set(['/home', '/reports', '/pending', '/account', '/offline']);
 
 export function AppChrome({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();

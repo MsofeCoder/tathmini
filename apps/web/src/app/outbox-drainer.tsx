@@ -6,6 +6,7 @@ import { clearDraft } from '@/lib/drafts';
 import { listDue, recordAttempt, removeQueued } from '@/lib/outbox';
 import { drainOutbox } from '@/lib/outbox-drain';
 import { listQueuedReports, recordReportAttempt, removeQueuedReport } from '@/lib/report-outbox';
+import { recordSentReport } from '@/lib/sent-reports';
 import { submitAssessment } from './actions/submit-assessment';
 import type { ReportAttemptResult } from '@/lib/outbox-drain';
 
@@ -64,6 +65,7 @@ export function OutboxDrainer() {
         generateReport: requestReport,
         removeQueuedReport,
         recordReportAttempt,
+        recordSentReport,
       });
       if (submitted > 0 || sent > 0) router.refresh();
     } finally {

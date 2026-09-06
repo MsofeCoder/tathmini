@@ -39,6 +39,11 @@ export interface DrainDeps {
   generateReport: (traineeId: string) => Promise<ReportAttemptResult>;
   removeQueuedReport: (key: string) => Promise<void>;
   recordReportAttempt: (key: string, error: string) => Promise<void>;
+  /**
+   * Writes the on-device receipt that lets the Reports tab list this one as
+   * submitted with no signal. Bookkeeping only — nothing is decided from it.
+   */
+  recordSentReport: (input: { traineeId: string; traineeName: string }) => Promise<void>;
 }
 
 export interface DrainResult {
@@ -96,6 +101,12 @@ export async function drainOutbox(deps: DrainDeps): Promise<DrainResult> {
     // The report is stored and recorded server-side by this point. Whether the
     // e-mail itself went is not this queue's business: re-generating would
     // store a second copy of an append-only document.
+    //
+    // The receipt is written BEFORE the entry leaves the queue, so a failure
+    // between the two leaves the report queued rather than vanished — a
+    // re-drain is answered by the server's own idempotency, whereas a lost
+    // entry is a report nobody knows is missing.
+    await deps.recordSentReport({ traineeId: report.key, traineeName: report.traineeName });
     await deps.removeQueuedReport(report.key);
     sent += 1;
   }
