@@ -1,0 +1,19 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "title": "01 · Side elevation", "x": 0, "y": 0, "w": 1440, "h": 900 },
+    { "file": "Orthographic.dc.html", "title": "02 · Front / rear / plan", "x": 1560, "y": 0, "w": 1440, "h": 900 },
+    { "file": "Colourways.dc.html", "title": "05 · Colourways", "x": 0, "y": 1080, "w": 1440, "h": 900, "is_interactive": true },
+    { "file": "Dashboard.dc.html", "title": "04 · Centre display HMI", "x": 1560, "y": 1080, "w": 1280, "h": 480, "is_interactive": true },
+    { "file": "Spec.dc.html", "title": "03 · Specification (A4)", "x": 0, "y": 2100, "w": 794, "h": 1123, "print": "fixed" }
+  ],
+  "annotations": [
+    {
+      "id": "brief",
+      "x": 0,
+      "y": -260,
+      "w": 620,
+      "text": "TEMBO E1 — concept electric utility pickup.\nDouble cab, dual motor, 250 mm clearance, 1 435 mm bed.\n\nDrawings are 1:20 at 96 px/in. All specification figures are design-freeze targets for a concept, not homologated values.\n\nColourways and the HMI artboard have working controls — click a paint chip or a drive mode."
+    }
+  ],
+  "launch": { "view": "canvas" }
+}
