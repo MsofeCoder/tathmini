@@ -26,7 +26,7 @@ import { describeAge, listReportDrafts, sortDraftsByAge } from '@/lib/report-dra
  * A count alone is not enough in the field. A supervisor who marked six
  * trainees in a dead zone needs to see WHICH six are safe, by name.
  */
-export default function PendingPage() {
+export function PendingScreen() {
   const [records, setRecords] = useState<OutboxRecord[] | null>(null);
   const [drafts, setDrafts] = useState<ReportDraftRecord[] | null>(null);
 
