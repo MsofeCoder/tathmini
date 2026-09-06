@@ -71,6 +71,12 @@ export function matchScreen(pathname: string): Screen {
  * Whether a link should be handled by the in-app router rather than by a full
  * page load.
  *
+ * `/admin/**` is deliberately NOT a shell path: the administration console is
+ * server-rendered, reads the whole cohort, and is the one part of the app that
+ * genuinely wants the network. `isShellPath` already excludes it, because
+ * `matchScreen` does not recognise it — this note exists so that stays true on
+ * purpose rather than by accident.
+ *
  * Full navigations would work — the service worker answers each one from the
  * same shell — but they reboot React, which means re-reading IndexedDB and,
  * worse, tearing down and rebuilding the Realtime socket on every tap. On a

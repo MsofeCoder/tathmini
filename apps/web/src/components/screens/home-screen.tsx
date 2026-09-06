@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import { signOut } from '@/app/home/actions';
 import { RouteList } from '@/app/home/route-list';
 import { buildRouteRows } from '@/lib/local/derive';
@@ -15,14 +16,26 @@ import { useDeviceRows } from '@/lib/local/use-device';
  * not on the path at all. Same markup, same counters, same copy — the
  * derivation lives in `lib/local/derive.ts`, unchanged and finally testable.
  *
- * The role branch that used to live here went with the server render. The
- * Coordinator and Super Admin dashboards are unbuilt Phase 3 work and belong
- * on ordinary server-rendered routes anyway — the whole cohort, aggregates
- * and exports are the wrong shape for a device replica.
+ * A non-supervisor is sent to /admin, preserving the branch the server render
+ * used to make. The console is server-rendered on purpose — the whole cohort,
+ * exports and the audit log are the wrong shape for a device replica — so this
+ * is a real navigation, not an in-shell one, and `sw.ts` keeps /admin out of
+ * the shell for the same reason.
+ *
+ * The two never bounce: /admin sends a supervisor here, and this sends
+ * everyone else there.
  */
 export function HomeScreen() {
   const rows = useDeviceRows();
   const trainees = rows ? buildRouteRows(rows) : [];
+  const role = rows?.session?.role;
+
+  useEffect(() => {
+    // Waits for the device read: `role` is undefined until IndexedDB answers,
+    // and redirecting on that would bounce a supervisor to a console they
+    // cannot use.
+    if (role && role !== 'supervisor') window.location.assign('/admin');
+  }, [role]);
 
   return (
     <div>

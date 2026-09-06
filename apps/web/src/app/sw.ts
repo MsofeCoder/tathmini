@@ -49,6 +49,11 @@ const SERVER_ONLY = [
   /^\/login/,
   /^\/change-password/,
   /^\/trainee\/[^/]+\/report\//,
+  // The administration console is server-rendered on purpose: it reads the
+  // whole cohort, exports and the audit log, none of which belong in a device
+  // replica, and it is used at a desk on wifi. Answering it with the shell
+  // would render "Screen not found" over a console that works perfectly.
+  /^\/admin/,
   /^\/_next\//,
 ];
 

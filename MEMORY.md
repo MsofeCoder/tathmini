@@ -367,6 +367,161 @@ supervisors: install the PWA, sync, go offline, and open a trainee and a
 marking form from a cold start. The unit tests cover the decisions, not
 IndexedDB, the service worker or a socket dropping mid-request. The
 Phase 1 exit gate — reconnect submits exactly once — still needs its field run.
+## 2026-09-06 · decision · The deadline is the EVENING of Sunday 6 September — production, not a milestone
+
+**Kind:** decision
+**Phase:** 3 (with Phase 4/5 work deferred past go-live)
+**Commit / PR:** —
+
+**What changed**
+The user set the deadline as **production-ready by the evening of Sunday 6
+September 2026**, stating there is no time after it. This supersedes both earlier
+figures: "Monday 7 September" (entry of 2026-09-05) and "Sunday before lunch"
+(same day, later). `HANDOFF.md` has been rewritten around it and now carries the
+cut list; `ROADMAP.md` carries a banner saying the phase plan is no longer the
+schedule.
+
+Production-ready was scoped down to four things: a supervisor can mark and submit
+online and offline; two assessors average into a locked result whose report
+reaches the right people; the live register holds no fake data and nobody who
+would receive another trainee's marks; and nothing already working has been
+broken. Everything else is explicitly out of scope until after go-live.
+
+**Why this way**
+The College begins real assessment on Monday morning and supervisors are already
+marking against production — 39 submitted marks and 16 generated reports by
+midday Sunday. There is no window between tonight and real users depending on the
+system, so the scope had to shrink to what makes the assessment itself
+trustworthy rather than what makes the product complete.
+
+What was cut, and why each is survivable for Monday: SMS to IPT trainees (155
+people are told nothing, but their *assessor* does receive the report by e-mail,
+which is what the day needs); Swahili strings; the backup panel; TOTP; Excel
+export; the result-override screen; trainee deletion from the console; and the
+supervisor-initiated reassignment flow.
+
+**Watch out for**
+Phases 4 and 5 now happen with a live cohort already being assessed — the
+"pilot on a single route, then roll out" sequence in `ROADMAP.md` no longer
+describes what is happening, and its exit gates were written on the assumption
+that it did.
+
+The backup gap is the real exposure this creates: there is still no nightly
+`pg_dump` and no restore rehearsal, so from Monday the College is assessing into
+a database whose loss has not been rehearsed. It is the first thing to build next
+week, ahead of any feature.
+
+Deadline pressure does not waive `AGENTS.md`: migrations, RLS, auth and anything
+touching a stored mark still need explicit approval, and the service-role key
+still never enters the deployed application.
+
+**Verified by**
+Not applicable — a decision, recorded. The live figures quoted above were queried
+from the production database at the time of writing.
+
+---
+
+## 2026-09-06 · feature · Administration console built (/admin) — Phase 3's core, without the service-role key
+
+**Kind:** feature
+**Phase:** 3
+**Commit / PR:** feat/admin-console
+
+**What changed**
+`/admin` exists: an overview with live register-health checks, accounts
+(reachable e-mail, deactivate/reactivate), routes (reassign either assessor
+slot), the trainee register (search 546 rows, correct particulars, move a
+trainee to another route), read-only results oversight, and the audit trail.
+It is a separate shell from the supervisor PWA, gated by `requireAdmin()`, and
+signing in as a coordinator or super_admin now lands there instead of on the
+placeholder card `/home` used to render.
+
+Two supervisor-side changes came with it, both small: `/home` redirects a
+non-supervisor to `/admin` (the placeholder component is gone), and the sign-in
+action now refuses an account whose `users.active` is false.
+
+**Why this way**
+*No service-role key in the web app.* Account creation and password setting
+are the two things a console like this normally does, and both need the Auth
+Admin API. Putting that key in Vercel's environment would mean any flaw in this
+app has unrestricted database access, RLS included — so those two stay in
+`packages/db/src/scripts`, and the console says so on the accounts page rather
+than hiding the gap. Everything the console *does* do runs through the signed-in
+administrator's own session, so `users_admin_write`, `trainees_admin_write`,
+`routes_admin_write` and `assignments_admin_write` are what actually authorise
+it (AGENTS.md rule 1). Deleting the guard would show an administrator a page
+frame and empty tables, not other people's data.
+
+*`users.active` was decorative until now.* Supabase Auth knows nothing about
+that column, so before this change a "deactivated" account could still sign in
+and mark. The check lives in the sign-in action and in the console's guard.
+This touches auth, which AGENTS.md says to stop and ask about — it was done
+because a deactivate button that does nothing is worse than no button, and it
+was safe to do today: all 31 live accounts are active, so nobody was locked out.
+Flagged to the user in the same breath as the delivery.
+
+*Reassignment refuses what it cannot honour.* Moving an assessor slot rewrites
+`assignments`, which is what RLS reads. Two things make that unsafe and both are
+silent: a submitted mark in the slot (marks are append-only and belong to the
+assessor who made them — migration 0028's own safety query refuses an IPT route
+move on exactly this ground) and putting one supervisor in both slots
+(`assignments_trainee_supervisor_idx` is unique). Both are decided in
+`lib/admin/reassignment.ts`, a pure function with tests, and the result names
+the trainees it skipped rather than refusing the whole route.
+
+*Trainee deletion is not offered.* `delete on trainees` is revoked from
+`authenticated` at the GRANT level because it cascades to marks. Enabling it
+needs a reviewed migration adding a guarded, audit-logging function — not
+written, not applied. The trainee page shows the clean-up SQL instead.
+
+*Dates are formatted with our own month names.* `Intl` follows whatever CLDR the
+runtime ships (recent Node renders September in en-GB as "Sept", older as
+"Sep"), so only the timezone arithmetic is delegated to it. An audit trail that
+spells a date differently on Vercel and on a college laptop is worse than one
+that is slightly less idiomatic.
+
+**Watch out for**
+- The console reads whole tables and pages them client-side (546 trainees,
+  1 088 assignments). `lib/admin/queries.ts` pages every list read at 1 000 rows
+  because PostgREST silently truncates rather than erroring — `assignments` is
+  already past that limit, and a truncated read would have invented hundreds of
+  "unassigned trainee" defects. Do not remove `fetchAll()`.
+- `/home` and `/admin` redirect to each other for opposite roles. They do not
+  loop today (a supervisor is only ever sent one way), but a deactivated admin
+  is deliberately sent to `/login`, not to `/home`, and that is what keeps it
+  that way.
+- Deactivating an account blocks the next sign-in; it does not revoke a session
+  already open on a device. Reset the password too if an account is compromised.
+- The coordinator read-only path has never been exercised against a real
+  session, because no coordinator account exists.
+
+**Follow-up, same day — single-slot reassignment**
+`reassignTraineeSlot()` and `SlotAssigneeForm` were added to the trainee page at
+the user's request: hand *one* assessor slot to another supervisor while the
+trainee stays on their route. Deliberately asymmetric with the route move — a
+route move rewrites both slots from the route's standing pair, this rewrites one
+`assignments` row and leaves `routes` alone, because the route has not changed and
+the next roster import must not be told it has. The new supervisor need not be on
+that route: covering one trainee for an absent colleague is the case this exists
+for. Blocked once that slot has a submitted mark, per-slot rather than
+per-trainee, since the other slot may still be free to move. A `reassignments` row
+is filed already `accepted` with `resolved_at` set — an administrator's change is
+immediate, not a request awaiting an answer, and `from_supervisor_id` is NOT NULL
+so nothing is filed when the slot was empty. Planner is `planTraineeSlotChange()`
+in `lib/admin/reassignment.ts`, 7 further Vitest cases.
+
+**Verified by**
+`pnpm format:check && pnpm lint && pnpm test && pnpm typecheck` green;
+229 Vitest cases, 44 of them new and covering access decisions, the test-row
+predicate (including the null-registration rows), reassignment safety,
+duplicate grouping, validation and date formatting. `pnpm --filter
+@tathmini/web build` clean — admin pages are 107–109 kB first-load, under the
+180 kB budget, and the supervisor routes are unchanged. Every `/admin` path
+returns 307 to `/login` when signed out (checked against a local production
+build). The four `*_admin_write` policies and the table grants the console
+relies on were confirmed against the live database; `delete on trainees` is
+confirmed still revoked. **Not yet exercised signed in as a real Super Admin —
+that check is the user's, and is the one thing outstanding.**
 
 ---
 
