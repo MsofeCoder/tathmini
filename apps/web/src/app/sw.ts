@@ -1,6 +1,7 @@
 import { defaultCache } from '@serwist/next/worker';
 import type { PrecacheEntry } from 'serwist';
 import { NetworkOnly, Serwist } from 'serwist';
+import { isShellPath } from '../lib/local/route-match';
 
 /**
  * What makes the app work with the radio off — in one rule.
@@ -39,27 +40,21 @@ const swSelf = self as unknown as {
 const SHELL_URL = '/';
 
 /**
- * Paths that genuinely need the server and must never be answered with the
- * shell: signing in, the api, and the report preview, which is rendered
- * server-side by the same code that prints the PDF. They fail honestly with
- * no connection rather than showing a shell that cannot do the job.
+ * Whether this navigation is one the shell can answer.
+ *
+ * An ALLOWLIST, asking `route-match.ts` — the same function the shell's own
+ * link interceptor uses, so there is one definition of what the shell serves.
+ * It was a denylist of server-only paths for about an hour, and that hour is
+ * the argument: two new server-rendered areas (`/admin`, and a Coordinator
+ * dashboard behind it) appeared on main in a single morning, and a denylist
+ * silently swallows every one of them — the shell would render "Screen not
+ * found" over a console that works perfectly.
+ *
+ * With an allowlist the default is safe. A route nobody told this file about
+ * goes to the network, which is what an unknown route should do.
  */
-const SERVER_ONLY = [
-  /^\/api\//,
-  /^\/login/,
-  /^\/change-password/,
-  /^\/trainee\/[^/]+\/report\//,
-  // The administration console is server-rendered on purpose: it reads the
-  // whole cohort, exports and the audit log, none of which belong in a device
-  // replica, and it is used at a desk on wifi. Answering it with the shell
-  // would render "Screen not found" over a console that works perfectly.
-  /^\/admin/,
-  /^\/_next\//,
-];
-
 function isShellNavigation(request: Request, url: URL): boolean {
-  if (request.mode !== 'navigate') return false;
-  return !SERVER_ONLY.some((pattern) => pattern.test(url.pathname));
+  return request.mode === 'navigate' && isShellPath(url.pathname);
 }
 
 /**

@@ -14,6 +14,7 @@ const TABS = [
   { href: '/admin/routes', label: 'Routes' },
   { href: '/admin/users', label: 'Accounts' },
   { href: '/admin/results', label: 'Results' },
+  { href: '/admin/requests', label: 'Requests' },
   { href: '/admin/audit', label: 'Audit trail' },
   { href: '/admin/maintenance', label: 'Backup' },
 ];

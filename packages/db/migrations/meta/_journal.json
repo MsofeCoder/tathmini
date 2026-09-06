@@ -190,6 +190,13 @@
       "when": 1788591121380,
       "tag": "0029_purge_test_trainees",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1788591121380,
+      "tag": "0030_trainee_change_requests",
+      "breakpoints": true
     }
   ]
 }

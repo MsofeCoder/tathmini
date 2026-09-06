@@ -69,13 +69,27 @@ describe('isShellPath', () => {
   );
 
   // These must reach the server: sign-in needs the network, the API is
-  // NetworkOnly, and the report preview is rendered by the server.
-  it.each(['/login', '/change-password', '/api/sync', '/trainee/t1/report/preview'])(
-    'leaves %s to the server',
-    (path) => {
-      expect(isShellPath(path)).toBe(false);
-    },
-  );
+  // NetworkOnly, the report preview is rendered by the server, and the
+  // administration console is server-rendered on purpose.
+  //
+  // The last two entries are the ones that matter most. sw.ts derives its
+  // navigation rule from this function, so a path wrongly claimed here is a
+  // path the worker answers with the shell — rendering "Screen not found"
+  // over a console that works perfectly. /admin appeared on main in the same
+  // morning this was written, and a Coordinator dashboard behind it; the
+  // point of asserting unknown paths is that the NEXT one is safe too.
+  it.each([
+    '/login',
+    '/change-password',
+    '/api/sync',
+    '/trainee/t1/report/preview',
+    '/admin',
+    '/admin/users',
+    '/coordinator',
+    '/something-nobody-has-built-yet',
+  ])('leaves %s to the server', (path) => {
+    expect(isShellPath(path)).toBe(false);
+  });
 });
 
 describe('isInternalNavigation', () => {

@@ -1,5 +1,6 @@
 'use client';
 
+import { ReportCorrection } from '@/app/trainee/[id]/report-correction';
 import { AssessmentActions } from '@/components/assessment-actions';
 import { ReportPreviewButton } from '@/components/report-preview';
 import { ReportDownloadButton } from '@/components/report-download-button';
@@ -90,6 +91,17 @@ export function TraineeScreen({ traineeId }: { traineeId: string }) {
           printed report carries the full VETA heading without the supervisor typing anything in the
           field.
         </p>
+
+        {/*
+          Read-only does not mean unchallengeable. The person who notices a wrong
+          e-mail address is the supervisor standing in front of the trainee, and
+          until this existed they had nowhere to put that. It asks; only a Super
+          Administrator can change the register.
+
+          One of the few controls here that genuinely needs a connection — the
+          request goes to a person, not to the device.
+        */}
+        <ReportCorrection traineeId={trainee.id} />
 
         {view.locked ? (
           <div className="mt-4 rounded-xl border border-[#dae3e0] bg-[#f1f3f4] px-4 py-3.5">
