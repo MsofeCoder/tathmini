@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { activeNavHref } from '@/lib/navigation';
 import { listQueued } from '@/lib/outbox';
+import { listReportDrafts } from '@/lib/report-drafts';
 
 /**
  * The prototype's bottom navigation (reference/Tathmini.dc.html lines
@@ -44,7 +45,14 @@ export function BottomNav() {
   useEffect(() => {
     // Read on every navigation: a submission queued on the marking screen has
     // to show up here the moment the supervisor comes back.
-    void listQueued().then((queued) => setPendingCount(queued.length));
+    //
+    // Held reports count too. They are a different kind of waiting — nothing
+    // sends them on its own — but from the bar's point of view both are "work
+    // finished on this phone that has not reached the College", and a report
+    // saved as a draft is precisely the thing a supervisor forgets.
+    void Promise.all([listQueued(), listReportDrafts()]).then(([queued, drafts]) =>
+      setPendingCount(queued.length + drafts.length),
+    );
   }, [pathname]);
 
   const current = activeNavHref(pathname);

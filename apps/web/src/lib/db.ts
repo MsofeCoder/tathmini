@@ -48,6 +48,28 @@ export interface ReportOutboxRecord {
   lastError: string | null;
 }
 
+/**
+ * A report the supervisor has finished but chosen not to send yet.
+ *
+ * Deliberately holds NO document. Nothing is rendered when a draft is saved,
+ * so the PDF — and the submission date printed on it — is produced at the
+ * moment the supervisor actually sends, days later if they like. A draft that
+ * carried a pre-rendered report would carry the wrong date the moment it was
+ * left overnight.
+ *
+ * On the device rather than in the database, like every other draft here: the
+ * decision to hold a report back is personal to the supervisor and has to
+ * survive with no signal, which is exactly when it gets made.
+ */
+export interface ReportDraftRecord {
+  /** The trainee id — one report per trainee per assessor. */
+  key: string;
+  traineeName: string;
+  savedAt: number;
+  /** The supervisor's own note to themselves, e.g. "check the spelling first". */
+  note?: string;
+}
+
 export interface OutboxRecord {
   key: string;
   payload: SubmitAssessmentInput;
@@ -134,6 +156,7 @@ class TathminiDb extends Dexie {
   outbox!: Table<OutboxRecord, string>;
   cache!: Table<OfflineBundle, string>;
   reportOutbox!: Table<ReportOutboxRecord, string>;
+  reportDrafts!: Table<ReportDraftRecord, string>;
 
   constructor() {
     super('tathmini-drafts');
@@ -149,6 +172,16 @@ class TathminiDb extends Dexie {
       outbox: 'key',
       cache: 'key',
       reportOutbox: 'key',
+    });
+    // v5 adds reportDrafts — a report finished but held back. Same rule as
+    // every upgrade before it: the earlier stores are carried forward, so a
+    // supervisor mid-route loses nothing.
+    this.version(5).stores({
+      drafts: 'key',
+      outbox: 'key',
+      cache: 'key',
+      reportOutbox: 'key',
+      reportDrafts: 'key',
     });
   }
 }

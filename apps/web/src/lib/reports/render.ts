@@ -611,8 +611,27 @@ function consolidatedPage(data: ReportData, reportRef: string, generatedAt: stri
 </section>`;
 }
 
-export function renderReportHtml(data: ReportData, reportRef: string): string {
-  const generatedAt = new Date().toLocaleString('en-GB', {
+/**
+ * `submittedAt` is the moment the supervisor SUBMITS the report, and it is an
+ * argument rather than an ambient `new Date()` for a reason that matters now
+ * that a report can be saved as a draft and sent days later: the date printed
+ * on the document must be the date it was actually submitted, never the date
+ * the marking was done or the date a draft was set aside.
+ *
+ * It defaults to now because that is what every existing caller wants — a PDF
+ * is rendered at the instant it is sent, and the preview route is showing what
+ * a report submitted right now would say.
+ *
+ * The per-instrument "Date submitted" on each assessor page is a different
+ * date and stays as it is: `assessment_marks.submitted_at`, when that
+ * assessment was marked. Marks are append-only, so that date cannot move.
+ */
+export function renderReportHtml(
+  data: ReportData,
+  reportRef: string,
+  submittedAt: Date = new Date(),
+): string {
+  const generatedAt = submittedAt.toLocaleString('en-GB', {
     dateStyle: 'medium',
     timeStyle: 'short',
   });
