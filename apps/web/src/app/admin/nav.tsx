@@ -17,6 +17,7 @@ const TABS = [
   { href: '/admin/requests', label: 'Requests' },
   { href: '/admin/audit', label: 'Audit trail' },
   { href: '/admin/maintenance', label: 'Backup' },
+  { href: '/coordinator', label: 'Overview (Coordinator view)' },
 ];
 
 export function AdminNav() {
