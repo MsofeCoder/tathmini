@@ -3,6 +3,7 @@ import {
   boolean,
   index,
   integer,
+  jsonb,
   numeric,
   pgEnum,
   pgTable,
@@ -441,6 +442,47 @@ export const traineeChangeRequests = pgTable(
   ],
 );
 
+/**
+ * One void: an assessment that was cleared so the trainee could be marked
+ * again (migration 0031). Written only by `void_trainee_assessment()`, which
+ * copies everything here BEFORE deleting the live rows — that ordering is what
+ * keeps AGENTS.md rule 2 true. A submitted mark is still never edited and
+ * never merely thrown away; it moves, whole, into `snapshot`.
+ *
+ * `snapshot` holds `{ trainee, marks: [{ mark, items, section_comments }],
+ * result, result_revisions, reports }` under `schema_version: 1`. Readable by
+ * the Coordinator and a Super Administrator only — never by the trainee's own
+ * assessors, who are about to mark them again and must not see the scores that
+ * were voided (rule 4).
+ */
+export const voidedAssessments = pgTable(
+  'voided_assessments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    traineeId: uuid('trainee_id')
+      .notNull()
+      .references(() => trainees.id, { onDelete: 'cascade' }),
+    /** As it stood at the void, so a later register correction cannot rewrite history. */
+    traineeName: text('trainee_name').notNull(),
+    track: trackTypeEnum('track').notNull(),
+    routeCode: text('route_code'),
+    marksVoided: integer('marks_voided').notNull(),
+    reportsVoided: integer('reports_voided').notNull(),
+    resultTotal: numeric('result_total', { precision: 5, scale: 2 }),
+    resultPct: numeric('result_pct', { precision: 5, scale: 2 }),
+    resultGrade: text('result_grade'),
+    resultCompetent: boolean('result_competent'),
+    wasLockedAt: timestamp('was_locked_at', { withTimezone: true }),
+    reason: text('reason').notNull(), // CHECK (length(btrim(reason)) > 0) in 0031
+    voidedById: uuid('voided_by_id')
+      .notNull()
+      .references(() => users.id),
+    voidedAt: timestamp('voided_at', { withTimezone: true }).notNull().defaultNow(),
+    snapshot: jsonb('snapshot').notNull(),
+  },
+  (t) => [index('voided_assessments_trainee_idx').on(t.traineeId)],
+);
+
 /** Append-only, hash-chained. No DELETE grant for any role (companion SQL). */
 export const auditLog = pgTable('audit_log', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -505,6 +547,11 @@ export const resultsRelations = relations(results, ({ many, one }) => ({
 export const reportsRelations = relations(reports, ({ one }) => ({
   trainee: one(trainees, { fields: [reports.traineeId], references: [trainees.id] }),
   result: one(results, { fields: [reports.resultId], references: [results.id] }),
+}));
+
+export const voidedAssessmentsRelations = relations(voidedAssessments, ({ one }) => ({
+  trainee: one(trainees, { fields: [voidedAssessments.traineeId], references: [trainees.id] }),
+  voidedBy: one(users, { fields: [voidedAssessments.voidedById], references: [users.id] }),
 }));
 
 export const traineeChangeRequestsRelations = relations(traineeChangeRequests, ({ one }) => ({
