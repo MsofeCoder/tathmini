@@ -47,6 +47,95 @@ the diff. This file is for knowledge that would otherwise be lost.
 
 ---
 
+## 2026-09-06 · feature · Administration console built (/admin) — Phase 3's core, without the service-role key
+
+**Kind:** feature
+**Phase:** 3
+**Commit / PR:** feat/admin-console
+
+**What changed**
+`/admin` exists: an overview with live register-health checks, accounts
+(reachable e-mail, deactivate/reactivate), routes (reassign either assessor
+slot), the trainee register (search 546 rows, correct particulars, move a
+trainee to another route), read-only results oversight, and the audit trail.
+It is a separate shell from the supervisor PWA, gated by `requireAdmin()`, and
+signing in as a coordinator or super_admin now lands there instead of on the
+placeholder card `/home` used to render.
+
+Two supervisor-side changes came with it, both small: `/home` redirects a
+non-supervisor to `/admin` (the placeholder component is gone), and the sign-in
+action now refuses an account whose `users.active` is false.
+
+**Why this way**
+*No service-role key in the web app.* Account creation and password setting
+are the two things a console like this normally does, and both need the Auth
+Admin API. Putting that key in Vercel's environment would mean any flaw in this
+app has unrestricted database access, RLS included — so those two stay in
+`packages/db/src/scripts`, and the console says so on the accounts page rather
+than hiding the gap. Everything the console *does* do runs through the signed-in
+administrator's own session, so `users_admin_write`, `trainees_admin_write`,
+`routes_admin_write` and `assignments_admin_write` are what actually authorise
+it (AGENTS.md rule 1). Deleting the guard would show an administrator a page
+frame and empty tables, not other people's data.
+
+*`users.active` was decorative until now.* Supabase Auth knows nothing about
+that column, so before this change a "deactivated" account could still sign in
+and mark. The check lives in the sign-in action and in the console's guard.
+This touches auth, which AGENTS.md says to stop and ask about — it was done
+because a deactivate button that does nothing is worse than no button, and it
+was safe to do today: all 31 live accounts are active, so nobody was locked out.
+Flagged to the user in the same breath as the delivery.
+
+*Reassignment refuses what it cannot honour.* Moving an assessor slot rewrites
+`assignments`, which is what RLS reads. Two things make that unsafe and both are
+silent: a submitted mark in the slot (marks are append-only and belong to the
+assessor who made them — migration 0028's own safety query refuses an IPT route
+move on exactly this ground) and putting one supervisor in both slots
+(`assignments_trainee_supervisor_idx` is unique). Both are decided in
+`lib/admin/reassignment.ts`, a pure function with tests, and the result names
+the trainees it skipped rather than refusing the whole route.
+
+*Trainee deletion is not offered.* `delete on trainees` is revoked from
+`authenticated` at the GRANT level because it cascades to marks. Enabling it
+needs a reviewed migration adding a guarded, audit-logging function — not
+written, not applied. The trainee page shows the clean-up SQL instead.
+
+*Dates are formatted with our own month names.* `Intl` follows whatever CLDR the
+runtime ships (recent Node renders September in en-GB as "Sept", older as
+"Sep"), so only the timezone arithmetic is delegated to it. An audit trail that
+spells a date differently on Vercel and on a college laptop is worse than one
+that is slightly less idiomatic.
+
+**Watch out for**
+- The console reads whole tables and pages them client-side (546 trainees,
+  1 088 assignments). `lib/admin/queries.ts` pages every list read at 1 000 rows
+  because PostgREST silently truncates rather than erroring — `assignments` is
+  already past that limit, and a truncated read would have invented hundreds of
+  "unassigned trainee" defects. Do not remove `fetchAll()`.
+- `/home` and `/admin` redirect to each other for opposite roles. They do not
+  loop today (a supervisor is only ever sent one way), but a deactivated admin
+  is deliberately sent to `/login`, not to `/home`, and that is what keeps it
+  that way.
+- Deactivating an account blocks the next sign-in; it does not revoke a session
+  already open on a device. Reset the password too if an account is compromised.
+- The coordinator read-only path has never been exercised against a real
+  session, because no coordinator account exists.
+
+**Verified by**
+`pnpm format:check && pnpm lint && pnpm test && pnpm typecheck` green;
+222 Vitest cases, 44 of them new and covering access decisions, the test-row
+predicate (including the null-registration rows), reassignment safety,
+duplicate grouping, validation and date formatting. `pnpm --filter
+@tathmini/web build` clean — admin pages are 107–109 kB first-load, under the
+180 kB budget, and the supervisor routes are unchanged. Every `/admin` path
+returns 307 to `/login` when signed out (checked against a local production
+build). The four `*_admin_write` policies and the table grants the console
+relies on were confirmed against the live database; `delete on trainees` is
+confirmed still revoked. **Not yet exercised signed in as a real Super Admin —
+that check is the user's, and is the one thing outstanding.**
+
+---
+
 ## 2026-09-05 · ops · Functions moved to Cape Town; compute and database were on different continents
 
 **Kind:** ops
