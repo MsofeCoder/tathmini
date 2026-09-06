@@ -42,6 +42,11 @@ export const reassignmentStatusEnum = pgEnum('reassignment_status', [
   'declined',
 ]);
 export const notificationChannelEnum = pgEnum('notification_channel', ['sms', 'whatsapp', 'email']);
+export const changeRequestStatusEnum = pgEnum('change_request_status', [
+  'pending',
+  'applied',
+  'declined',
+]);
 
 // ── Identity ──────────────────────────────────────────────────────
 
@@ -392,6 +397,50 @@ export const notifications = pgTable('notifications', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+/**
+ * A supervisor asking for a trainee's particulars to be corrected (migration
+ * 0030).
+ *
+ * Only `super_admin` may write to `trainees`, which is correct — the register
+ * prints on a VETA certificate. But the person who NOTICES a wrong e-mail
+ * address is the supervisor in front of the trainee, and this is where that
+ * knowledge goes. A request changes nothing on its own: applying it is still an
+ * administrator writing through `trainees_admin_write`, and the value is
+ * re-validated at that moment rather than trusted from when it was typed.
+ *
+ * `field` is CHECK-constrained to the register particulars, so a mark, a route
+ * or an assessor slot can never be requested through it. No role holds a DELETE
+ * grant: a declined request is the record of a correction the College
+ * considered and did not make.
+ */
+export const traineeChangeRequests = pgTable(
+  'trainee_change_requests',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    traineeId: uuid('trainee_id')
+      .notNull()
+      .references(() => trainees.id, { onDelete: 'cascade' }),
+    field: text('field').notNull(),
+    /** What the register held when the request was raised; never written back. */
+    currentValue: text('current_value'),
+    /** Nullable: "this address belongs to nobody, clear it" is a real request. */
+    requestedValue: text('requested_value'),
+    reason: text('reason').notNull(),
+    status: changeRequestStatusEnum('status').notNull().default('pending'),
+    requestedById: uuid('requested_by_id')
+      .notNull()
+      .references(() => users.id),
+    decidedById: uuid('decided_by_id').references(() => users.id),
+    decisionNote: text('decision_note'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+  },
+  (t) => [
+    index('trainee_change_requests_status_idx').on(t.status),
+    index('trainee_change_requests_trainee_idx').on(t.traineeId),
+  ],
+);
+
 /** Append-only, hash-chained. No DELETE grant for any role (companion SQL). */
 export const auditLog = pgTable('audit_log', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -456,4 +505,15 @@ export const resultsRelations = relations(results, ({ many, one }) => ({
 export const reportsRelations = relations(reports, ({ one }) => ({
   trainee: one(trainees, { fields: [reports.traineeId], references: [trainees.id] }),
   result: one(results, { fields: [reports.resultId], references: [results.id] }),
+}));
+
+export const traineeChangeRequestsRelations = relations(traineeChangeRequests, ({ one }) => ({
+  trainee: one(trainees, {
+    fields: [traineeChangeRequests.traineeId],
+    references: [trainees.id],
+  }),
+  requestedBy: one(users, {
+    fields: [traineeChangeRequests.requestedById],
+    references: [users.id],
+  }),
 }));
