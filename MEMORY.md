@@ -47,6 +47,104 @@ the diff. This file is for knowledge that would otherwise be lost.
 
 ---
 
+## 2026-09-06 · decision · One app shell replaces per-url caching; the offline design stops being a list
+
+**Kind:** decision
+**Phase:** 1
+**Commit / PR:** feat/local-first-offline-architecture
+
+**What changed**
+The field app is now ONE precached document. `app/[[...slug]]/page.tsx` is a
+catch-all that renders `components/app-shell.tsx`, which reads the path on the
+client and picks the screen; the service worker answers every in-app
+navigation with that one shell. The screens themselves are unchanged — they
+moved from route files into `components/screens/` and kept their markup, copy
+and urls.
+
+Deleted with it: the two rewrites in `next.config.ts`, `shellKey()` and the
+cache-key collapsing in `sw.ts`, `warmShells()`, `public/offline.html`,
+`lib/local/route-params.ts`, `components/app-chrome.tsx`, and middleware's
+gate on page navigations. Net negative lines, and the routing table is now a
+pure function with tests (`lib/local/route-match.ts`).
+
+**Why this way**
+Three offline bugs reached supervisors in one day, and they were one mistake
+wearing three faces — caching an html document per url:
+
+1. The worker answered a failed navigation with the `/offline` document at a
+   `/trainee/<id>` url. App Router refused to hydrate a payload built for one
+   route against another: "Application error: a client-side exception has
+   occurred".
+2. The rewrite that made per-url caching possible (`/trainee/:id` →
+   `/trainee?id=:id`) put the id in a query string the browser never sees, so
+   every trainee reported "not on your route".
+3. A per-url cache is only as complete as the urls somebody happened to visit
+   online. `warmShells()` was supposed to fix that and never worked: it warmed
+   with `fetch()`, and the cache rule required `request.mode === 'navigate'`.
+   Screens nobody had opened fell through to "This screen needs a connection".
+
+Each fix added another piece of scaffolding to hold up the same decision. The
+app-shell model removes the decision. There is no per-url cache to be
+incomplete and no other route's payload to mismatch, so offline support stops
+being a property of individual urls and becomes a property of the app being
+installed at all. A trainee added this morning and a screen added in a later
+release both work with no signal.
+
+The urls did not change. `/trainee/<id>` and `/trainee/<id>/mark/<code>` are
+still what the route list links to and what supervisors have bookmarked; the
+shell parses them itself.
+
+Middleware now guards `/api` and nothing else. Gating the shell was pointless
+once it carried no data, and actively harmful: it redirected `/api/sync`,
+whose caller reads a redirect as "the network failed" and gives up silently.
+
+**Watch out for**
+- **THE SHELL'S FIRST RENDER MUST BE ROUTE-INDEPENDENT.** The server
+  prerenders it for `/` and the worker replays those bytes at every url, so
+  anything rendered before the mount effect must be identical everywhere.
+  `AppShell` starts with `pathname = null` for exactly this reason. Reading
+  the path during render — `usePathname()`, say — reintroduces bug 1 above.
+- **RULE ORDER IN sw.ts IS LOAD-BEARING.** The shell rule must sit ahead of
+  `defaultCache`, which carries its own navigation and RSC rules. Registering
+  it afterwards with `serwist.registerRoute` compiles, reads as equivalent,
+  and silently kills offline navigation. Verified in the built worker:
+  `runtimeCaching` is `[api NetworkOnly, shell, ...defaultCache]`.
+- **Navigation is plain `<a href>`, intercepted by the shell.**
+  `@next/next/no-html-link-for-pages` is turned OFF in
+  `apps/web/eslint.config.mjs` with the reasoning: `next/link` fetches the
+  target route's payload from the server, which is the failure being removed.
+- The precache revision for `/` is the Vercel commit sha, falling back to the
+  build clock. It MUST change per build or a released fix never reaches a
+  phone that holds the old shell. (The old `revision: 'v1'` on offline.html
+  was constant, so that file could never have been updated.)
+- `usePathname()` cannot see the shell's `pushState` navigations. `BottomNav`
+  takes the path as a prop for this reason; anything else needing the live
+  path must get it from the shell, not from `next/navigation`.
+- `/login`, `/change-password`, `/api/*` and the report preview are in
+  `SERVER_ONLY` and deliberately reach the network.
+
+**Verified by**
+`pnpm format:check && pnpm lint && pnpm test && pnpm typecheck` green — 236
+tests in apps/web, 7 new in `lib/local/route-match.test.ts` covering the
+routing table, including that `/trainee/<id>/report/preview` is NOT claimed by
+the shell.
+
+A production build reports the whole field app as one prerendered route
+(`● /[[...slug]]`, 167 kB first load, inside the 180 KB budget). The built
+worker was inspected directly: `/` is precached with a per-build revision,
+every JS chunk and the CSS are precached alongside it, and the runtime rules
+are in the order above.
+
+**NOT verified in a real browser, and this is the check that matters.** The
+one thing unit tests cannot cover is whether App Router tolerates the
+precached `/` payload being replayed at `/trainee/<id>`. It should — same
+route, same segment shape, only the `slug` param differs, and the shell never
+reads Next's params — but that is reasoning, not evidence, and reasoning is
+what was wrong the last two times. Install, sync, go offline, then open every
+screen cold, including one never opened before.
+
+---
+
 ## 2026-09-06 · bugfix · Every trainee reported "not on your route"; and an empty route list could not say why
 
 **Kind:** bugfix

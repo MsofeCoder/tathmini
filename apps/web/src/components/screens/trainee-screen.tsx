@@ -1,12 +1,9 @@
 'use client';
 
-import { usePathname, useSearchParams } from 'next/navigation';
-import { Suspense } from 'react';
 import { AssessmentActions } from '@/components/assessment-actions';
 import { ReportPreviewButton } from '@/components/report-preview';
 import { ReportDownloadButton } from '@/components/report-download-button';
 import { buildProfile } from '@/lib/local/derive';
-import { resolveTraineeId } from '@/lib/local/route-params';
 import { useDeviceRows } from '@/lib/local/use-device';
 import { traineeParticulars, trackChipStyle, trackPointsLabel } from '@/lib/trainees';
 
@@ -20,28 +17,12 @@ import { traineeParticulars, trackChipStyle, trackPointsLabel } from '@/lib/trai
  * at all, so this screen renders in a workshop with no signal exactly as it
  * does on wifi.
  *
- * The URL a supervisor sees is still `/trainee/<id>`. This file serves it
- * through a rewrite (see next.config.ts) because a dynamic segment cannot be
- * prerendered — Next would need one build-time document per trainee, and
- * there is no such thing offline. One static document plus `?id=` is what
- * lets the service worker answer for ANY trainee from a single cached page,
- * which is what stopped the "Application error" this screen used to throw:
- * the old fallback served the /offline document at a /trainee/<id> URL, and
- * App Router refused to hydrate a payload for one route against another.
+ * The url a supervisor sees is still `/trainee/<id>`. It reaches this screen
+ * through the app shell, which reads the id out of the path (see
+ * `lib/local/route-match.ts`) — no rewrite, no query string, and no
+ * per-trainee document that could be missing from the cache.
  */
-export default function TraineeProfilePage() {
-  return (
-    <Suspense fallback={<Blank />}>
-      <Profile />
-    </Suspense>
-  );
-}
-
-function Profile() {
-  // From the PATH, not the query string. The url is `/trainee/<id>`; the
-  // `?id=` exists only in the rewrite's destination, which the browser never
-  // sees. See lib/local/route-params.ts.
-  const traineeId = resolveTraineeId(usePathname(), useSearchParams());
+export function TraineeScreen({ traineeId }: { traineeId: string }) {
   const rows = useDeviceRows();
 
   // Still reading. Rendering "not found" here would tell a supervisor their

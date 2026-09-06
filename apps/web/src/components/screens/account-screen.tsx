@@ -41,7 +41,7 @@ const ROLE_LABELS: Record<string, string> = {
  * anyway, not a mailbox (see CONTEXT.md), so showing it would only ever have
  * confused somebody into e-mailing it.
  */
-export default function AccountPage() {
+export function AccountScreen() {
   const rows = useDeviceRows();
   const session = rows?.session ?? null;
 

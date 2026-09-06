@@ -1,64 +1,69 @@
 import { defaultCache } from '@serwist/next/worker';
 import type { PrecacheEntry } from 'serwist';
-import { NetworkFirst, NetworkOnly, Serwist } from 'serwist';
+import { NetworkOnly, Serwist } from 'serwist';
 
 /**
- * What makes the app openable with the radio off.
+ * What makes the app work with the radio off — in one rule.
  *
- * Since the local-first rebuild, every screen a supervisor uses renders from
- * IndexedDB and needs no server data. What it still needs is its own HTML
- * document, and that is this file's job: keep each app screen in the cache
- * AT ITS OWN URL, so a navigation offline is answered with the document that
- * url would have returned anyway.
+ * Every screen a supervisor uses renders from IndexedDB and needs no server
+ * data. What it still needs is an html document, and that is what this
+ * provides: ONE precached shell, replayed for every navigation.
  *
- * That last clause is the fix for the crash this app used to throw. The
- * previous design answered any failed navigation with the `/offline` page's
- * document, so App Router received a payload built for /offline while the
- * address bar said /trainee/<id>, refused to reconcile them, and rendered
- * "Application error: a client-side exception has occurred". Supervisors hit
- * it whenever they tapped a trainee on a connection that was up but not
- * working — `navigator.onLine` true, requests failing — which is an ordinary
- * afternoon on a College route.
+ * The previous design cached a document per url, and all three offline
+ * failures this project has had were that decision failing in different
+ * ways — a fallback document served at another route's url, which App Router
+ * refused to hydrate; a rewrite that hid the trainee id from the browser; and
+ * a cache that only ever held the screens somebody had already opened online,
+ * so anything else fell through to a "this screen needs a connection" page.
  *
- * Deliberately NOT caching Supabase API responses or any per-user data:
- * those are RLS-scoped and often personal, and an opaque HTTP cache on a
- * shared device is the wrong place for them. The pages cached here carry no
- * data at all — they are empty shells that fill themselves from IndexedDB,
- * which is what makes caching them safe.
+ * With one shell there is nothing to enumerate, nothing to warm and nothing
+ * to forget. If the worker installed, every screen works — including screens
+ * added in a later release and trainees added this morning.
+ *
+ * Deliberately NOT caching Supabase responses or any per-user data: those are
+ * RLS-scoped and often personal, and an opaque http cache on a shared device
+ * is the wrong place for them. The shell carries no data at all, which is
+ * what makes caching it safe.
  *
  * `self` is typed inline rather than via `declare const self:
  * ServiceWorkerGlobalScope`, which would need the WebWorker lib — and adding
  * that to this app's tsconfig collides with the DOM lib every other file
- * depends on. This file is bundled by Serwist's own worker pass, so only the
- * manifest global actually needs describing here.
+ * depends on.
  */
 const swSelf = self as unknown as {
   __SW_MANIFEST: (PrecacheEntry | string)[] | undefined;
 };
 
+/** The precached document that answers every in-app navigation. `/` is the
+ * catch-all route (app/[[...slug]]/page.tsx), prerendered at build. */
+const SHELL_URL = '/';
+
 /**
- * A navigable app screen → the key its document is cached under.
- *
- * Every trainee shares one entry, and every marking screen shares another,
- * because the server serves them one static document each (next.config.ts
- * rewrites `/trainee/:id` onto `/trainee`). So caching the document fetched
- * for one trainee and replaying it for another is not a substitution — it is
- * the same bytes the server would have sent.
+ * Paths that genuinely need the server and must never be answered with the
+ * shell: signing in, the api, and the report preview, which is rendered
+ * server-side by the same code that prints the PDF. They fail honestly with
+ * no connection rather than showing a shell that cannot do the job.
  */
-function shellKey(pathname: string): string | null {
-  if (pathname === '/home' || pathname === '/pending' || pathname === '/account') {
-    return pathname;
-  }
-  // /trainee/<id>/mark/<code> — checked first, since it also starts /trainee/
-  if (/^\/trainee\/[^/]+\/mark\/[^/]+\/?$/.test(pathname)) return '/__shell/mark';
-  if (/^\/trainee\/[^/]+\/?$/.test(pathname)) return '/__shell/trainee';
-  // The rewrite targets, in case anything navigates to them directly.
-  if (pathname === '/mark') return '/__shell/mark';
-  if (pathname === '/trainee') return '/__shell/trainee';
-  return null;
+const SERVER_ONLY = [
+  /^\/api\//,
+  /^\/login/,
+  /^\/change-password/,
+  /^\/trainee\/[^/]+\/report\//,
+  /^\/_next\//,
+];
+
+function isShellNavigation(request: Request, url: URL): boolean {
+  if (request.mode !== 'navigate') return false;
+  return !SERVER_ONLY.some((pattern) => pattern.test(url.pathname));
 }
 
-const serwist = new Serwist({
+/**
+ * The shell handler below closes over this before it is assigned. That is
+ * safe, and deliberate: the closure only runs at fetch time, long after
+ * construction returns. The indirection exists because the handler needs to
+ * read the instance's own precache, and the instance needs the handler.
+ */
+const serwist: Serwist = new Serwist({
   precacheEntries: swSelf.__SW_MANIFEST,
   skipWaiting: true,
   clientsClaim: true,
@@ -75,11 +80,11 @@ const serwist = new Serwist({
      * itself came back 405, because a cache cannot serve one.
      *
      * Every non-GET is excluded too, not just /api. A Server Action is a POST
-     * to a page URL, so a rule written only for /api would leave the same hole
-     * one route over. `/api/sync` and `/api/ping` depend on this as well: a
-     * sync served from a cache would write yesterday's route over today's,
-     * and a cached probe would report a healthy network at the exact moment
-     * there is none.
+     * to a page url, so a rule written only for /api would leave the same
+     * hole one route over. `/api/sync` and `/api/ping` depend on this as
+     * well: a sync served from cache would write yesterday's route over
+     * today's, and a cached probe would report a healthy network at the exact
+     * moment there is none.
      */
     {
       matcher: ({ url, request }: { url: URL; request: Request }) =>
@@ -88,50 +93,32 @@ const serwist = new Serwist({
     },
 
     /**
-     * The app's own screens.
+     * Every in-app navigation, answered from the precached shell.
      *
-     * NetworkFirst, not CacheFirst: online, a supervisor must get the shell
-     * from the deploy that is actually live, or a released fix would never
-     * reach a phone that already has the old one. The three-second timeout is
-     * what makes that safe in the field — a connection that has associated
-     * but is passing nothing falls through to the cached copy in three
-     * seconds rather than hanging on a spinner, which is how "online but
-     * useless" used to feel like a broken app.
+     * ORDER IS LOAD-BEARING: this must sit ahead of `defaultCache`, which
+     * carries its own navigation and RSC rules for an ordinary
+     * server-rendered Next app. Serwist tries routes in registration order,
+     * so registering this afterwards — with `serwist.registerRoute` — would
+     * mean `defaultCache` claimed the navigation first, went to the network,
+     * missed its cache offline, and left the browser on its own error page.
+     * The whole offline story would be dead, silently, on a line of code
+     * that looked equivalent.
+     *
+     * Cache first, network never: the shell is a static document with no data
+     * in it, so there is nothing to be stale about, and going to the network
+     * would put a doomed request in front of every screen change in a dead
+     * zone. A new build reaches the device through the precache revision
+     * (next.config.ts), which is what that mechanism is for.
      */
     {
       matcher: ({ request, url }: { request: Request; url: URL }) =>
-        request.mode === 'navigate' && shellKey(url.pathname) !== null,
-      handler: new NetworkFirst({
-        cacheName: 'tathmini-app-shell',
-        networkTimeoutSeconds: 3,
-        plugins: [
-          {
-            // Collapse every trainee onto one entry, and drop the query
-            // string — `?id=` selects which trainee to render FROM THE
-            // DEVICE; it does not change the document.
-            cacheKeyWillBeUsed: async ({ request }: { request: Request }) => {
-              const key = shellKey(new URL(request.url).pathname);
-              return new URL(key ?? new URL(request.url).pathname, self.location.origin).toString();
-            },
-          },
-        ],
-      }),
+        isShellNavigation(request, url),
+      handler: async ({ request }: { request: Request }) =>
+        (await serwist.matchPrecache(SHELL_URL)) ?? fetch(request),
     },
 
     ...defaultCache,
   ],
-  fallbacks: {
-    entries: [
-      {
-        // Only reached for a navigation this worker has never cached — a
-        // screen the supervisor has not opened since installing, or a url
-        // that is not one of ours. A plain file, so there is no React payload
-        // to mismatch against the address bar.
-        url: '/offline.html',
-        matcher: ({ request }) => request.destination === 'document',
-      },
-    ],
-  },
 });
 
 serwist.addEventListeners();

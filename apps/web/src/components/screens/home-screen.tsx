@@ -1,29 +1,26 @@
 'use client';
 
+import { signOut } from '@/app/home/actions';
+import { RouteList } from '@/app/home/route-list';
 import { buildRouteRows } from '@/lib/local/derive';
 import { useDeviceRows } from '@/lib/local/use-device';
-import { signOut } from './actions';
-import { RouteList } from './route-list';
 
 /**
- * The supervisor's route list — the same screen, now rendered from the
- * device.
+ * The supervisor's route list — rendered entirely from the device.
  *
  * It used to be a Server Component running seven Supabase queries behind a
  * middleware call to `auth.getUser()`, which was itself a network round trip
  * to Cape Town: measured at 713 ms TTFB from a good connection, before a
- * supervisor's own 3G hop. Now it is seven IndexedDB reads, and the network
- * is not on the path at all. Same markup, same counters, same copy — the
- * derivation moved to `lib/local/derive.ts`, unchanged, where it is finally
- * testable.
+ * supervisor's own 3G hop. Now it is seven IndexedDB reads and the network is
+ * not on the path at all. Same markup, same counters, same copy — the
+ * derivation lives in `lib/local/derive.ts`, unchanged and finally testable.
  *
- * The role branch that used to live here is gone with the server render. The
- * Coordinator and Super Admin dashboards are unbuilt Phase 3 work, and a
- * non-supervisor signing in now lands on an empty route list rather than a
- * placeholder — which is honest: they have no assignments, so they have no
- * trainees. Their real screens are a separate phase.
+ * The role branch that used to live here went with the server render. The
+ * Coordinator and Super Admin dashboards are unbuilt Phase 3 work and belong
+ * on ordinary server-rendered routes anyway — the whole cohort, aggregates
+ * and exports are the wrong shape for a device replica.
  */
-export default function HomePage() {
+export function HomeScreen() {
   const rows = useDeviceRows();
   const trainees = rows ? buildRouteRows(rows) : [];
 

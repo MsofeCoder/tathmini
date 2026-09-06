@@ -1,6 +1,5 @@
 'use client';
 
-import { usePathname } from 'next/navigation';
 import { activeNavHref } from '@/lib/navigation';
 import { usePendingCount } from '@/lib/local/use-device';
 
@@ -35,8 +34,7 @@ const TABS: Tab[] = [
   { href: '/account', label: 'Account', radius: '50% 50% 4px 4px' },
 ];
 
-export function BottomNav() {
-  const pathname = usePathname();
+export function BottomNav({ pathname }: { pathname: string }) {
   // Live from IndexedDB: the count has to fall the moment the outbox drains
   // and rise the moment something is queued, without this bar being remounted.
   const pendingCount = usePendingCount();

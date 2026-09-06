@@ -12,8 +12,7 @@ import { startRealtime } from '@/lib/sync/realtime';
  *
  * Mounted once in the root layout, so it runs on every screen — the point of
  * a local-first app is that a supervisor never has to visit a particular page
- * to make their data fresh. Three things keep it in step, in decreasing order
- * of how much they carry:
+ * to make their data fresh. Two things keep it in step:
  *
  * 1. **Realtime**, always on. A change to this supervisor's rows is written
  *    into IndexedDB as it happens, and `liveQuery` re-renders whatever screen
@@ -23,9 +22,7 @@ import { startRealtime } from '@/lib/sync/realtime';
  *    comes back — because Realtime is not a durable log. Nothing that changed
  *    while the phone was in a dead zone was queued for it, so a reconnected
  *    socket has a hole behind it that only a refill closes.
- * 3. **Shell warming**, once per session, so the first offline navigation to
- *    a trainee has a document to render.
- *
+
  * The sign-in screens are excluded. A supervisor who is not signed in has no
  * rows to sync, and asking would just produce a 401 that reads as an expired
  * session.
@@ -37,7 +34,6 @@ const CHANGE_PASSWORD = '/change-password';
 export function SyncProvider() {
   const router = useRouter();
   const pathname = usePathname();
-  const warmed = useRef(false);
   const active = !SIGNED_OUT_PATHS.has(pathname);
 
   // Refs, not dependencies, so the sync effect below does not tear down and
@@ -65,7 +61,7 @@ export function SyncProvider() {
       if (outcome === 'unauthenticated') {
         // The session is genuinely gone — the server said so, which means it
         // was reachable. Anything else leaves the device alone.
-        router.replace('/login');
+        window.location.assign('/login');
         return;
       }
 
@@ -76,12 +72,8 @@ export function SyncProvider() {
         // supervisor is ON the change-password screen would replace the route
         // with itself, on focus, on reconnect and on every Realtime nudge.
         if (rows.session?.mustChangePassword && pathnameRef.current !== CHANGE_PASSWORD) {
-          router.replace(CHANGE_PASSWORD);
+          window.location.assign(CHANGE_PASSWORD);
           return;
-        }
-        if (!warmed.current) {
-          warmed.current = true;
-          void warmShells();
         }
       }
     };
@@ -117,38 +109,4 @@ export function SyncProvider() {
   }, [active, router]);
 
   return null;
-}
-
-/**
- * Pulls the three page shells into the service worker's cache by asking for
- * them normally.
- *
- * Fetching through the service worker rather than writing to the Cache API by
- * hand, so the SW's own rules decide what is stored and under which key — one
- * owner of that cache, and no chance of storing a document under a key the
- * matcher will never look up (see sw.ts).
- *
- * A real trainee id is used because the shells are reached through rewrites:
- * `/trainee/<id>` serves the static `/trainee` document for EVERY id, so
- * warming with one id arms the screen for all of them.
- */
-async function warmShells(): Promise<void> {
-  try {
-    const rows = await readDeviceRows();
-    const trainee = rows.trainees.find((t) => rows.assignments.some((a) => a.traineeId === t.id));
-    const instrument = trainee
-      ? rows.instruments.find((i) => i.track === trainee.track)
-      : undefined;
-
-    const urls = ['/home', '/pending', '/account'];
-    if (trainee) urls.push(`/trainee/${trainee.id}`);
-    if (trainee && instrument) urls.push(`/trainee/${trainee.id}/mark/${instrument.code}`);
-
-    await Promise.all(
-      urls.map((url) => fetch(url, { credentials: 'same-origin' }).catch(() => undefined)),
-    );
-  } catch {
-    // Warming is an optimisation. Failing it costs the first offline
-    // navigation, not the app.
-  }
 }

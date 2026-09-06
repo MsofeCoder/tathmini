@@ -8,20 +8,19 @@ const withSerwist = withSerwistInit({
   swSrc: 'src/app/sw.ts',
   swDest: 'public/sw.js',
   disable: process.env.NODE_ENV === 'development',
-  // The last-resort offline document. A PLAIN HTML FILE in public/, not a
-  // Next page, and that is the whole fix for the "Application error" this
-  // app used to throw offline.
+  // The app shell: ONE document that answers every in-app navigation (see
+  // sw.ts). `/` is the catch-all route, prerendered at build, and it renders
+  // nothing route-specific on the server — which is what lets the same bytes
+  // be replayed at /trainee/<id> without App Router refusing to hydrate them.
   //
-  // The old fallback was the Next-rendered `/offline` page. A service worker
-  // fallback answers a navigation to some OTHER url — /trainee/<id>, say —
-  // with this document, and App Router then tried to hydrate a payload built
-  // for /offline against a browser url of /trainee/<id>, mismatched, and
-  // threw a client-side exception. A file with no React in it cannot
-  // mismatch, because there is nothing to hydrate.
-  //
-  // In practice it is now rarely reached: the app's own screens are cached at
-  // their own urls (see sw.ts), so they answer for themselves.
-  additionalPrecacheEntries: [{ url: '/offline.html', revision: 'v1' }],
+  // The revision must change whenever the build does, or a released fix would
+  // never reach a phone that already holds the old shell. Vercel's commit sha
+  // when there is one; the build's own clock otherwise. (The previous
+  // `revision: 'v1'` on the old offline page was a real defect: constant, so
+  // that file could never be updated.)
+  additionalPrecacheEntries: [
+    { url: '/', revision: process.env.VERCEL_GIT_COMMIT_SHA ?? String(Date.now()) },
+  ],
   // Serwist reloads the page when connectivity returns by default. In the
   // field, signal flaps in and out constantly — reloading a supervisor
   // mid-assessment is unacceptable, and nothing needs it: OutboxDrainer
@@ -32,38 +31,6 @@ const withSerwist = withSerwistInit({
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-
-  /**
-   * The urls stay exactly as they were; only what serves them changed.
-   *
-   * `/trainee/<id>` and `/trainee/<id>/mark/<code>` are what the route list
-   * links to, what supervisors have bookmarked, and what the prototype
-   * describes. But a dynamic segment cannot be prerendered — Next would need
-   * one built document per trainee, and offline there is no server to make
-   * the missing one. So each maps onto a single STATIC page that reads the id
-   * from its query string.
-   *
-   * That is what makes the service worker able to answer for any trainee from
-   * one cached document, and it is the same document the server itself would
-   * return for that url — so nothing is being substituted, which is exactly
-   * the property the old `/offline` fallback lacked.
-   *
-   * `afterFiles` so real file routes win: `/trainee/<id>/report/preview` is a
-   * route handler and must keep reaching the server.
-   */
-  async rewrites() {
-    return {
-      beforeFiles: [],
-      afterFiles: [
-        {
-          source: '/trainee/:id/mark/:instrument',
-          destination: '/mark?trainee=:id&instrument=:instrument',
-        },
-        { source: '/trainee/:id', destination: '/trainee?id=:id' },
-      ],
-      fallback: [],
-    };
-  },
 
   // Report generation launches headless Chromium, and neither of these can be
   // bundled. @sparticuz/chromium ships a Brotli-compressed Chromium binary in
@@ -94,12 +61,9 @@ const nextConfig: NextConfig = {
   // that was never deployed. This forces the payload in — chromium.br plus
   // the swiftshader, fonts and al2023 archives it unpacks alongside.
   //
-  // The key follows the ONE route that still launches Chromium. It used to be
-  // '/trainee/[id]', because that page hosted the Server Action; that page is
-  // now a static shell with no server work in it at all, and the report is
-  // generated only by this route handler. A stale key here does not fail the
-  // build — it silently ships a function without its browser, which is how
-  // this broke the first time.
+  // The key follows the ONE route that still launches Chromium — this handler.
+  // A stale key here does not fail the build; it silently ships a function
+  // without its browser, which is how this broke the first time.
   outputFileTracingIncludes: {
     '/api/reports/[traineeId]': [
       '../../node_modules/.pnpm/@sparticuz+chromium@*/node_modules/@sparticuz/chromium/bin/**',

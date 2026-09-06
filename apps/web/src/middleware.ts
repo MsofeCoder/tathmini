@@ -1,47 +1,35 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
 /**
- * The gate, and nothing more.
+ * Guards the API. Nothing else.
  *
- * This used to call `supabase.auth.getUser()` on EVERY request — a network
- * round trip to the Auth server, completing before the page began its own
- * queries. Two things were wrong with that:
+ * Two rounds of simplification got it here, and both were forced by the
+ * field:
  *
- * 1. **It was the single largest source of latency in the app.** Measured
- *    against production: `/login` 527 ms TTFB, `/home` 713 ms, against 276 ms
- *    for a static file that skips middleware. Roughly 440 ms of every
- *    navigation was this call, before the supervisor's own 3G hop.
- * 2. **It made the app unopenable offline by construction.** Every screen sat
- *    behind a check that itself required the network, so no amount of caching
- *    downstream could produce a page. That is what the local-first rebuild
- *    had to remove, not work around.
+ * 1. It used to call `supabase.auth.getUser()` on EVERY request — a network
+ *    round trip to the Auth server before the page began its own queries.
+ *    Measured against production: `/login` 527 ms TTFB, `/home` 713 ms,
+ *    against 276 ms for a static file that skips middleware. Roughly 440 ms
+ *    of every navigation was this call, before the supervisor's own 3G hop.
+ *    Worse, it made the app unopenable offline by construction: every screen
+ *    sat behind a check that itself required the network.
+ * 2. It then gated page navigations on a session cookie. That is pointless
+ *    now. The app is one shell document containing NO data — the screens fill
+ *    themselves from IndexedDB, and IndexedDB is filled by `/api/sync`, which
+ *    authenticates properly. Gating the shell only produced redirects: to
+ *    `/login` for a supervisor whose cookie had lapsed while their marks sat
+ *    unsent on the device, and, worst of all, for `/api/sync` itself, whose
+ *    caller reads a redirect as "the network failed" and gives up silently.
  *
- * What replaces it is a cookie-presence check, which costs nothing and works
- * with the radio off. It is a courtesy gate — it sends somebody with no
- * session to the sign-in screen instead of a blank app — and it is honest
- * about being one: a forged or expired cookie gets past it and then reads
- * NOTHING, because every read is an RLS-scoped query made with that cookie,
- * and `/api/sync` answers 401 to anything it cannot authenticate. The
- * boundary is in Postgres, where AGENTS.md rule 1 says it belongs; it was
- * never here.
+ * So: an unauthenticated request for a screen gets the shell, which finds no
+ * session on the device, asks `/api/sync`, is told 401, and sends the person
+ * to sign in. One place decides that, on the client, where it also works with
+ * no signal.
  *
- * The session cookie is still refreshed — by `/api/sync` and the Server
- * Actions, which use the `@supabase/ssr` server client and write cookies as
- * they go. The app calls sync on open, on focus and on reconnect, so a phone
- * that is used at all keeps a fresh session.
+ * The boundary was never here. Every read is an RLS-scoped query made with
+ * the caller's own session (AGENTS.md rule 1); a forged cookie gets past this
+ * file and then reads nothing.
  */
-
-// /offline.html is a static file that renders no user data and exists to be
-// shown when the network is gone — gating it would make the offline fallback
-// require the very thing it exists to work without.
-//
-// "/" is the install-prompt splash (reference/Tathmini.dc.html's `install`
-// screen) — it has to render before sign-in, for exactly the signed-out
-// first-time visitor the install prompt targets. Matched by exact equality
-// below, never startsWith: every path starts with "/", so a prefix match
-// here would make the whole app public.
-const PUBLIC_PATHS = ['/login', '/offline.html'];
-const PUBLIC_EXACT_PATHS = ['/'];
 
 /**
  * Supabase's auth cookie is named `sb-<project-ref>-auth-token`, and is
@@ -55,51 +43,35 @@ function hasSessionCookie(request: NextRequest): boolean {
     .some((cookie) => cookie.name.startsWith('sb-') && cookie.name.includes('auth-token'));
 }
 
+/** `/api/ping` is the reachability probe and must answer without a session —
+ * its whole job is to prove the round trip completed. */
+const PUBLIC_API_PATHS = ['/api/ping'];
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  const isPublicPath =
-    PUBLIC_EXACT_PATHS.includes(pathname) || PUBLIC_PATHS.some((path) => pathname.startsWith(path));
-
-  // An API caller gets a status code, never a redirect.
-  //
-  // This was a dead end for anyone whose session had lapsed — which is most of
-  // the supervisors who signed in on the previous build, since the old
-  // middleware refreshed the cookie on every request and this one does not.
-  // `/api/sync` was redirected to `/login`; the sync fetches with
-  // `redirect: 'error'`, so the fetch THREW; a throw is read as "the network
-  // failed", which is the one outcome that deliberately changes nothing and
-  // says nothing. The result was a supervisor sitting on an empty route list
-  // with no error, no prompt to sign in, and nothing to press — permanently,
-  // because every retry took the same path.
-  //
-  // 401 is what the caller already knows how to act on: it means the session
-  // is genuinely gone, and the app sends them to sign in. It also keeps
-  // `/api/ping` honest, since the probe counts a 401 as "the server answered".
-  if (!isPublicPath && !hasSessionCookie(request) && pathname.startsWith('/api/')) {
+  // A status code, never a redirect. The sync fetches with `redirect:
+  // 'error'`, so a redirect THROWS, and a throw is read as "the network
+  // failed" — the one outcome that deliberately changes nothing and says
+  // nothing. That left supervisors whose session had lapsed on an empty route
+  // list with no error, no prompt to sign in and nothing to press.
+  if (
+    pathname.startsWith('/api/') &&
+    !PUBLIC_API_PATHS.includes(pathname) &&
+    !hasSessionCookie(request)
+  ) {
     return Response.json({ error: 'unauthenticated' }, { status: 401 });
-  }
-
-  if (!isPublicPath && !hasSessionCookie(request)) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/login';
-    url.search = '';
-    return NextResponse.redirect(url);
   }
 
   return NextResponse.next({ request });
 }
 
 export const config = {
-  // sw.js and Serwist's worker chunks MUST be excluded: this middleware
-  // redirects anything unauthenticated to /login, and a service worker
-  // script served as a redirect fails registration outright (the spec
-  // disallows it), which would silently disable offline support entirely.
-  //
-  // manifest.webmanifest needs the same treatment: a signed-out visitor is
-  // exactly who the install prompt targets, and a browser that fetches the
-  // manifest and gets a redirect body instead of JSON silently drops the
-  // install prompt rather than erroring loudly.
+  // Only the API needs to reach this now, but the matcher still excludes the
+  // worker scripts and the manifest explicitly. Both have bitten this project
+  // before: a service worker script served as a redirect fails registration
+  // outright, and a manifest that returns anything but json makes the browser
+  // silently drop the install prompt.
   matcher: [
     '/((?!_next/static|_next/image|favicon.ico|sw\\.js|swe-worker-.*\\.js|manifest\\.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],

@@ -1,10 +1,7 @@
 'use client';
 
-import { usePathname, useSearchParams } from 'next/navigation';
-import { Suspense } from 'react';
 import { MarkingForm } from '@/components/marking-form';
 import { buildMarking } from '@/lib/local/derive';
-import { resolveMarkTarget } from '@/lib/local/route-params';
 import { useDeviceRows } from '@/lib/local/use-device';
 
 /**
@@ -22,17 +19,13 @@ import { useDeviceRows } from '@/lib/local/use-device';
  * mirrors an RLS policy that would refuse the write anyway (AGENTS.md rule
  * 1). This is the courtesy layer, not the enforcement.
  */
-export default function MarkPage() {
-  return (
-    <Suspense fallback={<Blank />}>
-      <Mark />
-    </Suspense>
-  );
-}
-
-function Mark() {
-  // From the PATH, not the query string — see lib/local/route-params.ts.
-  const { traineeId, instrumentCode } = resolveMarkTarget(usePathname(), useSearchParams());
+export function MarkScreen({
+  traineeId,
+  instrumentCode,
+}: {
+  traineeId: string;
+  instrumentCode: string;
+}) {
   const rows = useDeviceRows();
 
   if (!rows) return <Blank />;
