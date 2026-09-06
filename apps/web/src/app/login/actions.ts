@@ -43,5 +43,6 @@ export async function signIn(_prevState: SignInState, formData: FormData): Promi
   }
 
   if (profile?.must_change_password ?? true) redirect('/change-password');
+  if (profile?.role === 'coordinator') redirect('/coordinator');
   redirect(profile?.role === 'supervisor' ? '/home' : '/admin');
 }
