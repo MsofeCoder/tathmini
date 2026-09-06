@@ -1,0 +1,91 @@
+<!doctype html>
+<!--
+  The last-resort offline document.
+
+  Deliberately a plain file with no framework in it. The service worker serves
+  this when a navigation fails for a screen it has never cached, and a
+  fallback is by definition served at some OTHER url than its own. A Next page
+  used this way carries a React payload built for /offline, which App Router
+  then refuses to hydrate against an address bar reading /trainee/<id> — the
+  "Application error: a client-side exception has occurred" that supervisors
+  hit in the field. Nothing here hydrates, so nothing here can mismatch.
+
+  It should be rare. The app's own screens are cached at their own urls and
+  render from IndexedDB, so this is for a screen never opened since install.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tathmini — no connection</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100dvh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: #eceff0;
+        color: #14232e;
+        font-family:
+          system-ui,
+          -apple-system,
+          'Segoe UI',
+          Roboto,
+          sans-serif;
+      }
+      .card {
+        width: 100%;
+        max-width: 360px;
+        background: #fff;
+        border-radius: 16px;
+        padding: 24px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+      }
+      .eyebrow {
+        margin: 0;
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.7px;
+        color: #6b4400;
+      }
+      h1 {
+        margin: 8px 0 0;
+        font-size: 22px;
+        font-weight: 700;
+      }
+      p {
+        margin: 12px 0 0;
+        font-size: 13.5px;
+        line-height: 1.6;
+        color: #3c4c58;
+      }
+      a {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 48px;
+        margin-top: 24px;
+        border-radius: 12px;
+        background: #12665b;
+        color: #fff;
+        font-size: 15px;
+        font-weight: 700;
+        text-decoration: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <p class="eyebrow">WORKING OFFLINE</p>
+      <h1>This screen needs a connection</h1>
+      <p>
+        Your route list and your marking forms are saved on this phone and work without signal. This
+        particular screen has not been opened on this phone yet, so there is nothing stored for it.
+      </p>
+      <p>Anything you have already marked is safe and will send itself when there is signal.</p>
+      <a href="/home">Go to my route</a>
+    </div>
+  </body>
+</html>

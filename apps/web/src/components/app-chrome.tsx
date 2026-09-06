@@ -16,9 +16,10 @@ import { ConnectionWatcher } from './connection-watcher';
  * "one screen, one thing to tap" (AGENTS.md), and a nav bar there invites a
  * supervisor to walk away from a half-finished assessment.
  *
- * /offline counts as the Trainees tab: it IS the route list, without signal.
+ * There is no longer an /offline entry here: the route list itself works
+ * without signal, so the screen that used to stand in for it is gone.
  */
-const NAV_PATHS = new Set(['/home', '/pending', '/account', '/offline', '/moves']);
+const NAV_PATHS = new Set(['/home', '/pending', '/account', '/moves']);
 
 export function AppChrome({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();

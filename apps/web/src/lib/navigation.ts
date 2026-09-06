@@ -1,37 +1,23 @@
 /**
- * Pure navigation rules shared by the app shell. Kept out of the components
- * so they can be tested without a DOM or Next's router — the redirect guard
- * in particular is the one piece of the auto-switch that can destroy work.
+ * Pure navigation rules shared by the app shell.
+ *
+ * `isProtectedFromRedirect` used to live here — the list of screens the
+ * connection watcher must not move a supervisor away from when signal
+ * dropped. It is gone with the redirect itself: every screen now renders from
+ * the device, so there is no longer an offline screen to be moved to, and
+ * nothing to be protected from. (See connection-watcher.tsx.)
  */
 
 /**
- * Screens the connection watcher must NOT move a supervisor away from when
- * the signal drops.
+ * Which bottom-nav tab a path belongs to.
  *
- * The marking flow is the important one. It is client-rendered and keeps
- * working with no signal, drafts and all; navigating away to "helpfully" show
- * the offline screen would throw away what is on screen mid-trainee. Signal
- * flaps constantly in the field, so this would fire often. It is the same
- * reasoning that disabled Serwist's `reloadOnOnline` (see next.config.ts).
- *
- * The sign-in screens are protected too: a supervisor with no signal cannot
- * sign in anyway, and bouncing them to /offline would hide the reason.
- */
-export function isProtectedFromRedirect(pathname: string): boolean {
-  return (
-    pathname.startsWith('/trainee/') ||
-    pathname === '/offline' ||
-    pathname === '/login' ||
-    pathname === '/change-password' ||
-    pathname === '/'
-  );
-}
-
-/**
- * Which bottom-nav tab a path belongs to. /offline IS the route list without
- * signal, so it highlights Trainees — the nav must not suggest the supervisor
- * has left the section they are standing in.
+ * A trainee profile and a marking screen are reached FROM the route list and
+ * belong to it, so the Trainees tab stays lit while a supervisor is inside
+ * one — the nav must never suggest they have left the section they are
+ * standing in. Marking hides the nav entirely (see app-chrome.tsx), so that
+ * case only matters for the profile.
  */
 export function activeNavHref(pathname: string): string {
-  return pathname === '/offline' ? '/home' : pathname;
+  if (pathname.startsWith('/trainee')) return '/home';
+  return pathname;
 }

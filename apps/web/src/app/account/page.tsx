@@ -1,6 +1,24 @@
-import { redirect } from 'next/navigation';
+'use client';
+
 import { signOut } from '@/app/home/actions';
-import { createClient } from '@/lib/supabase/server';
+import { useDeviceRows } from '@/lib/local/use-device';
+import { clearReplicas } from '@/lib/sync/apply';
+import { initials } from '@/lib/trainees';
+
+/**
+ * Sign out of the server AND off this phone.
+ *
+ * The device's copy of a route is not innocuous — it is a list of trainees
+ * with their contact details — and these phones are shared between tutors.
+ * Clearing runs first, so a sign-out that fails at the network still leaves
+ * nothing behind for the next person.
+ *
+ * Only the replicas go. Queued marks stay, because they exist nowhere else.
+ */
+async function signOutAndClearDevice() {
+  await clearReplicas();
+  await signOut();
+}
 
 const ROLE_LABELS: Record<string, string> = {
   supervisor: 'Supervisor',
@@ -9,29 +27,23 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 /**
- * The prototype's "Account" tab. For now it is who you are and how to sign
- * out — the prototype's fuller settings rows (language, help, about) are
- * Phase 3/4 work and are left out rather than stubbed, so nothing here
- * promises a screen that does not exist.
+ * The prototype's "Account" tab — who you are and how to sign out.
  *
- * Server-rendered: it needs the session, and signing out is meaningless with
- * no connection anyway. Offline, the service worker serves the offline screen
- * instead — which is the correct answer to "sign me out" in a village.
+ * Reads the device rather than the server, like every other screen. Signing
+ * out still needs the network (it revokes the session), and that is correct:
+ * the button posts a Server Action and fails visibly with no connection,
+ * rather than pretending to sign somebody out while the session cookie
+ * survives on the phone.
+ *
+ * The previous version selected `users.email` and never rendered it, so
+ * nothing is lost by not carrying it to the device — and that column is the
+ * synthetic `firstname.lastname@tathmini.internal` sign-in identifier
+ * anyway, not a mailbox (see CONTEXT.md), so showing it would only ever have
+ * confused somebody into e-mailing it.
  */
-export default async function AccountPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
-
-  const { data: profile } = await supabase
-    .from('users')
-    .select('name, role, email')
-    .eq('id', user.id)
-    .maybeSingle();
-
-  if (!profile) redirect('/login');
+export default function AccountPage() {
+  const rows = useDeviceRows();
+  const session = rows?.session ?? null;
 
   return (
     <main className="min-h-dvh bg-[#eceff0]">
@@ -42,17 +54,12 @@ export default async function AccountPage() {
       <div className="p-4">
         <div className="flex items-center gap-3 rounded-2xl border border-[#e1e9e6] bg-white p-4">
           <div className="text-teal-deep flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-full bg-[#ddebe8] text-[16px] font-bold">
-            {profile.name
-              .split(/\s+/)
-              .slice(0, 2)
-              .map((part: string) => part[0] ?? '')
-              .join('')
-              .toUpperCase()}
+            {initials(session?.name ?? '')}
           </div>
           <div className="min-w-0">
-            <p className="truncate text-[16px] font-bold text-[#14232e]">{profile.name}</p>
+            <p className="truncate text-[16px] font-bold text-[#14232e]">{session?.name ?? '—'}</p>
             <p className="mt-0.5 text-[13px] text-[#5b6b78]">
-              {ROLE_LABELS[profile.role] ?? profile.role}
+              {session ? (ROLE_LABELS[session.role] ?? session.role) : ''}
             </p>
           </div>
         </div>
@@ -62,7 +69,7 @@ export default async function AccountPage() {
           believe someone else knows it, contact the Administrator.
         </p>
 
-        <form action={signOut} className="mt-4">
+        <form action={signOutAndClearDevice} className="mt-4">
           <button
             type="submit"
             className="focus:outline-accent flex min-h-[52px] w-full items-center justify-center rounded-xl border border-[#d8b4a8] bg-white text-[15px] font-bold text-[#8a3a2a] focus:outline focus:outline-[3px] focus:outline-offset-2"

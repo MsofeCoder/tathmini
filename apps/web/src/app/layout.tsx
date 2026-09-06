@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { AppChrome } from '@/components/app-chrome';
+import { SyncProvider } from '@/components/sync-provider';
 import { OutboxDrainer } from './outbox-drainer';
 
 export const metadata: Metadata = {
@@ -21,6 +22,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
+        {/* Both mounted once, here, so they run on every screen: a supervisor
+            must never have to visit a particular page to make their data
+            fresh or their marks send. SyncProvider fills the device and holds
+            the Realtime socket open; OutboxDrainer empties it outward. */}
+        <SyncProvider />
         <OutboxDrainer />
         <AppChrome>{children}</AppChrome>
       </body>
