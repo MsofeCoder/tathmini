@@ -76,19 +76,30 @@ served natively.
 
 Set these in the Vercel project (Production _and_ Preview):
 
-| Variable            | Where to get it       |
-| ------------------- | --------------------- |
-| `SUPABASE_URL`      | `apps/web/.env.local` |
-| `SUPABASE_ANON_KEY` | `apps/web/.env.local` |
+| Variable                        | Where to get it       |
+| ------------------------------- | --------------------- |
+| `SUPABASE_URL`                  | `apps/web/.env.local` |
+| `SUPABASE_ANON_KEY`             | `apps/web/.env.local` |
+| `NEXT_PUBLIC_SUPABASE_URL`      | same value as above   |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | same value as above   |
 
-Note the **absence of a `NEXT_PUBLIC_` prefix** — that is deliberate and
-the names must match exactly. Every Supabase call is server-side
-(`src/lib/supabase/server.ts` and `src/middleware.ts`); nothing in the
-browser reads these, so the prefix would only inline both values into
-the client bundle for no benefit. Adding it back would not break the
-app, which is precisely why it is worth stating: it would silently widen
-exposure. The anon key is public by design and RLS is the real
-boundary — keeping it server-only is defence in depth.
+**All four, and the names must match exactly.** The first two are read
+server-side (`src/lib/supabase/server.ts`, the `/api` routes and the
+Server Actions). The `NEXT_PUBLIC_` pair are the same two values again,
+read by the browser, and they are required since the app became
+local-first: every screen renders from the device's IndexedDB copy, and
+a Supabase Realtime socket is what keeps that copy current. A socket has
+to be opened by the browser, so the browser needs the url and the key.
+
+Those two ARE inlined into the client bundle, which is the intended cost
+and changes no boundary — the anon key is public by design, and Realtime
+re-runs each table's RLS SELECT policy per subscriber, so a supervisor's
+socket carries their own route and nothing else. The service-role key is
+the one that must never be given a public name.
+
+If the `NEXT_PUBLIC_` pair is missing the app still works: it falls back
+to syncing on open, on focus and on reconnect. Changes simply stop
+arriving live, which is easy to miss — so set them.
 
 A mismatched or truncated `SUPABASE_ANON_KEY` does not fail loudly. The
 app renders normally and every sign-in returns "That username and

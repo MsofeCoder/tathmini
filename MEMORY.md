@@ -47,6 +47,198 @@ the diff. This file is for knowledge that would otherwise be lost.
 
 ---
 
+## 2026-09-06 · feature · The Reports screen (Drafted · Submitted · Pending), built on the app shell
+
+**Kind:** feature
+**Phase:** 1
+**Commit / PR:** (branch) claude/appshell-admin-dashboard-merge-opst7u —
+supersedes PR #46, which must be CLOSED rather than merged (see below)
+
+**What changed**
+The Pending tab becomes Reports, carrying three lists instead of one: DRAFTED
+(held back on purpose, nothing sends these), SUBMITTED (the marks reached the
+College, and the report with them if it has been sent) and PENDING (tapped
+send, could not go, sends itself). Moves is gone from the bottom bar. A new
+on-device receipt, `sentReports`, is what lets "Submitted" exist with no
+signal.
+
+The feature is PR #46's, ported. PR #46 itself was branched from `738426f` —
+main WITHOUT the app shell — so it was written against route files,
+`next/link`, `usePathname()` and `loadOfflineBundle()`, none of which exist
+here. `app/reports/page.tsx` became `components/screens/reports-screen.tsx`,
+`lib/reports-tabs.ts` became `lib/local/reports.ts` reading `DeviceRows`, and
+the manual `focus`/`online` listeners became one `liveQuery`.
+
+**Why this way**
+The user reported the app was slow after deploying #46 and asked whether it
+was aligned with the shell. It was not, and the slowness was not something #46
+did — it was where #46 branched from. Measured by building both:
+
+| | PR #46 | this branch |
+|---|---|---|
+| Middleware bundle | 93.5 kB | 34.2 kB |
+| `/home`, `/trainee/[id]`, `/trainee/[id]/mark/[instrument]`, `/account` | four `ƒ` server-rendered routes | one prerendered document |
+
+That middleware is the whole Supabase SSR client, calling `auth.getUser()`
+before every page begins its own queries — the ~440 ms per navigation measured
+against production. Every screen a supervisor touches paid it.
+
+Two deliberate improvements on the port rather than a straight copy:
+
+- **Submitted reads the replicated `reports` table as well as the receipt.**
+  The server's row is the authority and survives a reinstall; the receipt
+  covers the seconds-to-minutes before the next full sync carries it down.
+  `buildReportsView` takes the server's timestamp when it has both.
+- **The badge is derived from the same view the screen renders.** #46 summed
+  the three tables in `BottomNav`, which double-counts a trainee who has both a
+  held draft and a queued mark — a badge reading 3 over a list showing 2. It
+  now calls `waitingCount()` on the built view, so the two cannot disagree.
+
+`/pending` still serves the Reports screen rather than 404-ing or redirecting.
+Phones in the field have that url in their history, their precache and
+sometimes on their home screen, and a redirect costs a frame of the wrong
+screen — offline, one more thing to go wrong.
+
+**Watch out for**
+- **`sentReports` is Dexie v9, NOT a second v8.** PR #46 also declared a
+  `version(8)`, with a different schema — v8 here is the replica tables. Dexie
+  replays only versions ABOVE the one a phone holds, so whichever of the two
+  reached a device second would simply never run: no error, no upgrade, just
+  stores that quietly do not exist. If #46's v8 had landed first, `db.trainees`
+  would never be created and every supervisor would see an empty route list.
+  **PR #46 must be closed, not merged.** The rule is now written down in
+  `AGENTS.md` § "The app shell", rule 8.
+- `/moves` is no longer a shell path. The tab is gone (inert quarter of a bar
+  reads as broken, not as coming later), so the url goes to the server like any
+  other unbuilt one. `route-match.test.ts` asserts it.
+- The receipt is written BEFORE the queue entry is removed, in both send paths.
+  A failure between the two leaves the report queued — a re-drain is answered
+  by the server's own idempotency, whereas a lost entry is a report nobody
+  knows is missing.
+- `useReportsView` deliberately does not read `drafts`, the per-score-tap
+  table. Folding it in would re-run eight table reads against the 50 ms tap
+  budget, which is what `useDraftTraineeIds` exists to avoid.
+
+**Verified by**
+Four gates green: 411 tests in apps/web (20 new in `lib/local/reports.test.ts`,
+3 new for the drain receipt, plus updated routing and nav assertions), 112 in
+packages/db, 37 in packages/shared.
+
+A production build read directly: the field app is still ONE prerendered route,
+`● /[[...slug]]` at **171 kB** against the 180 KB budget — 2 kB smaller than
+before this feature, because the Reports screen replaced the Pending screen
+rather than adding to it. `/reports` is in `generateStaticParams`. Middleware
+stays at 34.2 kB.
+
+**Not verified in a browser.** The manual pass now also needs: open Reports
+offline, confirm all three tabs read from the device; send a report and watch
+it move from Pending to Submitted without a refresh; and open `/pending` on a
+phone that has it cached and confirm it still shows Reports with the right tab
+lit.
+
+---
+
+## 2026-09-06 · decision · The app shell comes back on Dexie v8, alongside the admin console rather than instead of it
+
+**Kind:** decision
+**Phase:** 1
+**Commit / PR:** (branch) claude/appshell-admin-dashboard-merge-opst7u — **no
+migration to run; see "Watch out for"**
+
+**What changed**
+PR #42 reverted PR #41 — the local-first rebuild — and the user has since
+confirmed that revert was a MISTAKE. This restores it, on top of everything
+that landed after: the administration console (#37), the Coordinator dashboard
+(#40), correction requests (#39), report drafts and download (#43) and the void
+(#44). Both developers' work is now in one tree; nothing was dropped from
+either.
+
+Restored: the one precached shell (`app/[[...slug]]`), `components/screens/*`,
+`lib/local/*`, `lib/sync/*` (Realtime + `/api/sync`), reachability probing in
+place of `navigator.onLine`, and the thin middleware that guards `/api` and
+nothing else. Gone again: the duplicate `/offline` route, `app-chrome.tsx`, and
+`supabase.auth.getUser()` on every request.
+
+**Why this way**
+Rebuilt from the merged state at `1afb1b1` rather than by reverting the revert
+blindly, because `1afb1b1` is a commit where the shell and the whole admin
+console already coexisted on `main` — the other developer had integrated them
+on purpose (`8e5df11` dropped `/home/page.tsx` for the shell, `f871883` sent a
+coordinator onward from `HomeScreen`, and `246229c` had already turned sw.ts
+from a denylist into an ALLOWLIST specifically because `/admin` appeared on
+main). The revert threw that integration away along with the shell. Starting
+from the reverted state and re-deriving it would have re-earned three bugs the
+other developer had already fixed.
+
+Only two things genuinely had to be ported forward, both from #43:
+`report-download-button.tsx` (the draft/send/download control now lives in
+`components/` and merges PR #43's drafts UI with the shell's queue-first,
+probe-then-send path), and the Pending screen's held-reports section, which
+git merged on its own through the rename.
+
+**Watch out for**
+- **DEXIE IS v8, AND MUST NEVER GO BACK TO 5.** Phones in the field are stamped
+  5, 6 or 7. IndexedDB refuses to open a database whose stored version is
+  higher than the code asks for, so re-declaring 5 would throw VersionError on
+  every one of them: the app would not start, and the supervisor could not
+  reach the marks sitting in their outbox. v5 is deliberately NOT declared —
+  Dexie replays only versions above the device's, so a phone still on 4 would
+  run a v5 upgrade that unpacks its route snapshot and then v6, which drops it.
+  A phone on 4 now climbs 4 → 6 → 7 → 8 and unpacks once, at v8. Add rungs;
+  never remove or renumber one.
+- **MIGRATION 0028 IS RESTORED BUT MUST NOT BE RUN.** It was applied live on
+  2026-09-06 and the revert deleted only the FILE — the six tables are still
+  members of the `supabase_realtime` publication in production (verified by
+  querying `pg_publication_rel`). The file is back so the repo and the database
+  agree again, and journal slot 28 is filled rather than left as a gap. It is
+  idempotent, so re-running is a no-op, but nothing needs running. **No
+  database change was made by this branch.**
+- `/admin` and `/coordinator` stay off the shell because `isShellPath()` does
+  not claim them and sw.ts asks that same function. That is an allowlist, so an
+  area added later is safe by default. `route-match.test.ts` asserts it; if
+  that assertion ever goes, the worker answers an administrator's navigation
+  with the field shell and the console renders "Screen not found".
+- **Realtime needs `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+  set on Vercel.** Without them the app still works but falls back to syncing on
+  foreground/reconnect only, with no live socket — a silent degradation, not an
+  error.
+- A void (#44) deletes from `assessment_marks` and `results`, which have DEFAULT
+  replica identity, so a delete arrives carrying only the primary key.
+  `realtime-plan.ts` already maps both to `resync` rather than guessing, which
+  is correct. If the event is filtered out entirely, the device converges at the
+  next full sync — which runs on mount, on `online`, on `visibilitychange`, and
+  on every socket (re)subscribe. Worst case a voided trainee reads as assessed
+  until the app is backgrounded and reopened. Not fixed here: forcing it would
+  mean `REPLICA IDENTITY FULL`, which is a migration and needs the user.
+- First-load JS for the shell is **173 kB against the 180 KB budget** — 7 kB of
+  headroom, down from 167 kB before the report-drafts port. The next feature
+  added to a shell screen is the one that breaks the budget.
+
+**Verified by**
+`pnpm format:check && pnpm lint && pnpm test && pnpm typecheck` all green — 385
+tests in apps/web (both developers' suites together) and 112 in packages/db.
+
+A production build was inspected directly, not reasoned about:
+- the whole field app is one prerendered route, `● /[[...slug]]`, 173 kB;
+- `/admin/*` and `/coordinator` build as separate dynamic server routes;
+- the built worker precaches `/` with a per-build revision
+  (`{'revision':'1788734795664','url':'/'}`) plus every chunk, and its runtime
+  rules are in the order `[api NetworkOnly, shell, ...defaultCache]` — that
+  order is load-bearing and was read out of `public/sw.js`;
+- `server-reference-manifest.json` lists Server Actions registered against
+  `app/[[...slug]]/page`, which is what makes "Download my copy" work from a
+  statically prerendered shell. That was the open question in the port and it
+  is now evidence rather than reasoning.
+
+**NOT verified in a browser, and that is the check that matters.** The last
+attempt shipped on reasoning and was reverted within two hours. Install, sync,
+airplane mode, open a trainee never opened before, mark, force-quit, reopen,
+reconnect — exactly one submission, never two, never zero. Also open `/admin`
+and `/coordinator` as an administrator and confirm neither shows "Screen not
+found".
+
+---
+
 ## 2026-09-06 · feature · Voiding one trainee's assessment: an assessed trainee can be returned to "Not yet assessed"
 
 **Kind:** feature
@@ -171,6 +363,326 @@ browser as a real Super Admin — that check is the user's.
 
 ---
 
+## 2026-09-06 · decision · One app shell replaces per-url caching; the offline design stops being a list
+
+**Kind:** decision
+**Phase:** 1
+**Commit / PR:** feat/local-first-offline-architecture
+
+**What changed**
+The field app is now ONE precached document. `app/[[...slug]]/page.tsx` is a
+catch-all that renders `components/app-shell.tsx`, which reads the path on the
+client and picks the screen; the service worker answers every in-app
+navigation with that one shell. The screens themselves are unchanged — they
+moved from route files into `components/screens/` and kept their markup, copy
+and urls.
+
+Deleted with it: the two rewrites in `next.config.ts`, `shellKey()` and the
+cache-key collapsing in `sw.ts`, `warmShells()`, `public/offline.html`,
+`lib/local/route-params.ts`, `components/app-chrome.tsx`, and middleware's
+gate on page navigations. Net negative lines, and the routing table is now a
+pure function with tests (`lib/local/route-match.ts`).
+
+**Why this way**
+Three offline bugs reached supervisors in one day, and they were one mistake
+wearing three faces — caching an html document per url:
+
+1. The worker answered a failed navigation with the `/offline` document at a
+   `/trainee/<id>` url. App Router refused to hydrate a payload built for one
+   route against another: "Application error: a client-side exception has
+   occurred".
+2. The rewrite that made per-url caching possible (`/trainee/:id` →
+   `/trainee?id=:id`) put the id in a query string the browser never sees, so
+   every trainee reported "not on your route".
+3. A per-url cache is only as complete as the urls somebody happened to visit
+   online. `warmShells()` was supposed to fix that and never worked: it warmed
+   with `fetch()`, and the cache rule required `request.mode === 'navigate'`.
+   Screens nobody had opened fell through to "This screen needs a connection".
+
+Each fix added another piece of scaffolding to hold up the same decision. The
+app-shell model removes the decision. There is no per-url cache to be
+incomplete and no other route's payload to mismatch, so offline support stops
+being a property of individual urls and becomes a property of the app being
+installed at all. A trainee added this morning and a screen added in a later
+release both work with no signal.
+
+The urls did not change. `/trainee/<id>` and `/trainee/<id>/mark/<code>` are
+still what the route list links to and what supervisors have bookmarked; the
+shell parses them itself.
+
+Middleware now guards `/api` and nothing else. Gating the shell was pointless
+once it carried no data, and actively harmful: it redirected `/api/sync`,
+whose caller reads a redirect as "the network failed" and gives up silently.
+
+**Watch out for**
+- **THE SHELL'S FIRST RENDER MUST BE ROUTE-INDEPENDENT.** The server
+  prerenders it for `/` and the worker replays those bytes at every url, so
+  anything rendered before the mount effect must be identical everywhere.
+  `AppShell` starts with `pathname = null` for exactly this reason. Reading
+  the path during render — `usePathname()`, say — reintroduces bug 1 above.
+- **RULE ORDER IN sw.ts IS LOAD-BEARING.** The shell rule must sit ahead of
+  `defaultCache`, which carries its own navigation and RSC rules. Registering
+  it afterwards with `serwist.registerRoute` compiles, reads as equivalent,
+  and silently kills offline navigation. Verified in the built worker:
+  `runtimeCaching` is `[api NetworkOnly, shell, ...defaultCache]`.
+- **Navigation is plain `<a href>`, intercepted by the shell.**
+  `@next/next/no-html-link-for-pages` is turned OFF in
+  `apps/web/eslint.config.mjs` with the reasoning: `next/link` fetches the
+  target route's payload from the server, which is the failure being removed.
+- The precache revision for `/` is the Vercel commit sha, falling back to the
+  build clock. It MUST change per build or a released fix never reaches a
+  phone that holds the old shell. (The old `revision: 'v1'` on offline.html
+  was constant, so that file could never have been updated.)
+- `usePathname()` cannot see the shell's `pushState` navigations. `BottomNav`
+  takes the path as a prop for this reason; anything else needing the live
+  path must get it from the shell, not from `next/navigation`.
+- `/login`, `/change-password`, `/api/*` and the report preview are in
+  `SERVER_ONLY` and deliberately reach the network.
+
+**Verified by**
+`pnpm format:check && pnpm lint && pnpm test && pnpm typecheck` green — 236
+tests in apps/web, 7 new in `lib/local/route-match.test.ts` covering the
+routing table, including that `/trainee/<id>/report/preview` is NOT claimed by
+the shell.
+
+A production build reports the whole field app as one prerendered route
+(`● /[[...slug]]`, 167 kB first load, inside the 180 KB budget). The built
+worker was inspected directly: `/` is precached with a per-build revision,
+every JS chunk and the CSS are precached alongside it, and the runtime rules
+are in the order above.
+
+**NOT verified in a real browser, and this is the check that matters.** The
+one thing unit tests cannot cover is whether App Router tolerates the
+precached `/` payload being replayed at `/trainee/<id>`. It should — same
+route, same segment shape, only the `slug` param differs, and the shell never
+reads Next's params — but that is reasoning, not evidence, and reasoning is
+what was wrong the last two times. Install, sync, go offline, then open every
+screen cold, including one never opened before.
+
+---
+
+## 2026-09-06 · bugfix · Every trainee reported "not on your route"; and an empty route list could not say why
+
+**Kind:** bugfix
+**Phase:** 1
+**Commit / PR:** feat/local-first-offline-architecture
+
+**What changed**
+Three fixes to the local-first build, all reported from the field the same
+morning it went out.
+
+1. **The trainee id was read from the wrong place.** `/trainee/<id>` and
+   `/trainee/<id>/mark/<code>` are static pages reached through a rewrite, and
+   they read the id with `useSearchParams()`. A rewrite is resolved on the
+   SERVER: the browser's address bar still says `/trainee/<id>` with no query
+   string, and a statically prerendered page has no server render to inject
+   one. The id came back empty and `buildProfile()` found nothing, so every
+   trainee, for every supervisor, reported "not on your route" one tap after
+   the route list had shown them. The parse now reads the PATH and lives in
+   `lib/local/route-params.ts` with 15 tests.
+2. **A lapsed session was a permanent dead end.** `middleware.ts` redirected
+   `/api/sync` to `/login`; `runFullSync` fetches with `redirect: 'error'`, so
+   the fetch threw, and a throw is read as `unreachable` — the one outcome that
+   deliberately changes nothing and says nothing. The supervisor sat on an
+   empty route list with no error, no prompt to sign in and nothing to press,
+   permanently, because every retry took the same path. Middleware now answers
+   any `/api/*` request without a session cookie with a 401, which the sync
+   already knows means "sign in again".
+3. **An empty route list had four meanings and one sentence.** It said "Your
+   route has not reached this phone yet" while the sync was still downloading
+   it — the device reads in a couple of milliseconds and the network does not.
+   `lib/local/route-status.ts` now gives each state its own words, and offers a
+   retry only where pressing it could change the answer.
+
+**Why this way**
+The id parse is a separate, tested module rather than a regex inside a
+component because the difference between the two spellings was the difference
+between the app working and every trainee reporting "not found", and nothing in
+the type system or the build was going to catch it. The query string is kept as
+a fallback for a direct visit to the rewrite target.
+
+Middleware answering 401 rather than redirecting is the general rule, not a
+patch for one route: an API caller wants a status code. It also keeps
+`/api/ping` honest, since the reachability probe counts a 401 as "the server
+answered" — which it did.
+
+The retry button is deliberately absent once a sync has succeeded and found
+nobody. The College's roster is what it is, and a retry there would suggest the
+app was broken rather than the route empty.
+
+**Watch out for**
+- **This middleware does NOT refresh the session cookie** — the old one did, on
+  every request, via `@supabase/ssr`. Refreshing now happens only when
+  `/api/sync` or a Server Action runs. That is fine for a phone in use, which
+  syncs on open, focus and reconnect, but it is why lapsed sessions appeared at
+  all: supervisors carried a cookie the old build had been quietly renewing.
+- `SyncStatus` is module state in `lib/sync/client.ts`, with `resetSyncStatus()`
+  as the test seam. A failed sync never downgrades a device that already has
+  data — it is holding a good copy and can work from it all day.
+- The register-wide sync discussed alongside these was **not built**. The
+  working theory was that the empty lists came from the device holding only the
+  supervisor's own trainees; it did not — it was the id bug above — so RLS is
+  unchanged and `trainees_select` still scopes to `is_assigned_to_trainee(id)`.
+  If a trainee is ever moved between routes mid-week, the receiving supervisor
+  needs one online sync before that trainee appears. Revisit then, not before.
+
+**Verified by**
+`pnpm format:check && pnpm lint && pnpm test && pnpm typecheck` green — 378
+tests, 24 new (`route-params.test.ts` 15, `route-status.test.ts` 9). A
+production build passes with `/home`, `/trainee`, `/mark`, `/pending` and
+`/account` still **static** and every route inside the 180 KB budget.
+
+**Still not verified in a real browser.** The id fix in particular deserves the
+30 seconds it takes: sign in, tap a trainee, confirm the profile opens.
+
+---
+
+## 2026-09-06 · feature · Local-first: every screen reads IndexedDB, Realtime keeps it current
+
+**Kind:** feature
+**Phase:** 1
+**Commit / PR:** feat/local-first-offline-architecture
+
+**What changed**
+The app stopped querying the server to draw a screen. `trainees`,
+`assignments`, `instruments`, `criteria`, this supervisor's `assessment_marks`,
+`results` and `reports` are replicated into IndexedDB as real Dexie tables
+(schema v5); `/home`, `/trainee/<id>` and `/trainee/<id>/mark/<code>` render
+from those rows and nothing else. A Supabase Realtime socket, always on, writes
+each change into the same tables, and Dexie's `liveQuery` re-renders whatever
+screen is open. `/api/sync` refills the device on open, on focus, on reconnect
+and whenever a change arrives that cannot be applied precisely.
+
+The separate `/offline` screen is gone. It was a second implementation of the
+route list, the profile and the queue; the real screens now cover both cases,
+so there is one of everything.
+
+Migration `0028` publishes the six read tables to `supabase_realtime`. It adds
+nothing and grants nothing — Realtime re-runs each table's SELECT policy per
+subscriber.
+
+**Why this way**
+Two problems with one cause. The app was slow online because every navigation
+paid a `supabase.auth.getUser()` round trip in middleware (measured: `/home`
+713 ms TTFB against 276 ms for a static file — roughly 440 ms of pure latency,
+before the supervisor's own 3G hop) and then ran seven queries. And it crashed
+offline because every screen was server-rendered, so the service worker had to
+answer a failed navigation with a substitute document.
+
+That substitution was the "Application error: a client-side exception has
+occurred" supervisors were hitting on trainees. The route list links with a
+plain `<a>`, so tapping a trainee is a full document navigation; offline it
+failed, the worker served the precached `/offline` document at the
+`/trainee/<id>` url, and App Router refused to hydrate a payload built for one
+route against an address bar reading another. It was intermittent because
+`navigator.onLine` reports the radio, not reachability: on a connection that
+was up but passing nothing, `ConnectionWatcher` never redirected and the tap
+went through. And `/trainee/**` was deliberately excluded from that redirect —
+to avoid throwing away half-finished assessments — so the crash was reachable
+from exactly the screens that mattered.
+
+Making the screens local-first removes both at the root rather than patching
+either. There is no server render to be slow and none to fail, so there is
+nothing to substitute.
+
+The urls did not change. `/trainee/<id>` and `/trainee/<id>/mark/<code>` are
+what the prototype describes, what supervisors have bookmarked, and what the
+route list links to. They now rewrite (`next.config.ts`, `afterFiles`) onto two
+STATIC pages that read the id from a query string, because a dynamic segment
+cannot be prerendered — Next would need one built document per trainee, and
+offline there is no server to make the missing one. One static document per
+screen is what lets the worker answer for any trainee, and it is the same
+document the server itself returns for that url, so nothing is substituted.
+
+The last-resort fallback is now `public/offline.html`, a plain file with no
+React in it. A fallback is by definition served at some other url than its own;
+a file with nothing to hydrate cannot mismatch.
+
+Middleware keeps only a cookie-presence check. It is a courtesy gate and is
+honest about being one: a forged cookie gets past it and then reads nothing,
+because every read is an RLS-scoped query and `/api/sync` answers 401 to
+anything it cannot authenticate. The boundary is in Postgres (AGENTS.md rule
+1); it was never in middleware.
+
+`lib/supabase/browser.ts` restores the browser client deleted on 2026-09-05.
+That deletion was correct at the time — nothing used it — and the note then
+said to restore it "if a browser client is ever genuinely needed, with its own
+explicitly public env vars". A socket cannot be opened by a server component,
+so this is that. **`NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+must be set in Vercel** or changes stop arriving live; the app still syncs on
+open, focus and reconnect, so the failure is silent.
+
+Three smaller things, each fixing something real:
+
+- **Reachability replaces `navigator.onLine`** (`lib/reachability.ts`). A
+  4-second probe of `/api/ping`, cached 10 seconds, shared between concurrent
+  callers. `onLine === false` is still trusted outright; `true` is checked. The
+  drainer used the naive check, so on a wifi that routes nowhere every entry
+  failed, each failure burned an attempt and pushed the backoff out — marks got
+  slower to send the worse the signal was.
+- **Outbox entries record their owner.** Phones are shared between tutors, and
+  a queued submission carries a slot belonging to one supervisor. Replaying
+  Fatuma's marks under Juma's session can only fail against RLS while the
+  attempt counter climbs. Entries with no owner (queued before this) still
+  drain, or marks would be stranded.
+- **A latent double-send is closed.** The old offline screen enqueued a report
+  and, on an immediate success, never removed the queue entry — so the next
+  drain generated and e-mailed it again. There is no unique index on `reports`
+  and no server-side "already sent" guard, so nothing else would have stopped
+  it. The unified control removes the entry the moment a send succeeds.
+
+**Watch out for**
+- **`applySync` wipes the replicas when a different user signs in**, and
+  sign-out clears them. Both are about shared phones: RLS stops the server
+  sending Juma another supervisor's route, but it cannot remove rows already on
+  the device. `drafts`, `outbox` and `reportOutbox` are never wiped by either —
+  they hold marks that exist nowhere else.
+- **A full sync deletes local rows the payload no longer contains.** Without
+  that, a trainee moved off a route stays on the phone and gets assessed.
+- **A DELETE over Realtime carries only the primary key.** For `assignments`,
+  `assessment_marks`, `results` and `reports` the device keys rows differently,
+  so those ask for a re-sync instead of guessing. `planLocalWrite` decides this
+  and is unit-tested.
+- **`SUBSCRIBED_TABLES` and migration 0028 must agree.** Subscribing to an
+  unpublished table is silent — no error, no events — so a test asserts the two
+  lists match rather than leaving it to be discovered in a village.
+- **Navigation is plain `<a>`, not `next/link`.** A client-side navigation
+  fetches the target route's payload from the server and fails with no signal.
+  The bottom nav and the post-submit redirect were both changed for this
+  reason. Reintroducing `<Link>` would restore the crash on those paths.
+- **`outputFileTracingIncludes` moved to `/api/reports/[traineeId]`.** It used
+  to key on `/trainee/[id]`, which no longer does server work. A stale key here
+  does not fail the build — it ships a function without its Chromium, which is
+  exactly how report generation broke the first time.
+- The route list is now sorted by name. IndexedDB returns rows in primary-key
+  order and the key is a random uuid, so unsorted it would reshuffle on every
+  sync.
+- The Coordinator/Super Admin placeholder on `/home` is gone with the server
+  render. They now land on an empty route list, which is honest — they have no
+  assignments — and their real dashboards remain unbuilt Phase 3 work.
+
+**Verified by**
+`pnpm format:check && pnpm lint && pnpm test && pnpm typecheck` all green —
+354 tests, 49 of them new: `lib/local/derive.test.ts` (18) pins the route-list
+and profile derivation that previously lived inside server components where
+nothing could test it, `lib/sync/realtime-plan.test.ts` (11) covers row
+mapping and the delete cases, `lib/reachability.test.ts` (11) the probe and its
+caching, `lib/sync/reconcile.test.ts` (9) the wipe and prune rules.
+`offline-contract.test.ts` was repointed from the retired snapshot type to
+`LocalTrainee`.
+
+A production build passes and reports `/home`, `/trainee`, `/mark`, `/pending`
+and `/account` as **static** — the property the offline shells depend on —
+with every route inside the 180 KB budget (largest: `/mark`, 160 KB). The
+built middleware bundle contains no reference to `supabase`, confirming the
+per-request auth round trip is gone. `routes-manifest.json` carries both
+rewrites.
+
+**NOT yet verified in a real browser**, and it must be before this reaches
+supervisors: install the PWA, sync, go offline, and open a trainee and a
+marking form from a cold start. The unit tests cover the decisions, not
+IndexedDB, the service worker or a socket dropping mid-request. The
+Phase 1 exit gate — reconnect submits exactly once — still needs its field run.
 ## 2026-09-06 · decision · The deadline is the EVENING of Sunday 6 September — production, not a milestone
 
 **Kind:** decision

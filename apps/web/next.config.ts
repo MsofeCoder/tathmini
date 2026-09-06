@@ -8,12 +8,19 @@ const withSerwist = withSerwistInit({
   swSrc: 'src/app/sw.ts',
   swDest: 'public/sw.js',
   disable: process.env.NODE_ENV === 'development',
-  // The offline entry point must be in the precache even if the supervisor
-  // never happened to open it while online. Next's own hashed assets are
-  // not precached here by design — they are immutable, so Serwist's default
-  // runtime caching serves them cache-first once fetched (the route list
-  // prefetches /offline to make sure they have been).
-  additionalPrecacheEntries: [{ url: '/offline', revision: null }],
+  // The app shell: ONE document that answers every in-app navigation (see
+  // sw.ts). `/` is the catch-all route, prerendered at build, and it renders
+  // nothing route-specific on the server — which is what lets the same bytes
+  // be replayed at /trainee/<id> without App Router refusing to hydrate them.
+  //
+  // The revision must change whenever the build does, or a released fix would
+  // never reach a phone that already holds the old shell. Vercel's commit sha
+  // when there is one; the build's own clock otherwise. (The previous
+  // `revision: 'v1'` on the old offline page was a real defect: constant, so
+  // that file could never be updated.)
+  additionalPrecacheEntries: [
+    { url: '/', revision: process.env.VERCEL_GIT_COMMIT_SHA ?? String(Date.now()) },
+  ],
   // Serwist reloads the page when connectivity returns by default. In the
   // field, signal flaps in and out constantly — reloading a supervisor
   // mid-assessment is unacceptable, and nothing needs it: OutboxDrainer
@@ -24,6 +31,7 @@ const withSerwist = withSerwistInit({
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+
   // Report generation launches headless Chromium, and neither of these can be
   // bundled. @sparticuz/chromium ships a Brotli-compressed Chromium binary in
   // its own bin/ and resolves that path at runtime; webpack relocates the JS
@@ -48,15 +56,16 @@ const nextConfig: NextConfig = {
   // Externalizing the package was necessary but not sufficient. The tracer
   // follows `require`/`import`, so it found the package's build/*.js and
   // stopped there — bin/ is read from disk at runtime, never imported, so
-  // nothing pointed at it and it was left out of the deployment. Confirmed by
-  // reading .next/server/app/trainee/[id]/page.js.nft.json after a build: 7
-  // @sparticuz entries, all build/*.js, and not one file from bin/.
+  // nothing pointed at it and it was left out of the deployment. That is
+  // exactly the reported error: the JS shipped, then looked for a Chromium
+  // that was never deployed. This forces the payload in — chromium.br plus
+  // the swiftshader, fonts and al2023 archives it unpacks alongside.
   //
-  // That is exactly the reported error — the JS shipped, then looked for a
-  // Chromium that was never deployed. This forces the payload in: chromium.br
-  // plus the swiftshader, fonts and al2023 archives it unpacks alongside.
+  // The key follows the ONE route that still launches Chromium — this handler.
+  // A stale key here does not fail the build; it silently ships a function
+  // without its browser, which is how this broke the first time.
   outputFileTracingIncludes: {
-    '/trainee/[id]': [
+    '/api/reports/[traineeId]': [
       '../../node_modules/.pnpm/@sparticuz+chromium@*/node_modules/@sparticuz/chromium/bin/**',
     ],
   },

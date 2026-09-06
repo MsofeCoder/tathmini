@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { adviceFor } from '@tathmini/shared';
 import {
   computeGaps,
@@ -17,6 +16,8 @@ import {
   type MarksByCriterion,
 } from '@/lib/marking';
 import { clearDraft, draftKey, loadDraft, saveDraft } from '@/lib/drafts';
+import { db } from '@/lib/db';
+import { isReachable } from '@/lib/reachability';
 import { enqueueSubmission } from '@/lib/outbox';
 import type { SubmitAssessmentInput } from '@/lib/submission';
 import { submitAssessment } from '@/app/actions/submit-assessment';
@@ -49,7 +50,6 @@ export function MarkingForm({
   criteria,
   returnHref,
 }: MarkingFormProps) {
-  const router = useRouter();
   const backHref = returnHref ?? `/trainee/${traineeId}`;
   const kind = criterionKindForInstrument(instrumentCode);
   const sections = useMemo(() => groupBySection(criteria), [criteria]);
@@ -183,13 +183,26 @@ export function MarkingForm({
       generalComment,
     };
 
+    // Ask whether the server is actually reachable before trying to reach it.
+    // `navigator.onLine` is not enough — it is true on a workshop wifi that
+    // routes nowhere — and the cost of finding out the hard way is a
+    // supervisor watching a spinner at the end of an assessment. If it is not
+    // reachable, the marks go straight to the queue, which is where they were
+    // always going to end up.
+    if (!(await isReachable())) {
+      await enqueueSubmission({ key, payload, traineeName, instrumentLabel });
+      setSubmitting(false);
+      setQueued(true);
+      return;
+    }
+
     let result;
     try {
       result = await submitAssessment(payload);
     } catch {
-      // No usable connection — the marks are complete and valid, so queue
-      // them rather than making the supervisor stand in a dead zone. The
-      // draft deliberately stays until the outbox confirms it actually sent.
+      // Reachable a moment ago and not now. The marks are complete and valid,
+      // so queue them rather than making the supervisor stand in a dead zone.
+      // The draft deliberately stays until the outbox confirms it sent.
       await enqueueSubmission({ key, payload, traineeName, instrumentLabel });
       setSubmitting(false);
       setQueued(true);
@@ -202,7 +215,26 @@ export function MarkingForm({
       return;
     }
     await clearDraft(key);
-    router.push(backHref);
+
+    // Record the submitted mark on the device immediately, rather than
+    // waiting for Realtime or the next sync to tell us what we just did. The
+    // supervisor lands back on the profile expecting "Submitted ✓", and on a
+    // slow connection the round trip that would confirm it can take seconds.
+    // The next sync overwrites this row with the server's own.
+    await db.marks.put({
+      key,
+      traineeId,
+      instrumentId,
+      submittedAt: new Date().toISOString(),
+    });
+
+    // A full navigation, not router.push. A client-side navigation fetches
+    // the target route's payload from the server; with signal that has just
+    // dropped, that fails and takes the app down at the worst possible moment
+    // — immediately after a submit, when the supervisor most needs to see
+    // their work land. The service worker answers a full navigation from the
+    // cached shell whether or not there is a connection.
+    window.location.assign(backHref);
   }
 
   if (queued) {
