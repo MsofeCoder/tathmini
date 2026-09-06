@@ -36,7 +36,7 @@ describe('isProtectedFromRedirect', () => {
     // These cannot be produced without a network: middleware.ts validates the
     // session over the wire before the page renders at all.
     expect(isProtectedFromRedirect('/home')).toBe(false);
-    expect(isProtectedFromRedirect('/pending')).toBe(false);
+    expect(isProtectedFromRedirect('/reports')).toBe(false);
     expect(isProtectedFromRedirect('/account')).toBe(false);
   });
 });
@@ -48,9 +48,15 @@ describe('activeNavHref', () => {
     expect(activeNavHref('/offline')).toBe('/home');
   });
 
+  it('treats the old Pending URL as the Reports tab', () => {
+    // Precached on every phone already running the app. It redirects into
+    // Reports, and the bar must not blink to no-tab-selected on the way.
+    expect(activeNavHref('/pending')).toBe('/reports');
+  });
+
   it('leaves the other tabs alone', () => {
     expect(activeNavHref('/home')).toBe('/home');
-    expect(activeNavHref('/pending')).toBe('/pending');
+    expect(activeNavHref('/reports')).toBe('/reports');
     expect(activeNavHref('/account')).toBe('/account');
   });
 });

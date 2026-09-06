@@ -47,6 +47,92 @@ the diff. This file is for knowledge that would otherwise be lost.
 
 ---
 
+## 2026-09-06 · feature · Bottom nav loses Moves; Pending becomes a Reports tab with Drafted / Submitted / Pending
+
+**Kind:** feature
+**Phase:** 1
+**Commit / PR:** (branch) `claude/bottom-nav-reports-tab-rriefi`
+
+**What changed**
+The bottom bar is now three tabs — Trainees · Reports · Account. The inert
+Moves tab is gone, and Pending has become **Reports** (`/reports`): one
+client-rendered screen with a top tab bar carrying the three things that can
+actually happen when a supervisor reaches the send screen.
+
+- **Drafted** — they tapped "Save as a draft and send later" (`reportDrafts`).
+- **Pending** — they tapped send and it could not go: queued marks (`outbox`)
+  and queued report sends (`reportOutbox`).
+- **Submitted** — it went: a report actually sent from this phone, or a trainee
+  whose own instruments are all submitted according to the cached route
+  snapshot.
+
+Every row in all three offers **Preview report**. A preview is built by the
+server from the marks it holds and therefore needs a connection — that is
+unchanged and is now said out loud on the screen rather than the button being
+hidden.
+
+New: `lib/reports-tabs.ts` (the pure classifier, 17 Vitest cases),
+`lib/sent-reports.ts` and Dexie **v8**'s `sentReports` store.
+
+**Why this way**
+*Offline-first, as everything on this screen must be.* The reason a supervisor
+opens Reports is usually that the network has let them down, so all three lists
+are read from IndexedDB and none of them is a query — the same reasoning that
+made `/offline` and the old Pending screen client-rendered. That is what forced
+the `sentReports` receipt: the server is the record of truth for a sent report
+(`reports`), but it cannot be asked in a dead zone, so both send paths — the
+online button and the drain pass — write a local receipt the moment the server
+confirms. The receipt holds no document and no marks; nothing is derived from
+it, and losing one loses a line in a list, never a mark (AGENTS.md rule 3
+stands: every published number is computed in Postgres).
+
+*Submitted also reads the cached route snapshot*, not just receipts. Otherwise
+the tab would be empty for every trainee marked before this existed, which is
+all of them.
+
+*Each trainee appears in exactly one tab*, ranked PENDING > DRAFTED >
+SUBMITTED. A trainee really can be in two states at once (marks queued for one
+instrument, a report drafted for another), and the ranking is chosen by what a
+supervisor must not conclude: queued work has to read as queued, because the
+mistake it prevents — marking that trainee again — is a permanent duplicate in
+an append-only table; and a held draft has to outrank "submitted", because
+nothing sends a draft on its own and anything filed under Submitted stops being
+thought about.
+
+*Moves was removed rather than left inert.* It was rendered disabled so the bar
+would not change shape when Phase 3's reassignment state machine lands. In the
+field a dead quarter of the bar is read as broken, not as "coming later", and
+it costs a thumb-width of the three tabs that work. `/moves` was never a route;
+nothing else referenced it.
+
+*`/pending` is a client redirect, not a deletion.* The service worker has
+precached that URL on every phone already running the app, and a 404 on the
+screen whose whole message is "your work is safe" is the worst possible answer.
+Client-side rather than `redirect()` because a server redirect is a network
+round trip on exactly the screen someone reaches with no signal.
+
+**Watch out for**
+- **Dexie v8.** Additive, every earlier store carried forward, and the version
+  number is new rather than reused — see the v5/v6 note in `lib/db.ts` for why
+  reusing one bricks a phone that opened the earlier build. Nothing on-device
+  is dropped by the upgrade.
+- The `sentReports` receipt is written **before** the entry leaves the report
+  queue, so a failure between the two leaves the report queued (a re-drain is
+  answered by the server) rather than losing it silently.
+- Submitted's "Marks submitted" line is only as fresh as the last online visit
+  to the route list, which is what writes the snapshot. Said on the empty state.
+- `/reports` is statically prerendered, like `/offline` — it renders no server
+  data of its own. Reaching it in a dead zone still depends on the service
+  worker, exactly as `/pending` did; `/offline` remains the offline entry point.
+
+**Verified by**
+`pnpm format:check && pnpm lint && pnpm test && pnpm typecheck` all green — 321
+Vitest cases, 17 of them new for the classifier (tab exclusivity, ordering,
+`requiredCount: 0` never counting as submitted) and 3 for the drain receipt
+(written once, never on a refused report). `pnpm --filter @tathmini/web build`
+clean: `/reports` prerenders static at 143 kB first-load JS, inside the 180 KB
+budget. Not yet exercised in a real browser on a real device.
+
 ## 2026-09-06 · feature · Voiding one trainee's assessment: an assessed trainee can be returned to "Not yet assessed"
 
 **Kind:** feature

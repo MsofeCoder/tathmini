@@ -28,10 +28,16 @@ export function isProtectedFromRedirect(pathname: string): boolean {
 }
 
 /**
- * Which bottom-nav tab a path belongs to. /offline IS the route list without
- * signal, so it highlights Trainees — the nav must not suggest the supervisor
- * has left the section they are standing in.
+ * Which bottom-nav tab a path belongs to.
+ *
+ * /offline IS the route list without signal, so it highlights Trainees — the
+ * nav must not suggest the supervisor has left the section they are standing
+ * in. /pending is the old Pending screen, now the Pending tab inside Reports:
+ * a phone whose service worker still has that URL lands there and is
+ * redirected, and the bar must not blink to no-tab-selected on the way.
  */
 export function activeNavHref(pathname: string): string {
-  return pathname === '/offline' ? '/home' : pathname;
+  if (pathname === '/offline') return '/home';
+  if (pathname === '/pending') return '/reports';
+  return pathname;
 }

@@ -70,6 +70,26 @@ export interface ReportDraftRecord {
   note?: string;
 }
 
+/**
+ * A report this supervisor has actually sent from this device.
+ *
+ * The server is the record of truth for a sent report (`reports`), but the
+ * Reports tab has to be able to say "this one went" with no signal, and the
+ * server cannot be asked then. So the send path writes a receipt here the
+ * moment the server confirms — online, and when the queued report finally
+ * drains.
+ *
+ * It holds no document and no marks: only that this trainee's report left the
+ * phone, and when. Nothing is decided from it — it is a receipt the supervisor
+ * reads, never an input to a mark, a total or a verdict.
+ */
+export interface SentReportRecord {
+  /** The trainee id — one report per trainee per assessor. */
+  key: string;
+  traineeName: string;
+  sentAt: number;
+}
+
 export interface OutboxRecord {
   key: string;
   payload: SubmitAssessmentInput;
@@ -157,6 +177,7 @@ class TathminiDb extends Dexie {
   cache!: Table<OfflineBundle, string>;
   reportOutbox!: Table<ReportOutboxRecord, string>;
   reportDrafts!: Table<ReportDraftRecord, string>;
+  sentReports!: Table<SentReportRecord, string>;
 
   constructor() {
     super('tathmini-drafts');
@@ -229,6 +250,26 @@ class TathminiDb extends Dexie {
       cache: 'key',
       reportOutbox: 'key',
       reportDrafts: 'key',
+    });
+
+    /**
+     * v8 adds `sentReports` — the on-device receipt for a report that has
+     * actually gone, which is what lets the Reports tab's "Submitted" list
+     * exist with no signal.
+     *
+     * Additive, like every upgrade since the v5 revert: every earlier store is
+     * carried forward, so a supervisor mid-route keeps their drafts, their
+     * queued marks, their held reports and their route snapshot. The version
+     * number is new rather than reused — a phone that opened an earlier build
+     * would refuse to open a database it thinks is newer than the code.
+     */
+    this.version(8).stores({
+      drafts: 'key',
+      outbox: 'key',
+      cache: 'key',
+      reportOutbox: 'key',
+      reportDrafts: 'key',
+      sentReports: 'key',
     });
   }
 }
