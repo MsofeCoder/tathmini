@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DeviceRows } from './derive';
-import { buildMarking, buildProfile, buildRouteRows } from './derive';
+import { buildMarking, buildProfile, buildRouteRows, buildTpMarking } from './derive';
 
 /**
  * The numbers a supervisor reads off a phone and acts on.
@@ -299,5 +299,113 @@ describe('buildMarking', () => {
       'tp_theory',
     )!;
     expect(view.alreadySubmitted).toBe(true);
+  });
+});
+
+describe('buildProfile — instrument order', () => {
+  // IndexedDB hands rows back in primary-key order, and the primary key is a
+  // random uuid: without the sort a supervisor could be offered Practical
+  // before Theory on one phone and the other way round on the next.
+  it('offers TP Theory before TP Practical whatever order the device holds', () => {
+    const view = buildProfile(
+      rows({
+        trainees: [trainee('t1', 'AMINA JUMA')],
+        assignments: [{ traineeId: 't1', slot: 'a1' }],
+        instruments: [...INSTRUMENTS].reverse(),
+      }),
+      't1',
+    )!;
+    expect(view.actions.map((a) => a.code)).toEqual(['tp_theory', 'tp_practical']);
+  });
+});
+
+describe('buildTpMarking', () => {
+  const criteria = [
+    {
+      id: 'th1',
+      instrumentId: 'i-theory',
+      sectionCode: '1',
+      sectionLabel: 'LESSON PREPARATION',
+      sectionMax: 6,
+      itemCode: 'i',
+      itemLabel: 'Availability of scheme of work and lesson plan',
+      itemMax: 1,
+      orderIndex: 1,
+    },
+    {
+      id: 'pr1',
+      instrumentId: 'i-practical',
+      sectionCode: '1',
+      sectionLabel: 'LESSON PREPARATION',
+      sectionMax: 15,
+      itemCode: 'i',
+      itemLabel: 'Availability of scheme of work and lesson plan',
+      itemMax: 2,
+      orderIndex: 1,
+    },
+  ];
+
+  const tp = (overrides: Partial<DeviceRows> = {}) =>
+    rows({
+      trainees: [trainee('t1', 'AMINA JUMA')],
+      assignments: [{ traineeId: 't1', slot: 'a1' }],
+      criteria,
+      ...overrides,
+    });
+
+  it('builds both phases, Theory first, whichever url was opened', () => {
+    const view = buildTpMarking(tp(), 't1', 'tp_practical')!;
+    expect(view.phases.map((p) => p.instrument.code)).toEqual(['tp_theory', 'tp_practical']);
+    // …and lands on the phase the supervisor actually tapped.
+    expect(view.startPhaseIndex).toBe(1);
+    expect(view.slot).toBe('a1');
+  });
+
+  // Marks are append-only: re-opening a submitted phase could only mislead.
+  it('drops a phase this supervisor has already submitted', () => {
+    const view = buildTpMarking(
+      tp({
+        marks: [
+          { key: 't1:i-theory', traineeId: 't1', instrumentId: 'i-theory', submittedAt: 'now' },
+        ],
+      }),
+      't1',
+      'tp_practical',
+    )!;
+    expect(view.phases.map((p) => p.instrument.code)).toEqual(['tp_practical']);
+    expect(view.startPhaseIndex).toBe(0);
+  });
+
+  it('returns null when the phase asked for is itself already submitted', () => {
+    expect(
+      buildTpMarking(
+        tp({
+          marks: [
+            { key: 't1:i-theory', traineeId: 't1', instrumentId: 'i-theory', submittedAt: 'now' },
+          ],
+        }),
+        't1',
+        'tp_theory',
+      ),
+    ).toBeNull();
+  });
+
+  // An interrupted sync can leave one instrument's criteria missing. The
+  // other half is still markable; an empty form never is.
+  it('leaves out a phase whose criteria have not reached this phone', () => {
+    const view = buildTpMarking(
+      tp({ criteria: criteria.filter((c) => c.instrumentId === 'i-theory') }),
+      't1',
+      'tp_theory',
+    )!;
+    expect(view.phases.map((p) => p.instrument.code)).toEqual(['tp_theory']);
+  });
+
+  it('is not offered for IPT, which keeps the single scrolling form', () => {
+    expect(buildTpMarking(tp(), 't1', 'ipt')).toBeNull();
+  });
+
+  it('refuses a trainee this supervisor holds no slot for', () => {
+    expect(buildTpMarking(tp({ assignments: [] }), 't1', 'tp_theory')).toBeNull();
   });
 });

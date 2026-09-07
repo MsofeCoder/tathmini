@@ -2,11 +2,17 @@
 
 import { useMemo, useState } from 'react';
 import {
+  emptyFilterMessage,
   initials,
+  matchesFilter,
   routeProgress,
   statusMeta,
   statusPlain,
   trackChipStyle,
+  traineeCategory,
+  traineeFilterLabel,
+  TRAINEE_FILTERS,
+  type TraineeFilter,
   type TraineeStatus,
 } from '@/lib/trainees';
 import { useDraftTraineeIds, useSyncStatus } from '@/lib/local/use-device';
@@ -58,13 +64,18 @@ function HighlightedName({ text, query }: { text: string; query: string }) {
 }
 
 // Layout/copy/colours ported from reference/Tathmini.dc.html's showList
-// screen (lines 130–221) — the behavioural spec, per AGENTS.md. One
-// deliberate departure, because the real system differs from the
-// prototype's fake one — see MEMORY.md: no filter-pill row (that only
-// exists on the coordinator's Phase 3 per-route drill-down, not this
-// supervisor screen).
+// screen (lines 130–221) — the behavioural spec, per AGENTS.md.
+//
+// The filter-pill row was deliberately absent until 2026-09-07, on the
+// grounds that the prototype only filters on the coordinator's per-route
+// drill-down. The College asked for it here: a supervisor with thirty
+// trainees on a route walk wants "what have I not started" and "what is
+// still sitting unsent on this phone" as one tap, not as a search term.
+// The four buckets are computed from the same inputs as the summary tiles
+// (see traineeCategory), so a pill's count can never disagree with a tile.
 export function RouteList({ routeCode, routeLabel, trainees, loaded, syncedAt }: RouteListProps) {
   const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<TraineeFilter>('all');
 
   // Live, so a trainee moves to "in progress" the moment the first score is
   // tapped and back out when their marks drain — without this screen being
@@ -87,6 +98,37 @@ export function RouteList({ routeCode, routeLabel, trainees, loaded, syncedAt }:
   );
   const outstanding = trainees.length - assessed;
 
+  // One bucket per trainee, computed once. Drafts are live (useDraftTraineeIds
+  // subscribes), so a trainee moves from "not started" into "drafted" the
+  // moment the first score is tapped — while the filter is open.
+  const categories = useMemo(() => {
+    const byId = new Map<string, ReturnType<typeof traineeCategory>>();
+    for (const t of trainees) {
+      byId.set(
+        t.id,
+        traineeCategory({
+          status: t.status,
+          ownSubmittedCount: t.ownSubmittedCount,
+          requiredCount: t.requiredCount,
+          hasDraft: draftTraineeIds.has(t.id),
+        }),
+      );
+    }
+    return byId;
+  }, [trainees, draftTraineeIds]);
+
+  const filterCounts = useMemo(() => {
+    const counts: Record<TraineeFilter, number> = {
+      all: trainees.length,
+      assessed: 0,
+      'in-progress': 0,
+      drafted: 0,
+      'not-started': 0,
+    };
+    for (const category of categories.values()) counts[category] += 1;
+    return counts;
+  }, [categories, trainees.length]);
+
   const institutionCount = new Set(trainees.map((t) => t.institution)).size;
 
   const routeStatus = emptyRouteMessage({
@@ -99,14 +141,19 @@ export function RouteList({ routeCode, routeLabel, trainees, loaded, syncedAt }:
 
   const query = search.trim().toLowerCase();
   const matched = useMemo(() => {
-    if (!query) return trainees;
-    return trainees.filter((t) =>
-      [t.name, t.occupation, t.institution, t.track, statusPlain(t.status)]
-        .join(' ')
-        .toLowerCase()
-        .includes(query),
-    );
-  }, [trainees, query]);
+    return trainees
+      .filter((t) => matchesFilter(filter, categories.get(t.id) ?? 'not-started'))
+      .filter(
+        (t) =>
+          !query ||
+          [t.name, t.occupation, t.institution, t.track, statusPlain(t.status)]
+            .join(' ')
+            .toLowerCase()
+            .includes(query),
+      );
+  }, [trainees, query, filter, categories]);
+
+  const filtering = filter !== 'all';
 
   return (
     <main className="min-h-dvh bg-[#eceff0]">
@@ -196,18 +243,62 @@ export function RouteList({ routeCode, routeLabel, trainees, loaded, syncedAt }:
           ) : null}
         </div>
 
-        {query ? (
+        {/* Filter pills. Horizontally scrollable rather than wrapped: on a
+            360 px phone a wrapped row pushes the first trainee below the
+            fold, and this screen's whole job is the list. */}
+        <div
+          role="group"
+          aria-label="Filter trainees by assessment state"
+          className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1"
+        >
+          {TRAINEE_FILTERS.map((option) => {
+            const active = filter === option;
+            const count = filterCounts[option];
+            return (
+              <button
+                key={option}
+                type="button"
+                aria-pressed={active}
+                onClick={() => setFilter(option)}
+                className={`focus:outline-accent min-h-11 shrink-0 rounded-full border px-3.5 text-[13px] font-bold focus:outline focus:outline-[3px] focus:outline-offset-2 ${
+                  active
+                    ? 'border-[#0d4a43] bg-[#12665b] text-white'
+                    : 'border-[#ccd7d4] bg-white text-[#3c4c58]'
+                }`}
+              >
+                {traineeFilterLabel(option)}{' '}
+                <span className={active ? 'text-white/80' : 'text-[#5f6f7c]'}>{count}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {query || filtering ? (
           <p role="status" className="mt-2 text-[12.5px] text-[#5b6b78]">
             {matched.length} of {trainees.length} shown
+            {filtering ? ` · ${traineeFilterLabel(filter).toLowerCase()}` : ''}
           </p>
         ) : null}
 
-        {query && matched.length === 0 ? (
+        {(query || filtering) && matched.length === 0 ? (
           <div className="mt-4 rounded-2xl border border-dashed border-[#ccd7d4] px-5 py-8 text-center">
-            <p className="text-[14.5px] font-bold text-[#3c4c58]">No trainees match</p>
-            <p className="mt-1 text-[13px] text-[#5b6b78]">
-              Search runs against the offline cache, so it works with no signal.
+            <p className="text-[14.5px] font-bold text-[#3c4c58]">
+              {query ? 'No trainees match' : traineeFilterLabel(filter)}
             </p>
+            <p className="mt-1 text-[13px] text-[#5b6b78]">
+              {query
+                ? 'Search runs against the offline cache, so it works with no signal.'
+                : emptyFilterMessage(filter)}
+            </p>
+            {filtering ? (
+              <button
+                type="button"
+                onClick={() => setFilter('all')}
+                className="focus:outline-accent mt-4 min-h-11 w-full rounded-lg border border-[#ccd7d4] bg-white text-[13.5px] font-bold text-[#3c4c58] focus:outline focus:outline-[3px] focus:outline-offset-2"
+              >
+                Show all trainees
+              </button>
+            ) : null}
           </div>
         ) : (
           <ul className="mt-4 flex flex-col gap-2.5">

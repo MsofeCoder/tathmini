@@ -89,7 +89,7 @@ export function AssessmentActions({
             href={`/trainee/${traineeId}/mark/${action.code}`}
             className="focus:outline-accent flex min-h-[52px] items-center justify-center rounded-xl bg-[#12665b] text-[15px] font-bold text-white focus:outline focus:outline-[3px] focus:outline-offset-2"
           >
-            Start {action.label}
+            Start {action.label} Assessment
           </a>
         );
       })}

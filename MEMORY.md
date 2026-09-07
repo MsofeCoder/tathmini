@@ -47,6 +47,84 @@ the diff. This file is for knowledge that would otherwise be lost.
 
 ---
 
+## 2026-09-07 · feature · Route-list filters, Theory-first buttons, and the TP one-section-per-page stepper
+
+**Kind:** feature
+**Phase:** 1
+**Commit / PR:** (branch) claude/trainee-filters-tp-stepper-n86jj3
+
+**What changed**
+Three things the College asked for on the field app, all on the device, no
+migration and no new Dexie version:
+
+1. **A filter row on the route list** — All · Assessed · In progress · Drafted
+   · Not started, with live counts, sitting above the existing search. The four
+   buckets come from `traineeCategory()` in `lib/trainees.ts`, computed from
+   exactly the same inputs as the three summary tiles, so `drafted +
+   in-progress` is always the IN PROGRESS tile and a pill can never contradict
+   a counter above it. A test asserts that identity.
+2. **Theory before Practical, and "Assessment" in the button** — the profile's
+   instrument buttons now read "Start TP Theory Assessment", "Start TP
+   Practical Assessment", "Start IPT Assessment", and are sorted by
+   `instrumentOrder()` rather than by whatever order IndexedDB returned. The
+   labels themselves are unchanged instrument rows; only the surrounding copy
+   and the sort are new.
+3. **The TP stepper** (`components/tp-marking-stepper.tsx`) — one section per
+   page across both TP instruments: section subtotal, per-section jump
+   dropdown, two progress bars (this lesson, and the trainee's whole 63-criterion
+   assessment), a section gate on Next with the prototype's own wording, and a
+   review-and-confirm last page. IPT keeps the long scrolling form.
+
+**Why this way**
+The stepper spans both TP instruments because TP is *two instruments but one
+visit*: a supervisor watches a classroom lesson and a workshop lesson for the
+same trainee in one sitting, and the prototype (`stepNext`/`stepBack`, lines
+2412–2447) walks straight from the last Theory section into the first Practical
+one. `buildTpMarking()` therefore returns both phases, and Back on the first
+Practical section returns to the last Theory section rather than disabling
+itself.
+
+What it deliberately does NOT do is merge the two into one mark. Each phase
+keeps its own draft key (`draftKey(traineeId, instrumentId)`) and submits its
+own statement through the same path as before — `lib/submit-phase.ts` is that
+path, extracted so the loop could call it twice; the per-(trainee, instrument,
+slot) unique index and `validate_and_finalize_mark()` are untouched, and a
+supervisor who submitted Theory last week is offered Practical alone (a
+submitted phase is dropped from `phases`, never shown read-only, because marks
+are append-only).
+
+`marking-form.tsx` keeps its own proven submit path rather than being
+refactored onto `submitPhase()`. On go-live day the IPT flow is the one thing
+this change had no reason to touch, and the duplication is three lines. Worth
+collapsing next week.
+
+The gate copy, the "Sections ⌄" / "Hide ⌃" toggle, the ✓ markers and the
+`done/total` counts are the prototype's, per AGENTS.md. Criterion wording is
+untouched — the stepper renders the same `CriterionCard` the long form does,
+extracted so the two screens cannot drift.
+
+**Watch out for**
+- First-load JS went 171 kB → **176 kB** against the 180 KB budget. The
+  stepper ships alongside the long form because IPT still needs it; the next
+  screen added to the shell will need that budget looked at properly.
+- The review screen prints subtotals only — no grade, no GPA, no verdict.
+  Those are Postgres's (AGENTS.md rule 3) and printing a client-side guess
+  minutes before the real one is how two numbers end up in front of a trainee.
+- If both phases are submitted at review and one is queued offline, the whole
+  submission reads as queued. That is deliberate: telling a supervisor "half
+  sent" invites them to mark the other half again.
+- The route list's filter pills are the departure from the earlier note that
+  said this screen deliberately has none. The College asked; the note in
+  `route-list.tsx` now records that.
+
+**Verified by**
+`pnpm format:check && pnpm lint && pnpm test && pnpm typecheck` all green (435
+Vitest cases in `apps/web`, including new suites for `traineeCategory`,
+`sectionGateWarning`, `sectionJumpRows`, `instrumentOrder` and
+`buildTpMarking`); `pnpm --filter web build` clean at 176 kB first-load JS.
+Not yet exercised on a real device — the stepper's offline journey wants a
+Playwright pass before Monday.
+
 ## 2026-09-06 · feature · The Reports screen (Drafted · Submitted · Pending), built on the app shell
 
 **Kind:** feature
