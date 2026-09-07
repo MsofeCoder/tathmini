@@ -1,8 +1,10 @@
-import { clearDraft } from './drafts';
+import { clearDraft, draftKey } from './drafts';
 import { db } from './db';
 import { enqueueSubmission } from './outbox';
 import { isReachable } from './reachability';
+import type { DraftState } from './drafts';
 import type { SubmitAssessmentInput } from './submission';
+import { buildPhasePayload, tpReadyToSubmit, type TpSubmitPhase } from './tp-submit';
 import { submitAssessment } from '@/app/actions/submit-assessment';
 
 /**
@@ -74,4 +76,51 @@ export async function submitPhase({
   });
 
   return { kind: 'sent' };
+}
+
+export type TpSubmitResult =
+  | { kind: 'sent' }
+  | { kind: 'queued' }
+  | { kind: 'incomplete' }
+  | { kind: 'rejected'; error: string };
+
+/**
+ * Sends every unsubmitted phase, in order.
+ *
+ * If any phase is queued the whole thing reads as queued — the marks are safe
+ * on the phone either way, and telling a supervisor "half sent" invites them
+ * to mark the other half again.
+ */
+export async function submitTpAssessment({
+  traineeId,
+  traineeName,
+  slot,
+  phases,
+  drafts,
+}: {
+  traineeId: string;
+  traineeName: string;
+  slot: 'a1' | 'a2';
+  phases: TpSubmitPhase[];
+  drafts: Record<string, DraftState | undefined>;
+}): Promise<TpSubmitResult> {
+  if (!tpReadyToSubmit(phases, drafts)) return { kind: 'incomplete' };
+
+  let anyQueued = false;
+  for (const phase of phases) {
+    const draft = drafts[phase.instrumentId];
+    if (!draft) return { kind: 'incomplete' };
+
+    const outcome = await submitPhase({
+      key: draftKey(traineeId, phase.instrumentId),
+      payload: buildPhasePayload({ traineeId, slot, phase, draft }),
+      traineeName,
+      instrumentLabel: phase.label,
+    });
+    if (outcome.kind === 'rejected')
+      return { kind: 'rejected', error: `${phase.label}: ${outcome.error}` };
+    if (outcome.kind === 'queued') anyQueued = true;
+  }
+
+  return anyQueued ? { kind: 'queued' } : { kind: 'sent' };
 }

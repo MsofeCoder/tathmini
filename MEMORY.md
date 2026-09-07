@@ -47,6 +47,69 @@ the diff. This file is for knowledge that would otherwise be lost.
 
 ---
 
+## 2026-09-07 · feature · TP lessons unchained: each marked on its own, submitted when both are complete
+
+**Kind:** feature
+**Phase:** 1
+**Commit / PR:** (branch) claude/trainee-filters-tp-stepper-n86jj3 — PR #47
+
+**What changed**
+The TP stepper no longer walks Theory into Practical and no longer ends at a
+review page. It marks ONE lesson: its progress bar counts that lesson's
+criteria only, Back on the first section returns to the trainee profile, and
+the last section's button reads **Save assessment** — which writes the draft
+and returns to the profile.
+
+The profile is the pre-assessment page. Both lessons are started from it, in
+either order, and marking one never depends on having started the other.
+
+Submission became a state rather than a destination. Once every criterion of
+every not-yet-submitted phase carries a score, the Save button at the end of a
+lesson becomes **Submit assessment**, and a **Submit TP assessment** card
+appears on the profile itself. Both ask `lib/tp-submit.ts`; the send is
+`submitTpAssessment()` in `lib/submit-phase.ts`, one statement per instrument
+exactly as before.
+
+**Why this way**
+The chaining was wrong about the visit, not just about the UI. A supervisor
+may watch the classroom lesson on Tuesday and the workshop lesson on Thursday;
+a flow that treats Theory as the doorway to Practical makes the second visit
+feel like a resumption of the first, and made the combined 63-criterion
+progress bar read as unfinished work on a lesson that was finished.
+
+Submission stayed a both-lessons act because the College's mark is the pair,
+and `assessment_marks` is append-only: sending Theory alone would leave a
+half-recorded trainee that only an Administrator override could complete. The
+draft on the device is the safe place for a lesson waiting for its partner,
+and it already was — nothing new is stored.
+
+The pure half (`phaseComplete`, `tpReadyToSubmit`, `buildPhasePayload`) sits in
+`lib/tp-submit.ts` with no `@/` imports, because `apps/web` has no vitest
+config and therefore no path alias: a module that reaches the server action
+cannot be unit-tested. What decides whether an assessment may be sent must be.
+
+**Watch out for**
+- **Dexie is untouched.** No new store, no new version, no renumbering: the
+  drafts are the same `drafts` rows keyed per (trainee, instrument) that the
+  long form has always written, which is exactly why a lesson can wait days
+  for its partner. Rule 8 of AGENTS.md § "The app shell" did not need to be
+  spent on this feature.
+- The profile's Submit card reads the drafts on mount. It is a full page load
+  after a lesson saves (`window.location.assign`), so it always sees the
+  lesson just written — but a card left open in another tab will not notice a
+  draft finished elsewhere until it reloads.
+- If either phase queues offline, the whole submission reads as queued. Both
+  drafts stay until the outbox confirms each one.
+- First-load JS 176 kB → **175 kB** (the review screen came out).
+
+**Verified by**
+`pnpm format:check && pnpm lint && pnpm test && pnpm typecheck` green — 447
+Vitest cases in `apps/web`, including a new `tp-submit.test.ts` (readiness with
+one lesson already submitted, a zero counting as scored, an empty form never
+counting as complete) and `buildTpPending` in `derive.test.ts`.
+`pnpm --filter web build` clean at 175 kB. Still not exercised on a real
+device.
+
 ## 2026-09-07 · feature · Route-list filters, Theory-first buttons, and the TP one-section-per-page stepper
 
 **Kind:** feature

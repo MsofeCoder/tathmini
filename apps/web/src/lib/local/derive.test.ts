@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { DeviceRows } from './derive';
-import { buildMarking, buildProfile, buildRouteRows, buildTpMarking } from './derive';
+import {
+  buildMarking,
+  buildProfile,
+  buildRouteRows,
+  buildTpMarking,
+  buildTpPending,
+} from './derive';
 
 /**
  * The numbers a supervisor reads off a phone and acts on.
@@ -407,5 +413,64 @@ describe('buildTpMarking', () => {
 
   it('refuses a trainee this supervisor holds no slot for', () => {
     expect(buildTpMarking(tp({ assignments: [] }), 't1', 'tp_theory')).toBeNull();
+  });
+});
+
+describe('buildTpPending', () => {
+  const criteria = [
+    {
+      id: 'th1',
+      instrumentId: 'i-theory',
+      sectionCode: '1',
+      sectionLabel: 'LESSON PREPARATION',
+      sectionMax: 6,
+      itemCode: 'i',
+      itemLabel: 'Availability of scheme of work and lesson plan',
+      itemMax: 1,
+      orderIndex: 1,
+    },
+    {
+      id: 'pr1',
+      instrumentId: 'i-practical',
+      sectionCode: '1',
+      sectionLabel: 'LESSON PREPARATION',
+      sectionMax: 15,
+      itemCode: 'i',
+      itemLabel: 'Availability of scheme of work and lesson plan',
+      itemMax: 2,
+      orderIndex: 1,
+    },
+  ];
+
+  const tp = (overrides: Partial<DeviceRows> = {}) =>
+    rows({
+      trainees: [trainee('t1', 'AMINA JUMA')],
+      assignments: [{ traineeId: 't1', slot: 'a1' }],
+      criteria,
+      ...overrides,
+    });
+
+  // The profile needs the pending lessons without naming one, so its Submit
+  // button can tell whether the pair is finished.
+  it('lists both lessons, Theory first, with no phase selected', () => {
+    const view = buildTpPending(tp(), 't1')!;
+    expect(view.phases.map((p) => p.instrument.code)).toEqual(['tp_theory', 'tp_practical']);
+    expect(view.startPhaseIndex).toBe(0);
+  });
+
+  it('drops a lesson already submitted', () => {
+    const view = buildTpPending(
+      tp({
+        marks: [
+          { key: 't1:i-theory', traineeId: 't1', instrumentId: 'i-theory', submittedAt: 'now' },
+        ],
+      }),
+      't1',
+    )!;
+    expect(view.phases.map((p) => p.instrument.code)).toEqual(['tp_practical']);
+  });
+
+  it('is null for an IPT trainee', () => {
+    expect(buildTpPending(tp({ trainees: [trainee('t1', 'AMINA JUMA', 'IPT')] }), 't1')).toBeNull();
   });
 });

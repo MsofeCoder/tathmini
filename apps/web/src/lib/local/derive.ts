@@ -276,33 +276,21 @@ export interface TpMarkingView {
 }
 
 /**
- * The whole TP assessment — both instruments — for the one-section-per-page
- * stepper.
+ * Every TP phase still to be marked, Theory first.
  *
- * TP is two instruments but one visit: the supervisor watches a classroom
- * lesson and a workshop lesson for the same trainee and marks them in one
- * sitting. Building the two forms together is what lets Next walk from the
- * last Theory section into the first Practical one, and what makes the
- * "63 criteria" progress bar mean the trainee's whole assessment rather than
- * whichever half happens to be open.
- *
- * What it deliberately does NOT do is merge the two into one submission.
- * Each instrument still submits its own statement, under its own draft key,
- * through the same `submitAssessment` path as before — the database's
- * per-(trainee, instrument, slot) unique index and
- * `validate_and_finalize_mark()` are unchanged, and a supervisor who marked
- * Theory last week is offered Practical alone.
+ * TP is two instruments and one trainee, but NOT one walk: the profile is the
+ * pre-assessment page and each lesson is opened from it on its own, in either
+ * order, on different days if that is how the visits fall. This is the list
+ * both the stepper and the profile's Submit button work from — the stepper to
+ * know whether the lesson it is showing ends at Save or at Submit, the
+ * profile to know whether the whole assessment can be sent.
  *
  * A phase already submitted is dropped rather than shown read-only: marks are
- * append-only, so re-opening one could only mislead.
+ * append-only, so re-opening one could only mislead. A phase whose criteria
+ * have not reached this phone (an interrupted sync) is dropped too — the
+ * other one is still markable, and an empty form never is.
  */
-export function buildTpMarking(
-  rows: DeviceRows,
-  traineeId: string,
-  instrumentCode: string,
-): TpMarkingView | null {
-  if (!isTpPhaseCode(instrumentCode)) return null;
-
+export function buildTpPending(rows: DeviceRows, traineeId: string): TpMarkingView | null {
   const trainee = rows.trainees.find((t) => t.id === traineeId);
   if (!trainee || trainee.track !== 'TP') return null;
 
@@ -312,15 +300,32 @@ export function buildTpMarking(
   const phases: TpPhaseView[] = [];
   for (const code of TP_PHASE_CODES) {
     const view = buildMarking(rows, traineeId, code);
-    // `buildMarking` returns null for an instrument this phone does not hold
-    // the criteria for — an interrupted sync. Such a phase is left out
-    // rather than rendered empty; the other one is still markable.
     if (!view || view.alreadySubmitted) continue;
     phases.push({ instrument: view.instrument, criteria: view.criteria });
   }
 
-  const startPhaseIndex = phases.findIndex((p) => p.instrument.code === instrumentCode);
+  return { trainee, slot: assignment.slot, phases, startPhaseIndex: 0 };
+}
+
+/**
+ * The same list, positioned on the phase whose url the supervisor opened.
+ *
+ * Returns null when that phase is not one of the pending ones — an unknown
+ * code, the other track's instrument, or a lesson this supervisor has already
+ * submitted (which the mark screen reports in its own words).
+ */
+export function buildTpMarking(
+  rows: DeviceRows,
+  traineeId: string,
+  instrumentCode: string,
+): TpMarkingView | null {
+  if (!isTpPhaseCode(instrumentCode)) return null;
+
+  const pending = buildTpPending(rows, traineeId);
+  if (!pending) return null;
+
+  const startPhaseIndex = pending.phases.findIndex((p) => p.instrument.code === instrumentCode);
   if (startPhaseIndex === -1) return null;
 
-  return { trainee, slot: assignment.slot, phases, startPhaseIndex };
+  return { ...pending, startPhaseIndex };
 }

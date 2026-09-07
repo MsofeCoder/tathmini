@@ -4,7 +4,8 @@ import { ReportCorrection } from '@/app/trainee/[id]/report-correction';
 import { AssessmentActions } from '@/components/assessment-actions';
 import { ReportPreviewButton } from '@/components/report-preview';
 import { ReportDownloadButton } from '@/components/report-download-button';
-import { buildProfile } from '@/lib/local/derive';
+import { TpSubmitButton } from '@/components/tp-submit-button';
+import { buildProfile, buildTpPending } from '@/lib/local/derive';
 import { useDeviceRows } from '@/lib/local/use-device';
 import { traineeParticulars, trackChipStyle, trackPointsLabel } from '@/lib/trainees';
 
@@ -34,6 +35,8 @@ export function TraineeScreen({ traineeId }: { traineeId: string }) {
   if (!view) return <NotFound />;
 
   const { trainee } = view;
+  // TP only, and only the lessons still to be submitted.
+  const tpPending = buildTpPending(rows, traineeId);
   const track = trainee.track;
   const chip = trackChipStyle(track);
   const particulars = traineeParticulars({
@@ -131,7 +134,28 @@ export function TraineeScreen({ traineeId }: { traineeId: string }) {
         ) : null}
 
         {view.canAssess ? (
-          <AssessmentActions traineeId={trainee.id} actions={view.actions} />
+          <>
+            <AssessmentActions traineeId={trainee.id} actions={view.actions} />
+            {/* This screen is the pre-assessment page: the two TP lessons are
+                started from it in either order and each one comes back here.
+                The send lives here as well as at the end of a lesson, so a
+                supervisor who marked the second lesson yesterday evening can
+                send from the page they land on. It renders nothing until
+                every criterion of both lessons carries a score. */}
+            {tpPending && tpPending.slot ? (
+              <TpSubmitButton
+                traineeId={trainee.id}
+                traineeName={trainee.name}
+                slot={tpPending.slot}
+                phases={tpPending.phases.map((phase) => ({
+                  instrumentId: phase.instrument.id,
+                  code: phase.instrument.code,
+                  label: phase.instrument.label,
+                  criteria: phase.criteria,
+                }))}
+              />
+            ) : null}
+          </>
         ) : null}
       </div>
     </main>
