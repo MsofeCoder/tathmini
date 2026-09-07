@@ -103,7 +103,8 @@ a supervisor to mark and for a result to reach the right person.
   console.** Deletion needs a reviewed migration: `delete on trainees` is revoked
   from every signed-in role because it cascades to marks.
 - **The supervisor-initiated reassignment flow** (request → accept/decline). The
-  administrator's half is built; the `/moves` tab stays inert.
+  administrator's half is built; the inert `/moves` tab has now been removed
+  from the bottom bar and returns when the supervisor-initiated half lands.
 - **PR #2**, open since 4 September and long superseded. Close it.
 
 ---
