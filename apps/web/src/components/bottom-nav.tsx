@@ -1,12 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
 import { activeNavHref } from '@/lib/navigation';
-import { listQueued } from '@/lib/outbox';
-import { listReportDrafts } from '@/lib/report-drafts';
-import { listQueuedReports } from '@/lib/report-outbox';
+import { usePendingCount } from '@/lib/local/use-device';
 
 /**
  * The bottom navigation: Trainees · Reports · Account, with the count appended
@@ -47,25 +42,18 @@ const TABS: Tab[] = [
   { href: '/account', label: 'Account', radius: '50% 50% 4px 4px' },
 ];
 
-export function BottomNav() {
-  const pathname = usePathname();
-  const [waiting, setWaiting] = useState(0);
-
-  useEffect(() => {
-    // Read on every navigation: a submission queued on the marking screen has
-    // to show up here the moment the supervisor comes back.
-    //
-    // Held reports count too. They are a different kind of waiting — nothing
-    // sends them on its own — but from the bar's point of view all three are
-    // "work finished on this phone that has not reached the College", and a
-    // report saved as a draft is precisely the thing a supervisor forgets.
-    // Submitted work is deliberately not counted: a badge that climbed all
-    // week would stop meaning anything.
-    void Promise.all([listQueued(), listReportDrafts(), listQueuedReports()]).then(
-      ([queued, drafts, queuedReports]) =>
-        setWaiting(queued.length + drafts.length + queuedReports.length),
-    );
-  }, [pathname]);
+/**
+ * The path is a PROP, not `usePathname()`. The shell navigates with
+ * `history.pushState`, which `next/navigation` cannot see — reading the path
+ * from that hook here would leave the bar stuck highlighting whichever tab
+ * the app was opened on.
+ */
+export function BottomNav({ pathname }: { pathname: string }) {
+  // Live from IndexedDB, and counting held reports as well as queued
+  // assessments — see usePendingCount(). The count has to fall the moment the
+  // outbox drains and rise the moment something is queued or held back,
+  // without this bar being remounted.
+  const pendingCount = usePendingCount();
 
   const current = activeNavHref(pathname);
 
@@ -74,7 +62,9 @@ export function BottomNav() {
       {TABS.map((tab) => {
         const on = current === tab.href;
         const label =
-          tab.href === '/reports' && waiting > 0 ? `${tab.label} · ${waiting}` : tab.label;
+          tab.href === '/reports' && pendingCount > 0
+            ? `${tab.label} · ${pendingCount}`
+            : tab.label;
 
         const inner = (
           <>
@@ -93,15 +83,21 @@ export function BottomNav() {
           ? 'border-[#12665b] bg-[#f1f6f4] text-[#0d4a43] font-bold'
           : 'border-transparent text-[#4d5f6c]';
 
+        // A plain anchor, not next/link. A client-side navigation fetches the
+        // target route's payload from the server, which fails with no signal
+        // and takes the app down with it — the very thing this rebuild
+        // removes. A full navigation is answered by the service worker from
+        // the cached shell, so every tab works offline. Nothing is lost: the
+        // screens carry no server data, so there is no round trip to save.
         return (
-          <Link
+          <a
             key={tab.href}
             href={tab.href}
             aria-current={on ? 'page' : undefined}
             className={`${shared} ${tone}`}
           >
             {inner}
-          </Link>
+          </a>
         );
       })}
     </nav>

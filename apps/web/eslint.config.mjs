@@ -20,6 +20,28 @@ const config = [
       'public/swe-worker-*.js',
     ],
   },
+  {
+    rules: {
+      /**
+       * OFF, deliberately and load-bearingly.
+       *
+       * The rule wants `<Link />` wherever an `<a href>` points at one of
+       * Next's own pages. In this app that advice inverts the architecture.
+       * A `next/link` navigation fetches the target route's payload FROM THE
+       * SERVER; with no signal that request fails and takes the screen down
+       * with it. That is the "Application error" supervisors were hitting in
+       * the field.
+       *
+       * Every screen here is rendered by one precached shell from IndexedDB,
+       * and `components/app-shell.tsx` intercepts in-app anchor clicks and
+       * routes them with `history.pushState` — no network, and it works
+       * identically offline. Plain `<a href>` is therefore the correct
+       * element, and it degrades to a full navigation the service worker
+       * answers from the same shell if the interceptor is ever absent.
+       */
+      '@next/next/no-html-link-for-pages': 'off',
+    },
+  },
 ];
 
 export default config;

@@ -34,7 +34,7 @@ function harness(options: {
   const order: string[] = [];
   const clearedDrafts: string[] = [];
   const attempts: { key: string; error: string }[] = [];
-  const sentReceipts: string[] = [];
+  const receipts: { traineeId: string; traineeName: string }[] = [];
 
   const deps: DrainDeps = {
     listDue: async () => [...queue.values()],
@@ -59,12 +59,46 @@ function harness(options: {
       return (await options.generateReport?.(traineeId)) ?? { url: 'https://signed' };
     }),
     removeQueuedReport: async (key) => void reports.delete(key),
-    recordSentReport: async ({ traineeId }) => void sentReceipts.push(traineeId),
     recordReportAttempt: async (key, error) => void attempts.push({ key, error }),
+    recordSentReport: async (input) => void receipts.push(input),
   };
 
-  return { deps, queue, reports, order, clearedDrafts, attempts, sentReceipts };
+  return { deps, queue, reports, order, clearedDrafts, attempts, receipts };
 }
+
+/**
+ * The on-device receipt that the Reports screen's Submitted list is built
+ * from. It is bookkeeping — nothing is decided from it — but a report that
+ * went and is not listed as gone is one a supervisor will try to send again.
+ */
+describe('drainOutbox — the sent receipt', () => {
+  it('writes a receipt for a report that actually went', async () => {
+    const h = harness({ reports: ['t1'] });
+    await drainOutbox(h.deps);
+    expect(h.receipts).toEqual([{ traineeId: 't1', traineeName: 'Asha Juma' }]);
+  });
+
+  it('writes no receipt when the send failed', async () => {
+    const h = harness({
+      reports: ['t1'],
+      generateReport: async () => {
+        throw new Error('offline');
+      },
+    });
+    await drainOutbox(h.deps);
+    expect(h.receipts).toEqual([]);
+    // and the report is still queued, so nothing was lost
+    expect(h.reports.has('t1')).toBe(true);
+  });
+
+  it('writes one receipt however many times connectivity returns', async () => {
+    const h = harness({ reports: ['t1'] });
+    await drainOutbox(h.deps);
+    await drainOutbox(h.deps);
+    await drainOutbox(h.deps);
+    expect(h.receipts).toHaveLength(1);
+  });
+});
 
 /**
  * ROADMAP.md Phase 1 exit gate: "reconnecting produces exactly one submission,
@@ -183,36 +217,5 @@ describe('drainOutbox — reports', () => {
     await drainOutbox(h.deps);
 
     expect(h.deps.generateReport).toHaveBeenCalledTimes(1);
-  });
-});
-
-/**
- * The Reports tab's "Submitted" list has to be readable with no signal, so a
- * report that drains from the queue leaves a receipt on the device. Without
- * it, a report sent by the drainer — the whole offline case — would show as
- * still pending until the phone next reached the server.
- */
-describe('drainOutbox — the on-device receipt', () => {
-  it('records a receipt for a report that actually sent', async () => {
-    const h = harness({ reports: ['t1'] });
-    await drainOutbox(h.deps);
-    expect(h.sentReceipts).toEqual(['t1']);
-  });
-
-  it('records nothing for a report the server refused', async () => {
-    const h = harness({
-      reports: ['t1'],
-      generateReport: async () => ({ error: 'submit your assessment first' }),
-    });
-    await drainOutbox(h.deps);
-    expect(h.sentReceipts).toEqual([]);
-  });
-
-  it('records one receipt however many times connectivity returns', async () => {
-    const h = harness({ reports: ['t1'] });
-    await drainOutbox(h.deps);
-    await drainOutbox(h.deps);
-    await drainOutbox(h.deps);
-    expect(h.sentReceipts).toEqual(['t1']);
   });
 });

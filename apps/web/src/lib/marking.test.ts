@@ -8,8 +8,13 @@ import {
   groupBySection,
   isFlagged,
   isIptFlagged,
+  instrumentOrder,
   isPointsFlagged,
+  percentComplete,
   pointsScoreOptions,
+  sectionGateWarning,
+  sectionJumpRows,
+  tpPhaseLabels,
   scoredCount,
   scoreOptionsFor,
   sectionSubtotal,
@@ -215,5 +220,127 @@ describe('flaggedCriteria', () => {
 
   it('ignores unscored criteria - nothing to advise on yet', () => {
     expect(flaggedCriteria('points', CRITERIA, {})).toEqual([]);
+  });
+});
+
+describe('instrumentOrder', () => {
+  it('puts Theory before Practical, and an unknown instrument last', () => {
+    const codes = ['ipt', 'tp_practical', 'something_new', 'tp_theory'];
+    expect([...codes].sort((a, b) => instrumentOrder(a) - instrumentOrder(b))).toEqual([
+      'tp_theory',
+      'tp_practical',
+      'ipt',
+      'something_new',
+    ]);
+  });
+});
+
+describe('sectionGateWarning', () => {
+  const section = (count: number) => ({
+    code: '1',
+    label: 'LESSON PREPARATION',
+    max: 6,
+    criteria: Array.from({ length: count }, (_, i) => ({
+      id: `c${i}`,
+      sectionCode: '1',
+      sectionLabel: 'LESSON PREPARATION',
+      sectionMax: 6,
+      itemCode: `i${i}`,
+      itemLabel: 'An item',
+      itemMax: 1,
+      orderIndex: i,
+    })),
+  });
+
+  it('lets a fully scored section through', () => {
+    const s = section(2);
+    expect(
+      sectionGateWarning(s, { c0: { score: 1, comment: '' }, c1: { score: 0.5, comment: '' } }),
+    ).toBeNull();
+  });
+
+  // Zero is a mark. Only an ABSENT score blocks — treating an unscored
+  // criterion as zero is what would understate the trainee.
+  it('treats a zero as scored', () => {
+    expect(sectionGateWarning(section(1), { c0: { score: 0, comment: '' } })).toBeNull();
+  });
+
+  it('names the whole section when nothing in it is marked', () => {
+    expect(sectionGateWarning(section(4), {})).toBe(
+      'Nothing in this section is marked yet. Give a score to each of the 4 criteria before moving on.',
+    );
+  });
+
+  it('counts what is left when the section is part-marked', () => {
+    expect(sectionGateWarning(section(3), { c0: { score: 1, comment: '' } })).toBe(
+      '2 criteria are still unmarked in this section. Every criterion must be scored before you continue.',
+    );
+  });
+
+  it('says “1 criterion is” for the last one', () => {
+    expect(sectionGateWarning(section(2), { c0: { score: 1, comment: '' } })).toBe(
+      '1 criterion is still unmarked in this section. Every criterion must be scored before you continue.',
+    );
+  });
+});
+
+describe('sectionJumpRows', () => {
+  const criterion = (id: string, sectionCode: string) => ({
+    id,
+    sectionCode,
+    sectionLabel: sectionCode === '1' ? 'LESSON PREPARATION' : 'TEACHING METHODS',
+    sectionMax: 6,
+    itemCode: id,
+    itemLabel: 'An item',
+    itemMax: 1,
+    orderIndex: Number(id.slice(1)),
+  });
+
+  const sections = groupBySection([
+    criterion('c1', '1'),
+    criterion('c2', '1'),
+    criterion('c3', '2'),
+  ]);
+
+  it('marks a finished section with a tick and counts the rest', () => {
+    const rows = sectionJumpRows(
+      sections,
+      { c1: { score: 1, comment: '' }, c2: { score: 1, comment: '' } },
+      1,
+    );
+    expect(rows[0]).toMatchObject({
+      marker: '✓',
+      done: 2,
+      total: 2,
+      complete: true,
+      current: false,
+    });
+    expect(rows[1]).toMatchObject({
+      marker: '2',
+      done: 0,
+      total: 1,
+      complete: false,
+      current: true,
+    });
+  });
+});
+
+describe('percentComplete', () => {
+  it('is 0 for an empty form rather than NaN', () => {
+    expect(percentComplete(0, 0)).toBe(0);
+  });
+
+  it('rounds to whole percent', () => {
+    expect(percentComplete(1, 3)).toBe(33);
+  });
+});
+
+describe('tpPhaseLabels', () => {
+  it('names the two lessons as the prototype does', () => {
+    expect(tpPhaseLabels('tp_theory')).toEqual({
+      label: 'Theory Lesson (Classroom)',
+      short: 'Theory',
+    });
+    expect(tpPhaseLabels('tp_practical').short).toBe('Practical');
   });
 });

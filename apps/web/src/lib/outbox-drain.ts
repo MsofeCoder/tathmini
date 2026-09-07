@@ -40,7 +40,7 @@ export interface DrainDeps {
   removeQueuedReport: (key: string) => Promise<void>;
   recordReportAttempt: (key: string, error: string) => Promise<void>;
   /**
-   * Writes the on-device receipt that lets the Reports tab list this one as
+   * Writes the on-device receipt that lets the Reports screen list this one as
    * submitted with no signal. Bookkeeping only — nothing is decided from it.
    */
   recordSentReport: (input: { traineeId: string; traineeName: string }) => Promise<void>;

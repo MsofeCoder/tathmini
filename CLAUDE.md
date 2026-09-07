@@ -31,6 +31,11 @@ before writing code.
 
 - **Stop and ask** on migrations, RLS, auth, anything that could change a stored
   mark, and any new client-bundle dependency.
+- **The field app is one precached app shell.** Any new supervisor screen is a
+  component in `components/screens/` registered in `lib/local/route-match.ts` —
+  never a route file, never `next/link`, never a server read. `AGENTS.md` §
+  "The app shell" has the ten rules; a new Dexie store takes the NEXT version
+  number, never a reused one.
 - The prototype in `reference/Tathmini.dc.html` is the behavioural spec. Read the
   relevant flow before designing a screen.
 - Criterion wording is **verbatim** from `reference/forms/`.

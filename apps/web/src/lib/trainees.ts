@@ -139,8 +139,8 @@ export interface RouteProgressInput {
   ownSubmittedCount: number;
   /** How many instruments this trainee's track requires (TP: 2, IPT: 1). */
   requiredCount: number;
-  /** True if this device holds an unsubmitted local draft for this trainee. */
-  hasDraft: boolean;
+  /** How far this device's unsent work on this trainee has got. */
+  draftProgress: DraftProgress;
 }
 
 export interface RouteProgress {
@@ -178,7 +178,10 @@ export function routeProgress(trainees: RouteProgressInput[]): RouteProgress {
   for (const t of trainees) {
     if (t.status === 'locked' || t.status === 'partial') {
       assessed += 1;
-    } else if (t.hasDraft || (t.ownSubmittedCount > 0 && t.ownSubmittedCount < t.requiredCount)) {
+    } else if (
+      t.draftProgress !== 'none' ||
+      (t.ownSubmittedCount > 0 && t.ownSubmittedCount < t.requiredCount)
+    ) {
       inProgress += 1;
     }
   }
@@ -189,4 +192,103 @@ export function routeProgress(trainees: RouteProgressInput[]): RouteProgress {
     notStarted: trainees.length - assessed - inProgress,
     pct: trainees.length === 0 ? 0 : Math.round((assessed / trainees.length) * 100),
   };
+}
+
+/**
+ * The route list's filter buckets.
+ *
+ * Four, not the three the summary tiles show, because the tiles' "in
+ * progress" is really two different situations a supervisor acts on
+ * differently:
+ *
+ *   - **in-progress** — part of the track is SUBMITTED and gone to the
+ *     College (TP theory in, practical not). Finishing it needs the trainee
+ *     in front of you again.
+ *   - **drafted** — nothing has been submitted, but this phone holds
+ *     unsubmitted marks. That work exists on this device and nowhere else,
+ *     which is exactly the list a supervisor wants at the end of a day.
+ *
+ * `drafted + in-progress` therefore equals the IN PROGRESS tile, and the
+ * counters never disagree.
+ */
+export type TraineeFilter = 'all' | 'assessed' | 'in-progress' | 'drafted' | 'not-started';
+
+export const TRAINEE_FILTERS: TraineeFilter[] = [
+  'all',
+  'assessed',
+  'in-progress',
+  'drafted',
+  'not-started',
+];
+
+export function traineeFilterLabel(filter: TraineeFilter): string {
+  if (filter === 'all') return 'All';
+  if (filter === 'assessed') return 'Assessed';
+  if (filter === 'in-progress') return 'In progress';
+  if (filter === 'drafted') return 'Drafted';
+  return 'Not started';
+}
+
+export type TraineeCategory = Exclude<TraineeFilter, 'all'>;
+
+/** How far the unsent work on this device has got — see draftProgressFor(). */
+export type DraftProgress = 'none' | 'partial' | 'complete';
+
+/**
+ * Which bucket one trainee falls in, from THIS supervisor's point of view.
+ *
+ * The four states are about where the WORK is, not about which buttons have
+ * been pressed:
+ *
+ *   - **assessed** — the marks are with the College. Nothing else counts as
+ *     assessed: a finished assessment sitting on a phone has not reached
+ *     anyone, and calling it assessed is how a supervisor comes to believe a
+ *     trainee is done when the College has no record of them.
+ *   - **drafted** — every criterion of every lesson still to be submitted
+ *     carries a score, and none of it has been sent. A trainee becomes a
+ *     draft the moment the last criterion is scored, whether or not the
+ *     supervisor pressed Save: the state describes the marks, not the
+ *     gesture.
+ *   - **in-progress** — started and not finished. Either part of the track is
+ *     submitted and the rest is not, or this device holds a part-scored
+ *     draft.
+ *   - **not-started** — nothing at all.
+ */
+export function traineeCategory({
+  status,
+  ownSubmittedCount,
+  requiredCount,
+  draftProgress,
+}: RouteProgressInput): TraineeCategory {
+  if (status === 'locked' || status === 'partial') return 'assessed';
+  if (draftProgress === 'complete') return 'drafted';
+  if (draftProgress === 'partial') return 'in-progress';
+  if (ownSubmittedCount > 0 && ownSubmittedCount < requiredCount) return 'in-progress';
+  return 'not-started';
+}
+
+/** Row badge for a trainee who is not yet assessed. The assessed ones keep
+ * statusMeta()'s badges, which say WHICH assessor the College is waiting for
+ * — a thing this split has nothing to say about. */
+export function categoryMeta(category: TraineeCategory): StatusMeta {
+  if (category === 'drafted') return { bg: '#fff0d6', fg: '#6b4400', short: '◐ Draft' };
+  if (category === 'in-progress') return { bg: '#fff4e0', fg: '#6b4400', short: '◔ In progress' };
+  return { bg: '#eef1f3', fg: '#4d5f6c', short: '○ Not yet assessed' };
+}
+
+export function matchesFilter(filter: TraineeFilter, category: TraineeCategory): boolean {
+  return filter === 'all' || filter === category;
+}
+
+/** Empty-list copy per filter — a filtered empty list must never read like an
+ * empty route, which is the one thing that would send a supervisor looking
+ * for a signal they do not need. */
+export function emptyFilterMessage(filter: TraineeFilter): string {
+  if (filter === 'assessed')
+    return 'No trainee on this route has been submitted to the College yet.';
+  if (filter === 'in-progress')
+    return 'Nothing is part-submitted — every trainee is either finished or not started.';
+  if (filter === 'drafted') return 'No finished, unsent assessment is held on this phone.';
+  if (filter === 'not-started') return 'Every trainee on this route has been started.';
+  return 'No trainees match.';
 }

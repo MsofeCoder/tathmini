@@ -69,3 +69,29 @@ export async function traineeIdsWithDrafts(): Promise<Set<string>> {
   }
   return ids;
 }
+
+export interface DraftMarksRow {
+  traineeId: string;
+  instrumentId: string;
+  marks: MarksByCriterion;
+}
+
+/**
+ * Every draft on this device, split back into (trainee, instrument).
+ *
+ * `traineeIdsWithDrafts` answers "has this trainee been started"; this answers
+ * "how far", which is what tells a part-marked trainee (in progress) from one
+ * whose whole assessment is sitting here finished and unsent (draft). The key
+ * is `${traineeId}:${instrumentId}` and has been since the store existed, so
+ * nothing new is stored to support the distinction.
+ */
+export async function listDraftMarks(): Promise<DraftMarksRow[]> {
+  const records = await db.drafts.toArray();
+  const rows: DraftMarksRow[] = [];
+  for (const record of records) {
+    const [traineeId, instrumentId] = record.key.split(':');
+    if (!traineeId || !instrumentId) continue;
+    rows.push({ traineeId, instrumentId, marks: record.marks ?? {} });
+  }
+  return rows;
+}
