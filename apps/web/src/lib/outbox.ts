@@ -4,8 +4,13 @@ import type { SubmitAssessmentInput } from './submission';
 /**
  * The offline submit queue. Deliberately NOT the Background Sync API, which
  * needs a registered service-worker event with real browser-support caveats:
- * a submission that cannot reach the server is stored here and replayed by
- * OutboxDrainer when the browser comes back online or the app regains focus.
+ * a submission that cannot reach the server is stored here until it is sent.
+ *
+ * Nothing replays it on its own any more. `OutboxDrainer` used to, on the
+ * browser's `online` event and on every return to the tab; it was removed so
+ * that nothing leaves the phone the supervisor did not press a button for.
+ * The pass now runs from the Send control on the Reports screen — see
+ * `lib/send-pending.ts`.
  */
 
 /** First retry waits this long. */
@@ -132,5 +137,31 @@ export async function listDue(now = Date.now()): Promise<OutboxRecord[]> {
   const currentUserId = session?.userId || undefined;
   return (await db.outbox.toArray()).filter(
     (record) => isDue(record, now) && belongsToCurrentUser(record, currentUserId),
+  );
+}
+
+/**
+ * Everything this supervisor can send RIGHT NOW, ignoring backoff.
+ *
+ * What a manual Send uses, and the difference from `listDue` is deliberate.
+ * Backoff exists to stop a retry storm: the old drainer fired on every
+ * `online` event, signal flaps constantly in the field, and an entry failing
+ * for a reason no retry can fix was re-sent on every flap. None of that
+ * applies to a person deliberately tapping a button — there is no storm, and
+ * skipping their entry because a failure four minutes ago set a timer would
+ * show them "3 items waiting", accept the tap, and send two, with nothing on
+ * screen explaining the third. A supervisor about to drive out of coverage
+ * cannot wait out a five-minute timer they cannot see.
+ *
+ * The owner check stays, and is not a backoff: phones are shared, and one
+ * tutor's queued marks can only be refused under another tutor's session
+ * (AGENTS.md rule 1). Those wait for the person they belong to, however many
+ * times Send is pressed.
+ */
+export async function listSendable(): Promise<OutboxRecord[]> {
+  const session = (await db.meta.get('session')) as SessionMeta | undefined;
+  const currentUserId = session?.userId || undefined;
+  return (await db.outbox.toArray()).filter((record) =>
+    belongsToCurrentUser(record, currentUserId),
   );
 }

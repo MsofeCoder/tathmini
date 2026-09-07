@@ -38,6 +38,175 @@ The test, query or manual check that proves it works.
 - Every migration, with what it did to existing rows
 - Every bug whose cause was not obvious from the symptom
 - Any deviation from `AGENTS.md`, and the user's approval for it
+
+---
+
+
+## 2026-09-07 · decision · Merging the manual-send branch with main's "Assessed means sent"
+
+**Kind:** decision
+**Phase:** 1–2
+**Commit / PR:** merge of `origin/main` (0d98a3d) into
+`claude/report-submission-offline-flow-0zz176`
+
+**What changed**
+
+Two branches reached the same conclusion from opposite ends the same night and
+had to be reconciled. Nothing was reverted; two things below correct the entry
+directly under this one, which is left as written.
+
+- **The `gateCursor` hook-order crash was already fixed on main** (`d027e5c`),
+  independently and with a fuller comment. The entry below claims that fix as
+  this branch's; it was a duplicate, and main's wording won the conflict. The
+  bug and the reasoning are the same — see the entry two below this one.
+- **Receipts now reach `buildRouteRows` by two roads, and are unioned.** Main
+  added a third parameter fed by a new `useSentReportIds()` hook; this branch
+  put `sentReports` into `DeviceRows` because `buildProfile` needed it for
+  `reportSentAt()`. Both are kept and merged into one set inside the function.
+  That is deliberate rather than lazy: a union cannot drift, whereas two
+  parallel sources of "has this report gone" is exactly how the route list and
+  the trainee screen would come to disagree — the class of bug both branches
+  were fixing.
+
+The two changes compose without argument, which is worth recording because it
+was not obvious in advance. Main tightened what "Assessed" means (only once a
+report has been sent); this branch removed the machinery that used to send
+reports without being asked. Together they say one thing: **a trainee is
+finished only when a report exists for them, and nothing moves them there but a
+supervisor pressing Send.** The Reports screen's header comment was stale on
+both branches — it described the pre-main tab semantics — and is rewritten once,
+accurately, in the merged tree.
+
+**Watch out for**
+
+The entry below reports 463 web tests and a 177 kB build. The merged tree has
+**474** web tests (464 from main, 10 from this branch) and still builds at
+177 kB against the 180 KB budget. Nothing was dropped in the merge; the four
+gates are green on the merge commit, not only on each parent.
+
+**Verified by**
+
+`pnpm format:check && pnpm lint && pnpm test && pnpm typecheck` green on the
+merged tree — 474 web, 112 db, 37 shared. `pnpm --filter web build` clean at
+177 kB first-load JS on `● /[[...slug]]`. The one textual conflict
+(`tp-marking-stepper.tsx`, both branches hoisting `gateCursor`) was resolved to
+main's side; every auto-merged file was then read back rather than trusted —
+`derive.ts`, `use-device.ts`, `reports.ts` and `reports-screen.tsx` all carry
+both branches' changes.
+
+---
+## 2026-09-07 · decision · Nothing sends itself: the outbox drainer is removed, and a sent report is detected from the device
+
+**Kind:** decision
+**Phase:** 1–2
+**Commit / PR:** (this branch — `claude/report-submission-offline-flow-0zz176`)
+
+**What changed**
+
+Two things, both asked for explicitly by the user.
+
+1. **A report that has already been sent is now recognised as sent.** A
+   supervisor would submit a report, watch it download, walk back to their
+   route and open the same trainee — and be offered the entire send flow
+   again, under a Submit that would have posted the trainee a second copy of
+   their result. `buildProfile` derived `alreadySentAt` from `rows.reports`
+   alone: the server's row, replicated down. That row arrives on the next full
+   sync — and with no signal, not for hours. This phone's own send receipt
+   (`db.sentReports`, written the moment the server confirms) was already being
+   used by the Reports screen and was simply never consulted here.
+   `reportSentAt()` in `lib/local/derive.ts` now merges both, server first, and
+   `sentReports` joined `DeviceRows` so the trainee screen flips the instant
+   the receipt is written. An already-sent report offers exactly two things:
+   **Preview report** and **Download my copy**.
+
+2. **Nothing leaves the phone that a supervisor did not press a button for.**
+   `OutboxDrainer` — which replayed queued marks and reports on mount, on the
+   browser's `online` event and on every return to the tab — is deleted, along
+   with its mount in the root layout. The same pass now runs from one place,
+   `sendPendingWork()` in `lib/send-pending.ts`, behind the **Send** button on
+   the Reports screen's Pending tab. Every send control in the field app is
+   gated on live reachability: **online → Save draft AND Submit; offline →
+   Save draft only.** That covers the report control on the trainee screen,
+   the TP submit button, the marking form's footer and the last step of the TP
+   stepper. `lib/local/use-reachable.ts` is one shared watcher for the whole
+   app, so the buttons and the NO SIGNAL banner can never disagree.
+
+Also fixed in passing, because it sits in the flow this branch changes:
+`gateCursor = useRef(0)` in `tp-marking-stepper.tsx` was declared **below**
+that component's early returns (introduced in `ed46765`). The render after an
+offline submit — `queued` flipping true — renders fewer hooks than the one
+before it, which React tears down with "Rendered fewer hooks than expected" on
+the screen a supervisor reaches at the end of a full TP assessment. It was also
+the branch's only lint failure, so CI was red. Hoisted to the other hooks.
+
+**Why this way**
+
+The user was asked, in plain terms, whether "remove all auto-resend" covered
+the marks as well as the report, and answered: **"No — nothing auto-sends,
+marks included."** That is a deliberate product decision and it is recorded
+here because the code alone cannot explain it.
+
+**It costs `ROADMAP.md`'s Phase 1 exit gate.** "Reconnecting produces exactly
+one submission, never two" no longer describes this app: reconnecting now
+produces *no* submissions. Anything in a queue waits for a person. That was
+raised with the user before building and reaffirmed, so it is the intended
+behaviour, not an oversight — but it is the single most consequential thing on
+this branch, and it needs a field instruction to match: **supervisors must be
+told to open Reports and tap Send when they are back in coverage.** The UI does
+what it can — the bottom-nav Reports tab still carries a live count of
+everything waiting, the Pending list opens with "Nothing sends on its own", and
+the Send button is the first thing on it — but no screen can make somebody open
+the app.
+
+What has NOT changed is the invariant underneath. `drainOutbox` is untouched:
+it still removes an entry only after the server has confirmed it, still treats
+`already_submitted` as confirmation, and still drains marks before reports
+because a report is built from marks the server must already hold. Making the
+trigger manual changes *when* the pass runs, not what it guarantees — which is
+why the pass and its tests were left where they are.
+
+Two smaller decisions inside that:
+
+- **Manual Send ignores backoff** (`listSendable()`, new in `lib/outbox.ts`,
+  used instead of `listDue()`). Backoff exists to stop a retry storm from the
+  old drainer firing on every `online` flap. A person tapping a button is not a
+  storm, and skipping their entry because a failure four minutes ago set an
+  invisible timer would show "3 items waiting", accept the tap and send two,
+  with nothing on screen explaining the third. The shared-phone **owner** check
+  stays — one tutor's queued marks can only be refused under another tutor's
+  session, so those wait for the person they belong to.
+- **Offline hides the send control rather than disabling it.** A disabled
+  button in a dead zone reads as a broken app; worse, an *enabled* one that
+  quietly queues into a list nothing drains is a supervisor walking away
+  believing a result went out.
+
+**Watch out for**
+
+- `reachability === 'checking'` is a real third state and is never rendered as
+  either answer. Every gated control reserves its space and waits. Collapsing
+  it to a boolean puts a Submit button on screen for a quarter of a second
+  offline, which is long enough to tap.
+- **No new Dexie store and no new version** — this reuses `sentReports` (v9),
+  `outbox`, `reportOutbox` and `reportDrafts`. Nothing here spends a rung.
+- The report send path still enqueues *before* attempting, and still removes
+  the entry only on success. That is not housekeeping: `generateAndSendReport`
+  has no server-side "already sent" guard (there is no unique index on
+  `reports`), so an entry left behind is picked up by the next Send and the
+  trainee receives a second copy.
+- First-load JS is **177 kB against the 180 KB budget** — under, but with very
+  little room. The next screen that adds a dependency will breach it.
+
+**Verified by**
+
+`pnpm format:check && pnpm lint && pnpm test && pnpm typecheck` all green (463
+web tests, 612 across the workspace), and `pnpm --filter web build` clean at
+177 kB first-load JS on `● /[[...slug]]`. New unit tests: three cases in
+`lib/local/derive.test.ts` pinning `alreadySentAt` from the receipt alone, from
+the server row alone, and the server's timestamp winning when both exist; seven
+in `lib/send-pending.test.ts` over the sentence a supervisor reads after a send
+pass, including the partial-pass case that must ask for another tap rather than
+let them walk away. **Not yet exercised in a real browser** — the offline
+gating and the manual Send have not been driven on a device.
 - Any assumption you had to make because a question in `PLAN.md` was unanswered
 
 ### What is not

@@ -115,6 +115,7 @@ function device({
     ),
     results: [],
     reports,
+    sentReports: [],
     session: null,
   };
 }

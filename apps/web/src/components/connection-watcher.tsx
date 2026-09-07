@@ -1,7 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { forgetReachability, isReachable, PROBE_TTL_MS } from '@/lib/reachability';
+import { useReachability } from '@/lib/local/use-reachable';
 
 /**
  * The "NO SIGNAL" banner — and, since the local-first rebuild, nothing else.
@@ -19,52 +18,23 @@ import { forgetReachability, isReachable, PROBE_TTL_MS } from '@/lib/reachabilit
  *
  * There is nothing left to redirect to or from. Every screen reads the device
  * and renders the same with or without a connection, so losing signal changes
- * one thing only: whether the supervisor should expect their work to have
- * left the phone yet. That is what the banner says, and it is all it says.
+ * one thing only: whether work can leave the phone. That is what the banner
+ * says, and it is all it says.
+ *
+ * The probe itself moved to `lib/local/use-reachable.ts` when the app stopped
+ * sending anything on its own: the send controls now gate on exactly the same
+ * answer this banner renders, and two watchers that could disagree would put
+ * a Submit button on screen underneath a NO SIGNAL bar.
  *
  * It reports REACHABILITY, not `navigator.onLine` — see lib/reachability.ts
  * for why the difference is the normal case here rather than an edge case.
  */
 export function ConnectionWatcher() {
-  // Assume reachable until proven otherwise: flashing a "no signal" banner
-  // for a moment on every cold load would train supervisors to ignore it.
-  const [reachable, setReachable] = useState(true);
+  const reachability = useReachability();
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const check = async () => {
-      const result = await isReachable();
-      if (!cancelled) setReachable(result);
-    };
-
-    // The browser's own events are better information than any cached probe
-    // answer, so drop the cache before re-checking on one.
-    const onEvent = () => {
-      forgetReachability();
-      void check();
-    };
-
-    void check();
-    window.addEventListener('online', onEvent);
-    window.addEventListener('offline', onEvent);
-
-    // A connection can die without the browser noticing — signal lost inside
-    // a workshop, a data bundle running out mid-morning — and neither fires
-    // an event. Re-checking on the probe's own cadence is what turns the
-    // banner on in those cases; the probe itself is cached, so this is one
-    // tiny request a few times a minute, and none at all while offline.
-    const timer = setInterval(() => void check(), PROBE_TTL_MS * 3);
-
-    return () => {
-      cancelled = true;
-      window.removeEventListener('online', onEvent);
-      window.removeEventListener('offline', onEvent);
-      clearInterval(timer);
-    };
-  }, []);
-
-  if (reachable) return null;
+  // `checking` renders nothing: flashing a "no signal" banner for a moment on
+  // every cold load would train supervisors to ignore it.
+  if (reachability !== 'offline') return null;
 
   return (
     <div
@@ -72,7 +42,7 @@ export function ConnectionWatcher() {
       aria-live="polite"
       className="sticky top-0 z-50 bg-[#6b4400] px-4 py-1.5 text-center text-[12px] font-bold tracking-[0.4px] text-white"
     >
-      NO SIGNAL — your work is saved on this phone
+      NO SIGNAL — save a draft; send it when you are back online
     </div>
   );
 }

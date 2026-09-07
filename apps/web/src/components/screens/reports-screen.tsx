@@ -11,6 +11,8 @@ import {
   type SubmittedRow,
 } from '@/lib/local/reports';
 import { describeAge } from '@/lib/report-drafts';
+import { useReachability } from '@/lib/local/use-reachable';
+import { describeSendResult, sendPendingWork } from '@/lib/send-pending';
 
 /**
  * The Reports screen — everything this supervisor has assessed, split by what
@@ -22,10 +24,19 @@ import { describeAge } from '@/lib/report-drafts';
  * to re-read what they had sent had to go back through the route list trainee
  * by trainee.
  *
- * DRAFTED — held back on purpose. Nothing sends these.
- * SUBMITTED — the marks reached the College, and the report with them if it
- *   has been sent.
- * PENDING — tapped send, could not go. Sends itself; must not be re-marked.
+ * DRAFTED — finished, and no report has gone. Either road reaches it: the
+ *   supervisor tapped "Save as a draft", or they simply completed the
+ *   assessment and have not sent yet (`held` tells the two apart in the copy).
+ * SUBMITTED — the report has actually been sent. Marks alone do not earn it;
+ *   the report is the document the result travels on.
+ * PENDING — tapped send, could not go. Waits for the Send button on this
+ *   screen; must not be re-marked.
+ *
+ * Those first two lines are the merge of two changes that landed the same
+ * night and had to agree: main tightened what "Submitted" means, and this
+ * branch removed the thing that used to empty PENDING on its own. Both point
+ * the same way — a trainee is only finished when a report exists for them, and
+ * nothing moves them there but a supervisor pressing Send.
  *
  * Reads the device and nothing else, like every screen in the shell. The
  * reason a supervisor opens this one is usually that the network has let them
@@ -34,10 +45,15 @@ import { describeAge } from '@/lib/report-drafts';
  * and is unit-tested there.
  *
  * It is LIVE: `useReportsView` re-runs on any write to the queues, the drafts
- * or the replica, so a report that drains in the background moves from Pending
- * to Submitted while the supervisor is looking at it. There are deliberately
- * no `focus`/`online` listeners and no refresh button — those exist to paper
- * over a screen that cannot see its own data change.
+ * or the replica, so an item that sends moves from Pending to Submitted while
+ * the supervisor is looking at it. There are deliberately no `focus`/`online`
+ * listeners for the LISTS — those exist to paper over a screen that cannot see
+ * its own data change.
+ *
+ * This screen is now also where waiting work actually leaves the phone. The
+ * background drainer is gone (see lib/send-pending.ts): nothing is sent that a
+ * supervisor did not press a button for, so the Pending tab carries that
+ * button and says plainly that it is the only thing that will send them.
  *
  * The one thing here that genuinely needs a connection is the preview: the
  * report is rendered by the server from the marks it already holds, and there
@@ -232,6 +248,67 @@ function SubmittedList({ rows }: { rows: SubmittedRow[] }) {
   );
 }
 
+/**
+ * The one control that moves work off this phone.
+ *
+ * Deliberately a single button for the whole queue rather than one per row.
+ * The pass drains marks before reports for a reason a supervisor should never
+ * have to know (a report is built from marks the server must already hold),
+ * and per-row buttons would let them run it in the order that fails.
+ *
+ * It is hidden with no connection rather than disabled: a supervisor tapping a
+ * dead Send twice in a dead zone learns nothing, and the message above it
+ * already says what to do. The reachability answer is the same one the NO
+ * SIGNAL banner renders, so the two can never disagree.
+ */
+function SendPendingButton({ waiting }: { waiting: number }) {
+  const reachability = useReachability();
+  const [sending, setSending] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  if (reachability === 'checking')
+    return <div className="mt-2.5 min-h-[48px]" aria-hidden="true" />;
+
+  if (reachability === 'offline') {
+    return (
+      <p className="mt-2.5 rounded-lg bg-[#fff2d8] px-3 py-2.5 text-[12.5px] font-semibold leading-relaxed text-[#6b4400]">
+        No connection. The Send button appears here as soon as you have signal — nothing is lost in
+        the meantime.
+      </p>
+    );
+  }
+
+  async function handleSend() {
+    setSending(true);
+    setMessage(null);
+    const result = await sendPendingWork();
+    setMessage(describeSendResult(result, waiting));
+    setSending(false);
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => void handleSend()}
+        disabled={sending}
+        className="focus:outline-accent bg-teal-mid mt-2.5 flex min-h-[48px] w-full items-center justify-center rounded-xl text-[15px] font-bold text-white focus:outline focus:outline-[3px] focus:outline-offset-2 disabled:opacity-70"
+      >
+        {sending ? 'Sending…' : `Send ${waiting} ${waiting === 1 ? 'item' : 'items'} now`}
+      </button>
+      {message ? (
+        <p
+          role="status"
+          aria-live="polite"
+          className="mt-2 text-[12.5px] font-semibold leading-relaxed text-[#3c4c58]"
+        >
+          {message}
+        </p>
+      ) : null}
+    </>
+  );
+}
+
 function PendingList({ rows }: { rows: PendingRow[] }) {
   if (rows.length === 0) {
     return (
@@ -245,10 +322,10 @@ function PendingList({ rows }: { rows: PendingRow[] }) {
   return (
     <>
       <p className="rounded-lg bg-[#fffaf0] px-3 py-2 text-[12.5px] font-semibold leading-relaxed text-[#6b4400]">
-        {rows.length} {rows.length === 1 ? 'item is' : 'items are'} waiting. They send themselves
-        when there is signal — you do not need to do anything, and you must not mark these trainees
-        again.
+        {rows.length} {rows.length === 1 ? 'item is' : 'items are'} waiting. Nothing sends on its
+        own — tap Send below when you have a connection, and do not mark these trainees again.
       </p>
+      <SendPendingButton waiting={rows.length} />
       <ul className="mt-2.5 flex flex-col gap-2.5">
         {rows.map((row) => (
           <li
