@@ -34,9 +34,6 @@ export async function requestTraineeCorrection(
   const traineeId = String(formData.get('traineeId') ?? '');
   const fieldKey = String(formData.get('field') ?? '');
   const requestedRaw = String(formData.get('requestedValue') ?? '');
-  const reason = String(formData.get('reason') ?? '')
-    .trim()
-    .replace(/\s+/g, ' ');
 
   if (!isUuid(traineeId)) return { ok: false, error: 'That trainee could not be identified.' };
 
@@ -45,14 +42,6 @@ export async function requestTraineeCorrection(
 
   const checked = validateRequestedValue(fieldKey, requestedRaw);
   if (!checked.ok) return { ok: false, error: checked.error };
-
-  if (reason.length < 8) {
-    return {
-      ok: false,
-      error: 'Say briefly how you know — the Administrator has to act on this without you there.',
-    };
-  }
-  if (reason.length > 500) return { ok: false, error: 'Keep it under 500 characters.' };
 
   // The requestable columns, named literally: a template-built select string
   // is opaque to supabase-js's typed query parser, and the column is chosen
@@ -82,7 +71,11 @@ export async function requestTraineeCorrection(
     field: fieldKey,
     current_value: currentValue,
     requested_value: checked.value,
-    reason,
+    // No longer collected (migration 0032 made the column nullable). The
+    // supervisor says which particular is wrong and what it should say; the
+    // Administrator decides against the register itself. Rows raised before
+    // 0032 keep their reason and the console still shows it.
+    reason: null,
     status: 'pending',
     requested_by_id: user.id,
   });

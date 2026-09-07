@@ -324,11 +324,6 @@ export function ReportDownloadButton({
         Save as a draft and send later
       </button>
 
-      <p className="mt-2 text-[12.5px] leading-relaxed text-[#5f6f7c]">
-        Sending stores the report and e-mails it, and can only be done once. Saving a draft sends
-        nothing — it keeps this report on the Drafted list in your Reports tab until you are ready,
-        and the report will be dated the day you send it.
-      </p>
       {error ? (
         <p role="alert" className="mt-2 text-[13px] leading-relaxed text-[#8a3a2a]">
           {error}

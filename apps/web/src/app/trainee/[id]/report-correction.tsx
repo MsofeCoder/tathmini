@@ -83,17 +83,6 @@ export function ReportCorrection({ traineeId }: { traineeId: string }) {
         </span>
       </label>
 
-      <label className="mt-3.5 flex flex-col gap-1.5 text-[13px] font-semibold text-[#3c4c58]">
-        How do you know?
-        <textarea
-          name="reason"
-          required
-          rows={3}
-          placeholder="e.g. The trainee told me this address belongs to their brother."
-          className="focus:outline-accent rounded-[10px] border border-[#ccd7d4] px-3 py-2.5 text-[15px] font-normal leading-relaxed text-neutral-900 focus:outline focus:outline-[3px] focus:outline-offset-1"
-        />
-      </label>
-
       {state && !state.ok ? (
         <p role="status" className="mt-2.5 text-[13px] leading-relaxed text-[#8a3a2a]">
           {state.error}

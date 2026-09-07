@@ -426,7 +426,8 @@ export const traineeChangeRequests = pgTable(
     currentValue: text('current_value'),
     /** Nullable: "this address belongs to nobody, clear it" is a real request. */
     requestedValue: text('requested_value'),
-    reason: text('reason').notNull(),
+    /** Optional since 0032 — no longer asked for; older rows keep theirs. */
+    reason: text('reason'),
     status: changeRequestStatusEnum('status').notNull().default('pending'),
     requestedById: uuid('requested_by_id')
       .notNull()

@@ -110,11 +110,12 @@ export function TraineeScreen({ traineeId }: { traineeId: string }) {
         {view.ownSlotComplete ? (
           <div className="mt-4 rounded-xl border border-[#dae3e0] bg-white px-4 py-3.5">
             <p className="text-[13px] font-bold text-[#3c4c58]">Your report</p>
-            <p className="mt-1.5 text-[13px] leading-relaxed text-[#5b6b78]">
-              {view.locked
-                ? 'Both assessors have submitted, so this report also carries the consolidated official result.'
-                : 'You have finished your own assessment. Preview it, then submit it to be stored — you do not need to wait for the second assessor.'}
-            </p>
+            {view.locked ? (
+              <p className="mt-1.5 text-[13px] leading-relaxed text-[#5b6b78]">
+                Both assessors have submitted, so this report also carries the consolidated official
+                result.
+              </p>
+            ) : null}
             <ReportPreviewButton traineeId={trainee.id} />
             <ReportDownloadButton
               traineeId={trainee.id}
