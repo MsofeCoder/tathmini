@@ -190,3 +190,75 @@ export function routeProgress(trainees: RouteProgressInput[]): RouteProgress {
     pct: trainees.length === 0 ? 0 : Math.round((assessed / trainees.length) * 100),
   };
 }
+
+/**
+ * The route list's filter buckets.
+ *
+ * Four, not the three the summary tiles show, because the tiles' "in
+ * progress" is really two different situations a supervisor acts on
+ * differently:
+ *
+ *   - **in-progress** — part of the track is SUBMITTED and gone to the
+ *     College (TP theory in, practical not). Finishing it needs the trainee
+ *     in front of you again.
+ *   - **drafted** — nothing has been submitted, but this phone holds
+ *     unsubmitted marks. That work exists on this device and nowhere else,
+ *     which is exactly the list a supervisor wants at the end of a day.
+ *
+ * `drafted + in-progress` therefore equals the IN PROGRESS tile, and the
+ * counters never disagree.
+ */
+export type TraineeFilter = 'all' | 'assessed' | 'in-progress' | 'drafted' | 'not-started';
+
+export const TRAINEE_FILTERS: TraineeFilter[] = [
+  'all',
+  'assessed',
+  'in-progress',
+  'drafted',
+  'not-started',
+];
+
+export function traineeFilterLabel(filter: TraineeFilter): string {
+  if (filter === 'all') return 'All';
+  if (filter === 'assessed') return 'Assessed';
+  if (filter === 'in-progress') return 'In progress';
+  if (filter === 'drafted') return 'Drafted';
+  return 'Not started';
+}
+
+export type TraineeCategory = Exclude<TraineeFilter, 'all'>;
+
+/**
+ * Which bucket one trainee falls in, from THIS supervisor's point of view.
+ *
+ * Precedence matters where a trainee qualifies for two: submitted work
+ * outranks a local draft, because a draft on a trainee whose theory is
+ * already in is still "in progress" to everyone but this phone.
+ */
+export function traineeCategory({
+  status,
+  ownSubmittedCount,
+  requiredCount,
+  hasDraft,
+}: RouteProgressInput): TraineeCategory {
+  if (status === 'locked' || status === 'partial') return 'assessed';
+  if (ownSubmittedCount > 0 && ownSubmittedCount < requiredCount) return 'in-progress';
+  if (hasDraft) return 'drafted';
+  return 'not-started';
+}
+
+export function matchesFilter(filter: TraineeFilter, category: TraineeCategory): boolean {
+  return filter === 'all' || filter === category;
+}
+
+/** Empty-list copy per filter — a filtered empty list must never read like an
+ * empty route, which is the one thing that would send a supervisor looking
+ * for a signal they do not need. */
+export function emptyFilterMessage(filter: TraineeFilter): string {
+  if (filter === 'assessed') return 'No trainee on this route is fully assessed yet.';
+  if (filter === 'in-progress')
+    return 'Nothing is part-submitted — every trainee is either finished or not started.';
+  if (filter === 'drafted') return 'No unsent marks are held on this phone.';
+  if (filter === 'not-started') return 'Every trainee on this route has been started.';
+  return 'No trainees match.';
+}

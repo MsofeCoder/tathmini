@@ -146,3 +146,99 @@ export function flaggedCriteria(
     return score != null && isFlagged(kind, score, c.itemMax);
   });
 }
+
+/**
+ * The order the instruments of a track are worked in.
+ *
+ * Theory before Practical, always. On the paper form the classroom lesson is
+ * assessed first and the workshop lesson second, and a supervisor reading the
+ * profile expects the two buttons in that order; without this the order came
+ * from IndexedDB, whose primary key is a random uuid, so the same trainee
+ * could offer Practical first on one phone and Theory first on another.
+ *
+ * An unknown code sorts last rather than throwing — a new instrument must not
+ * be able to hide a button.
+ */
+export const INSTRUMENT_ORDER = ['tp_theory', 'tp_practical', 'ipt'] as const;
+
+export function instrumentOrder(code: string): number {
+  const index = (INSTRUMENT_ORDER as readonly string[]).indexOf(code);
+  return index === -1 ? INSTRUMENT_ORDER.length : index;
+}
+
+/** The two TP instruments, in the order they are marked. */
+export const TP_PHASE_CODES = ['tp_theory', 'tp_practical'] as const;
+export type TpPhaseCode = (typeof TP_PHASE_CODES)[number];
+
+export function isTpPhaseCode(code: string): code is TpPhaseCode {
+  return (TP_PHASE_CODES as readonly string[]).includes(code);
+}
+
+/** Phase wording, verbatim from the prototype's tracksFor() (line 1805). */
+export function tpPhaseLabels(code: TpPhaseCode): { label: string; short: string } {
+  return code === 'tp_theory'
+    ? { label: 'Theory Lesson (Classroom)', short: 'Theory' }
+    : { label: 'Practical Lesson (Workshop)', short: 'Practical' };
+}
+
+/**
+ * The gate between one section of the stepper and the next.
+ *
+ * Returns the warning to show, or null when the section is complete. Copy is
+ * verbatim from the prototype's stepNext() (line 2412) — a supervisor is told
+ * how many criteria are missing rather than left pressing a button that does
+ * nothing.
+ *
+ * This is the SECTION gate. It never replaces the whole-instrument gate in
+ * `computeGaps`, nor the database's own `validate_and_finalize_mark()`, which
+ * refuses an incomplete statement whatever the client believes.
+ */
+export function sectionGateWarning(section: Section, marks: MarksByCriterion): string | null {
+  const missing = section.criteria.filter((c) => marks[c.id]?.score == null).length;
+  if (missing === 0) return null;
+  if (missing === section.criteria.length) {
+    return `Nothing in this section is marked yet. Give a score to each of the ${missing} criteria before moving on.`;
+  }
+  return missing === 1
+    ? '1 criterion is still unmarked in this section. Every criterion must be scored before you continue.'
+    : `${missing} criteria are still unmarked in this section. Every criterion must be scored before you continue.`;
+}
+
+export interface SectionJumpRow {
+  index: number;
+  /** 1-based marker, or '✓' once every criterion in the section is scored. */
+  marker: string;
+  code: string;
+  label: string;
+  done: number;
+  total: number;
+  complete: boolean;
+  current: boolean;
+}
+
+/** The rows of the "Sections ⌄" jump list, for one phase. */
+export function sectionJumpRows(
+  sections: Section[],
+  marks: MarksByCriterion,
+  currentIndex: number,
+): SectionJumpRow[] {
+  return sections.map((section, index) => {
+    const done = scoredCount(section.criteria, marks);
+    const complete = done === section.criteria.length && section.criteria.length > 0;
+    return {
+      index,
+      marker: complete ? '✓' : String(index + 1),
+      code: section.code,
+      label: section.label,
+      done,
+      total: section.criteria.length,
+      complete,
+      current: index === currentIndex,
+    };
+  });
+}
+
+/** Whole-percent completion, guarding the empty case. */
+export function percentComplete(done: number, total: number): number {
+  return total === 0 ? 0 : Math.round((done / total) * 100);
+}

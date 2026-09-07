@@ -7,8 +7,6 @@ import {
   flaggedCriteria,
   criterionKindForInstrument,
   groupBySection,
-  isFlagged,
-  scoreOptionsFor,
   scoredCount,
   sectionBelowHalf,
   sectionSubtotal,
@@ -21,6 +19,8 @@ import { isReachable } from '@/lib/reachability';
 import { enqueueSubmission } from '@/lib/outbox';
 import type { SubmitAssessmentInput } from '@/lib/submission';
 import { submitAssessment } from '@/app/actions/submit-assessment';
+import { AdviceSuggestions } from './advice-suggestions';
+import { CriterionCard, criterionAnchor } from './criterion-card';
 
 export interface MarkingFormProps {
   traineeId: string;
@@ -37,8 +37,6 @@ export interface MarkingFormProps {
    */
   returnHref?: string;
 }
-
-const criterionAnchor = (id: string) => `criterion-${id}`;
 
 export function MarkingForm({
   traineeId,
@@ -325,63 +323,15 @@ export function MarkingForm({
             </div>
 
             <div className="mt-3 flex flex-col gap-3">
-              {section.criteria.map((c) => {
-                const mark = marks[c.id];
-                const options = scoreOptionsFor(kind, c.itemMax);
-                const flagged = mark?.score != null && isFlagged(kind, mark.score, c.itemMax);
-                return (
-                  <div
-                    key={c.id}
-                    id={criterionAnchor(c.id)}
-                    className="scroll-mt-32 rounded-xl border border-[#e1e9e6] bg-white p-3.5"
-                  >
-                    <div className="flex items-start gap-2.5">
-                      <span className="min-w-[18px] pt-px text-[12px] font-bold text-[#6b7b88]">
-                        {c.itemCode}
-                      </span>
-                      <div className="flex-1 text-[14px] leading-snug text-[#24333e]">
-                        {c.itemLabel}
-                      </div>
-                      <span className="whitespace-nowrap rounded-full bg-[#f1f3f4] px-2 py-1 text-[11px] font-bold text-[#4d5f6c]">
-                        {kind === 'ipt' ? '1–5' : `/ ${c.itemMax}`}
-                      </span>
-                    </div>
-                    <div role="group" className="mt-3 flex flex-wrap gap-2">
-                      {options.map((opt) => {
-                        const pressed = mark?.score === opt;
-                        return (
-                          <button
-                            key={opt}
-                            type="button"
-                            aria-pressed={pressed}
-                            onClick={() => setScore(c.id, opt)}
-                            className={`focus:outline-accent min-h-11 min-w-11 rounded-lg border px-3 text-[14px] font-bold focus:outline focus:outline-[3px] focus:outline-offset-2 ${
-                              pressed
-                                ? 'border-[#0d4a43] bg-[#12665b] text-white'
-                                : 'border-[#ccd7d4] bg-white text-[#3c4c58]'
-                            }`}
-                          >
-                            {opt}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    {mark?.score == null ? (
-                      <p className="mt-2.5 text-[12px] text-[#5b6b78]">Not yet scored</p>
-                    ) : null}
-                    {/* A hint, not a box. The comment belongs to the whole
-                        criterion, below — the paper form's COMMENTS cell is
-                        merged across every sub-criterion row in the group. */}
-                    {flagged ? (
-                      <div className="mt-2.5 rounded-lg bg-[#fff4e0] px-2.5 py-2 text-[12px] leading-snug text-[#6b4400]">
-                        {kind === 'ipt'
-                          ? 'Scored 3 or below — worth a note in the comments.'
-                          : 'Below half of this item’s marks — worth a note in the comments.'}
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })}
+              {section.criteria.map((c) => (
+                <CriterionCard
+                  key={c.id}
+                  criterion={c}
+                  kind={kind}
+                  score={marks[c.id]?.score ?? null}
+                  onScore={(score) => setScore(c.id, score)}
+                />
+              ))}
             </div>
 
             {/* The merged COMMENTS cell, in its place on the form: directly
@@ -486,72 +436,7 @@ export function MarkingForm({
  * copy has to leave no doubt the work is safe — a supervisor in a dead zone
  * who thinks their marks were lost will re-do them on paper.
  */
-/**
- * The auto-comment suggestions, ported from the prototype's Comments step.
- *
- * Suggestions, never text written on the supervisor's behalf: each one can be
- * waved away, and "Add all" merges them into the box as ordinary editable
- * prose so what the trainee reads is one voice rather than a list of
- * clippings. Nothing is inserted unless the supervisor asks for it —
- * CONTEXT.md's first non-negotiable is that the supervisor owns the
- * assessment decision, and the comment is part of that decision.
- *
- * Renders nothing when there is nothing to suggest, so a criterion marked at
- * full marks stays quiet.
- */
-function AdviceSuggestions({
-  items,
-  onDismiss,
-  onAddAll,
-}: {
-  items: { id: string; text: string }[];
-  onDismiss: (criterionId: string) => void;
-  onAddAll: (lines: string[]) => void;
-}) {
-  if (items.length === 0) return null;
-
-  return (
-    <div className="mt-2.5">
-      <div className="flex items-center gap-2">
-        <span className="rounded-[5px] bg-[#ffe9c2] px-1.5 py-0.5 text-[10.5px] font-extrabold tracking-[0.6px] text-[#6b4400]">
-          SUGGESTED
-        </span>
-        <span className="text-[12px] text-[#5b6b78]">
-          {items.length} {items.length === 1 ? 'suggestion' : 'suggestions'}
-        </span>
-      </div>
-
-      <div className="mt-2 flex flex-col gap-2">
-        {items.map((item) => (
-          <div
-            key={item.id}
-            className="flex items-start gap-2 rounded-[10px] border border-[#f0dcb4] bg-[#fffaf0] p-3"
-          >
-            <p className="flex-1 text-[13.5px] leading-relaxed text-[#4a3a1a]">{item.text}</p>
-            <button
-              type="button"
-              onClick={() => onDismiss(item.id)}
-              aria-label="Remove this suggestion"
-              className="focus:outline-accent min-h-11 min-w-11 shrink-0 text-[18px] text-[#7a5f22] focus:outline focus:outline-[3px] focus:outline-offset-2"
-            >
-              ×
-            </button>
-          </div>
-        ))}
-      </div>
-
-      <button
-        type="button"
-        onClick={() => onAddAll(items.map((item) => item.text))}
-        className="focus:outline-accent mt-2 min-h-11 w-full rounded-[10px] border border-[#ccd7d4] bg-white text-[13.5px] font-bold text-[#3c4c58] focus:outline focus:outline-[3px] focus:outline-offset-2"
-      >
-        Add {items.length === 1 ? 'this' : 'all'} to my comment ↓
-      </button>
-    </div>
-  );
-}
-
-function QueuedConfirmation({
+export function QueuedConfirmation({
   returnHref,
   instrumentLabel,
 }: {

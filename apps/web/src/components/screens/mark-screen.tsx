@@ -1,8 +1,10 @@
 'use client';
 
 import { MarkingForm } from '@/components/marking-form';
-import { buildMarking } from '@/lib/local/derive';
+import { TpMarkingStepper } from '@/components/tp-marking-stepper';
+import { buildMarking, buildTpMarking } from '@/lib/local/derive';
 import { useDeviceRows } from '@/lib/local/use-device';
+import { isTpPhaseCode } from '@/lib/marking';
 
 /**
  * Criterion-by-criterion marking — the same screen, now reading the device.
@@ -55,6 +57,32 @@ export function MarkScreen({
         traineeId={view.trainee.id}
       />
     );
+  }
+
+  // TP is marked as one walk across both instruments — see
+  // `components/tp-marking-stepper.tsx`. IPT keeps the single scrolling form:
+  // it is one instrument of six short sections, and a stepper there would add
+  // taps without removing any of the losing-your-place problem the stepper
+  // exists to solve.
+  if (isTpPhaseCode(view.instrument.code)) {
+    const tp = buildTpMarking(rows, traineeId, view.instrument.code);
+    if (tp) {
+      return (
+        <TpMarkingStepper
+          traineeId={tp.trainee.id}
+          traineeName={tp.trainee.name}
+          slot={tp.slot}
+          startPhaseIndex={tp.startPhaseIndex}
+          phases={tp.phases.map((phase) => ({
+            instrumentId: phase.instrument.id,
+            code: phase.instrument.code as 'tp_theory' | 'tp_practical',
+            label: phase.instrument.label,
+            maxTotal: phase.instrument.maxTotal,
+            criteria: phase.criteria,
+          }))}
+        />
+      );
+    }
   }
 
   return (

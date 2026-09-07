@@ -8,7 +8,7 @@ import type {
   LocalTrainee,
   SessionMeta,
 } from '../db';
-import type { CriterionRow } from '../marking';
+import { instrumentOrder, isTpPhaseCode, TP_PHASE_CODES, type CriterionRow } from '../marking';
 import { deriveStatus, type TraineeStatus } from '../trainees';
 
 /**
@@ -162,8 +162,13 @@ export function buildProfile(rows: DeviceRows, traineeId: string): ProfileView |
     rows.marks.filter((m) => m.traineeId === traineeId && m.submittedAt).map((m) => m.instrumentId),
   );
 
+  // Theory before Practical — see `instrumentOrder`. IndexedDB hands these
+  // back in primary-key order, and the primary key is a random uuid, so
+  // without the sort the same trainee could offer the two TP buttons in
+  // either order.
   const actions: ProfileAction[] = rows.instruments
     .filter((i) => i.track === trainee.track)
+    .sort((a, b) => instrumentOrder(a.code) - instrumentOrder(b.code))
     .map((i) => ({
       instrumentId: i.id,
       code: i.code,
@@ -254,4 +259,68 @@ export function buildMarking(
       (m) => m.traineeId === traineeId && m.instrumentId === instrument.id && m.submittedAt,
     ),
   };
+}
+
+export interface TpPhaseView {
+  instrument: LocalInstrument;
+  criteria: CriterionRow[];
+}
+
+export interface TpMarkingView {
+  trainee: LocalTrainee;
+  slot: 'a1' | 'a2';
+  /** Theory first, Practical second — and only the phases still to be marked. */
+  phases: TpPhaseView[];
+  /** Where in `phases` the url the supervisor opened lands. */
+  startPhaseIndex: number;
+}
+
+/**
+ * The whole TP assessment — both instruments — for the one-section-per-page
+ * stepper.
+ *
+ * TP is two instruments but one visit: the supervisor watches a classroom
+ * lesson and a workshop lesson for the same trainee and marks them in one
+ * sitting. Building the two forms together is what lets Next walk from the
+ * last Theory section into the first Practical one, and what makes the
+ * "63 criteria" progress bar mean the trainee's whole assessment rather than
+ * whichever half happens to be open.
+ *
+ * What it deliberately does NOT do is merge the two into one submission.
+ * Each instrument still submits its own statement, under its own draft key,
+ * through the same `submitAssessment` path as before — the database's
+ * per-(trainee, instrument, slot) unique index and
+ * `validate_and_finalize_mark()` are unchanged, and a supervisor who marked
+ * Theory last week is offered Practical alone.
+ *
+ * A phase already submitted is dropped rather than shown read-only: marks are
+ * append-only, so re-opening one could only mislead.
+ */
+export function buildTpMarking(
+  rows: DeviceRows,
+  traineeId: string,
+  instrumentCode: string,
+): TpMarkingView | null {
+  if (!isTpPhaseCode(instrumentCode)) return null;
+
+  const trainee = rows.trainees.find((t) => t.id === traineeId);
+  if (!trainee || trainee.track !== 'TP') return null;
+
+  const assignment = rows.assignments.find((a) => a.traineeId === traineeId);
+  if (!assignment) return null;
+
+  const phases: TpPhaseView[] = [];
+  for (const code of TP_PHASE_CODES) {
+    const view = buildMarking(rows, traineeId, code);
+    // `buildMarking` returns null for an instrument this phone does not hold
+    // the criteria for — an interrupted sync. Such a phase is left out
+    // rather than rendered empty; the other one is still markable.
+    if (!view || view.alreadySubmitted) continue;
+    phases.push({ instrument: view.instrument, criteria: view.criteria });
+  }
+
+  const startPhaseIndex = phases.findIndex((p) => p.instrument.code === instrumentCode);
+  if (startPhaseIndex === -1) return null;
+
+  return { trainee, slot: assignment.slot, phases, startPhaseIndex };
 }

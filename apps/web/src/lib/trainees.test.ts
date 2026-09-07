@@ -8,6 +8,8 @@ import {
   traineeParticulars,
   trackPointsLabel,
   routeProgress,
+  matchesFilter,
+  traineeCategory,
   type RouteProgressInput,
 } from './trainees';
 
@@ -249,5 +251,70 @@ describe('routeProgress', () => {
     ]);
 
     expect(progress.pct).toBe(33);
+  });
+});
+
+describe('traineeCategory', () => {
+  const base = {
+    status: 'pending' as const,
+    ownSubmittedCount: 0,
+    requiredCount: 2,
+    hasDraft: false,
+  };
+
+  it('counts a locked or partial trainee as assessed', () => {
+    expect(traineeCategory({ ...base, status: 'locked' })).toBe('assessed');
+    expect(traineeCategory({ ...base, status: 'partial' })).toBe('assessed');
+  });
+
+  it('counts a part-submitted track as in progress', () => {
+    expect(traineeCategory({ ...base, ownSubmittedCount: 1 })).toBe('in-progress');
+  });
+
+  it('counts an unsent local draft as drafted', () => {
+    expect(traineeCategory({ ...base, hasDraft: true })).toBe('drafted');
+  });
+
+  // Submitted work outranks a draft: to everyone but this phone, a trainee
+  // whose theory is already in is in progress.
+  it('prefers in progress over drafted when both are true', () => {
+    expect(traineeCategory({ ...base, ownSubmittedCount: 1, hasDraft: true })).toBe('in-progress');
+  });
+
+  it('counts an untouched trainee as not started', () => {
+    expect(traineeCategory(base)).toBe('not-started');
+  });
+});
+
+describe('the filter buckets against the summary tiles', () => {
+  // The pills and the tiles are read on the same screen at the same time, so
+  // they must be arithmetically the same claim: drafted + in-progress is the
+  // IN PROGRESS tile, and nothing may fall outside a bucket.
+  it('splits the IN PROGRESS tile into drafted and in-progress, and nothing else', () => {
+    const trainees = [
+      { status: 'locked' as const, ownSubmittedCount: 2, requiredCount: 2, hasDraft: false },
+      { status: 'partial' as const, ownSubmittedCount: 2, requiredCount: 2, hasDraft: false },
+      { status: 'pending' as const, ownSubmittedCount: 1, requiredCount: 2, hasDraft: false },
+      { status: 'pending' as const, ownSubmittedCount: 0, requiredCount: 1, hasDraft: true },
+      { status: 'pending' as const, ownSubmittedCount: 0, requiredCount: 2, hasDraft: false },
+    ];
+    const counts = { assessed: 0, 'in-progress': 0, drafted: 0, 'not-started': 0 };
+    for (const t of trainees) counts[traineeCategory(t)] += 1;
+
+    const tiles = routeProgress(trainees);
+    expect(counts.assessed).toBe(tiles.assessed);
+    expect(counts['in-progress'] + counts.drafted).toBe(tiles.inProgress);
+    expect(counts['not-started']).toBe(tiles.notStarted);
+    expect(counts.assessed + counts['in-progress'] + counts.drafted + counts['not-started']).toBe(
+      trainees.length,
+    );
+  });
+});
+
+describe('matchesFilter', () => {
+  it('lets everything through on “all”', () => {
+    expect(matchesFilter('all', 'drafted')).toBe(true);
+    expect(matchesFilter('assessed', 'drafted')).toBe(false);
+    expect(matchesFilter('drafted', 'drafted')).toBe(true);
   });
 });
