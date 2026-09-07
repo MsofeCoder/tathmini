@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { isInternalNavigation, isShellPath, matchScreen } from './route-match';
+import {
+  isInternalNavigation,
+  isShellPath,
+  matchScreen,
+  parentScreenPath,
+} from './route-match';
 
 /**
  * The routing table of the field app. With one precached document answering
@@ -126,4 +131,27 @@ describe('isInternalNavigation', () => {
   it('leaves a same-origin server route to the browser', () => {
     expect(isInternalNavigation(new URL('/login', origin), origin)).toBe(false);
   });
+});
+
+describe('parentScreenPath', () => {
+  // Where Back goes after an assessment is submitted: to the trainee it was
+  // for, never to whatever the history stack happens to hold.
+  it('sends a marking or submit screen back to its trainee', () => {
+    expect(parentScreenPath('/trainee/t1/mark/tp1')).toBe('/trainee/t1');
+  });
+
+  it('keeps a trainee id that needed encoding', () => {
+    expect(parentScreenPath('/trainee/a%2Fb/mark/tp1')).toBe('/trainee/a%2Fb');
+  });
+
+  it('sends a trainee back to the route list', () => {
+    expect(parentScreenPath('/trainee/t1')).toBe('/home');
+  });
+
+  it.each(['/home', '/reports', '/pending', '/account', '/', '/admin'])(
+    'leaves Back to the browser on %s',
+    (path) => {
+      expect(parentScreenPath(path)).toBeNull();
+    },
+  );
 });

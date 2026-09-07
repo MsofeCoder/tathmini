@@ -92,3 +92,36 @@ export function matchScreen(pathname: string): Screen {
 export function isInternalNavigation(url: URL, origin: string): boolean {
   return url.origin === origin && isShellPath(url.pathname);
 }
+
+/**
+ * The screen a Back gesture must land on from `pathname`, or null when the
+ * screen is a top-level one and Back means "leave the app".
+ *
+ * The field app is one document, so Back is whatever the browser's history
+ * stack happens to hold — and after a submission that stack is not what the
+ * supervisor expects. Submitting an assessment replaces the marking entry with
+ * the trainee profile (so Back cannot re-enter a form that is now read-only),
+ * which leaves the profile sitting in history twice: the first Back appears to
+ * do nothing at all. A supervisor who reached a trainee from Reports, or from
+ * a deep link, had a Back that led somewhere else again.
+ *
+ * So the hierarchy is declared here rather than inferred from history:
+ *
+ *   marking / submit  ->  the trainee being assessed
+ *   trainee profile   ->  the route list (the Trainees tab)
+ *   home / reports / account -> nothing; the browser decides
+ *
+ * The shell enforces it on backward pops (see app-shell.tsx). Forward
+ * navigation is untouched — this only says where *back* goes.
+ */
+export function parentScreenPath(pathname: string): string | null {
+  const screen = matchScreen(pathname);
+  switch (screen.name) {
+    case 'mark':
+      return `/trainee/${encodeURIComponent(screen.traineeId)}`;
+    case 'trainee':
+      return '/home';
+    default:
+      return null;
+  }
+}

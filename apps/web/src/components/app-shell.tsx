@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { BottomNav } from './bottom-nav';
 import { AccountScreen } from './screens/account-screen';
 import { HomeScreen } from './screens/home-screen';
@@ -8,8 +8,14 @@ import { InstallScreen } from './screens/install-screen';
 import { MarkScreen } from './screens/mark-screen';
 import { ReportsScreen } from './screens/reports-screen';
 import { TraineeScreen } from './screens/trainee-screen';
-import { isInternalNavigation, matchScreen } from '@/lib/local/route-match';
-import { setNavigationListener } from '@/lib/local/shell-navigation';
+import { isInternalNavigation, matchScreen, parentScreenPath } from '@/lib/local/route-match';
+import {
+  initHistoryDepth,
+  navigateTo,
+  readPopDirection,
+  replaceCurrent,
+  setNavigationListener,
+} from '@/lib/local/shell-navigation';
 
 /**
  * The app shell: one document that renders every screen in the field app.
@@ -42,17 +48,60 @@ const NAV_SCREENS = new Set(['home', 'reports', 'account']);
 
 export function AppShell() {
   const [pathname, setPathname] = useState<string | null>(null);
+  /** The path we are on, readable from the popstate listener — which is
+   * registered once and would otherwise close over the first render's value. */
+  const currentPath = useRef<string | null>(null);
+
+  const show = useCallback((next: string) => {
+    currentPath.current = next;
+    setPathname(next);
+  }, []);
 
   useEffect(() => {
-    setPathname(window.location.pathname);
-    const onPopState = () => setPathname(window.location.pathname);
+    initHistoryDepth();
+    show(window.location.pathname);
+
+    /**
+     * Back is a hierarchy, not a history stack.
+     *
+     * Where the browser's own stack would land somewhere else, we correct it:
+     * Back from a marking or submit screen goes to the trainee being assessed,
+     * and Back from a trainee goes to the route list — the Trainees tab —
+     * whatever road the supervisor took to get there. Submitting an assessment
+     * leaves the profile in history twice (the marking entry is replaced, so
+     * Back cannot re-enter a form that is now read-only), and without this the
+     * first Back after a submission appeared to do nothing at all.
+     *
+     * `replaceCurrent` rather than a push: the entry we have just landed on
+     * BECOMES the parent screen, so pressing Back again carries on up the
+     * hierarchy — trainee, then route list — instead of bouncing between two
+     * entries with no way out.
+     *
+     * Only backward pops are touched. A forward gesture is the supervisor
+     * asking for the screen they came from, and it is left exactly alone.
+     */
+    const onPopState = (event: PopStateEvent) => {
+      const landed = window.location.pathname;
+      const from = currentPath.current;
+      const parent = from === null ? null : parentScreenPath(from);
+
+      if (readPopDirection(event.state) === 'back' && parent !== null && landed !== parent) {
+        replaceCurrent(parent);
+        show(parent);
+        window.scrollTo(0, 0);
+        return;
+      }
+
+      show(landed);
+    };
+
     window.addEventListener('popstate', onPopState);
-    const release = setNavigationListener(setPathname);
+    const release = setNavigationListener(show);
     return () => {
       window.removeEventListener('popstate', onPopState);
       release();
     };
-  }, []);
+  }, [show]);
 
   /**
    * Handles in-app links without a page load.
@@ -77,9 +126,9 @@ export function AppShell() {
     if (!isInternalNavigation(url, window.location.origin)) return;
 
     event.preventDefault();
-    window.history.pushState(null, '', url.pathname);
-    setPathname(url.pathname);
-    window.scrollTo(0, 0);
+    // Through `navigateTo` rather than a bare pushState, so the entry carries
+    // the depth stamp that tells a later Back from a Forward.
+    navigateTo(url.pathname);
   }, []);
 
   // Route-independent first paint — see the note above. Blank rather than a

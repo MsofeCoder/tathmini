@@ -42,6 +42,51 @@ The test, query or manual check that proves it works.
 ---
 
 
+## 2026-09-07 · bugfix · Back is a hierarchy: submit → trainee → Trainees tab
+
+**Kind:** bugfix
+**Phase:** 1–2
+**Commit / PR:** this branch (`claude/report-submission-routing-pxc1h7`)
+
+**What changed**
+Back inside the shell now follows the screen hierarchy rather than the raw
+history stack. From a marking / submit screen it lands on the trainee being
+assessed; from a trainee profile it lands on the route list (the Trainees tab);
+top-level screens are left to the browser. `parentScreenPath()` in
+`lib/local/route-match.ts` declares the hierarchy, and `app-shell.tsx` enforces
+it on backward pops.
+
+**Why this way**
+Submitting an assessment navigates to the profile with `replace`, so Back
+cannot re-enter a form that is now read-only — which leaves `/trainee/<id>`
+in history twice, and the first Back after a submission appeared to do nothing
+at all. Supervisors who reached a trainee from Reports or a deep link had a
+Back that led somewhere else again. Rather than tuning each call site, the
+destination is declared once, in the same pure function that already decides
+what a path means, and asserted in `route-match.test.ts`.
+
+The correction is a `replaceState`, not a push: the entry just landed on
+BECOMES the parent screen, so the next Back carries on up the hierarchy
+(trainee, then route list) instead of bouncing between two entries.
+
+**Watch out for**
+`popstate` does not say which way it went, so every shell entry now carries a
+depth stamp in `history.state` under `tathminiDepth`
+(`lib/local/shell-navigation.ts`). Only backward pops are corrected — a forward
+gesture is left alone. Anything that writes `history.state` directly, or
+pushes without going through `navigateTo`, loses the stamp and its pop is read
+as a Back; the shell's own link delegation was switched to `navigateTo` for
+exactly that reason. An entry with no stamp (below the app's own entries) is
+treated as a Back, which is correct: those are behind us.
+
+**Verified by**
+Unit tests for `parentScreenPath` covering the marking screen, an encoded
+trainee id, the profile and every top-level path. The pop behaviour itself is
+manual: submit an assessment, Back → trainee, Back → route list.
+
+---
+
+
 ## 2026-09-07 · decision · Merging the manual-send branch with main's "Assessed means sent"
 
 **Kind:** decision

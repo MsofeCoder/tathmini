@@ -19,6 +19,67 @@ type Listener = (pathname: string) => void;
 
 let listener: Listener | null = null;
 
+/**
+ * Where we are in the history stack.
+ *
+ * `popstate` says a navigation happened but not which way it went, and the
+ * shell has to know: a BACK is corrected to the canonical parent screen (see
+ * `parentScreenPath`), a FORWARD must be left alone. So every entry the shell
+ * creates carries its own depth, and comparing the popped entry's depth with
+ * the one we were on gives the direction.
+ *
+ * Kept under a namespaced key because `history.state` is shared with anything
+ * else that writes it, and read back from the entry itself so it survives a
+ * reload — the phone restoring a session mid-route must not decide it is at
+ * depth 0 and start treating every Back as a forward move.
+ */
+const DEPTH_KEY = 'tathminiDepth';
+
+let depth = 0;
+
+function depthOf(state: unknown): number | null {
+  if (typeof state !== 'object' || state === null) return null;
+  const value = (state as Record<string, unknown>)[DEPTH_KEY];
+  return typeof value === 'number' ? value : null;
+}
+
+/** Stamps the entry the app was opened on, so the first Back has something to
+ * compare against. The shell calls this once, on mount. */
+export function initHistoryDepth(): void {
+  if (typeof window === 'undefined') return;
+  const existing = depthOf(window.history.state);
+  if (existing !== null) {
+    depth = existing;
+    return;
+  }
+  depth = 0;
+  const state = (window.history.state as Record<string, unknown> | null) ?? {};
+  window.history.replaceState({ ...state, [DEPTH_KEY]: 0 }, '');
+}
+
+/**
+ * Which way a `popstate` went.
+ *
+ * Also adopts the popped entry's depth, so the next comparison is made from
+ * where we actually are. An entry with no stamp (something outside the shell
+ * wrote it) is treated as a backward move: those only arise below the app's
+ * own entries, which is behind us.
+ */
+export function readPopDirection(state: unknown): 'back' | 'forward' {
+  const next = depthOf(state);
+  const previous = depth;
+  depth = next ?? Math.max(0, previous - 1);
+  return next === null || next < previous ? 'back' : 'forward';
+}
+
+/** Rewrites the entry we have just landed on, without adding another. Used by
+ * the shell when a Back has to be redirected to the canonical parent screen:
+ * pressing Back again must then leave from the parent, not bounce. */
+export function replaceCurrent(pathname: string): void {
+  if (typeof window === 'undefined') return;
+  window.history.replaceState({ [DEPTH_KEY]: depth }, '', pathname);
+}
+
 /** The shell registers itself here on mount. Returns the unsubscribe. */
 export function setNavigationListener(next: Listener): () => void {
   listener = next;
@@ -48,8 +109,12 @@ export function navigateTo(pathname: string, { replace = false }: NavigateOption
     return;
   }
 
-  if (replace) window.history.replaceState(null, '', pathname);
-  else window.history.pushState(null, '', pathname);
+  if (replace) {
+    window.history.replaceState({ [DEPTH_KEY]: depth }, '', pathname);
+  } else {
+    depth += 1;
+    window.history.pushState({ [DEPTH_KEY]: depth }, '', pathname);
+  }
 
   listener(pathname);
   // A pushed screen starts at the top. Without this, opening a trainee from
