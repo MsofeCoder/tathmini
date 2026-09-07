@@ -107,8 +107,11 @@ extracted so the two screens cannot drift.
 - The stepper header was compacted the same day: the per-lesson progress bar
   was dropped (the "Section n of m" counter already says that) and the
   full-width "Sections ⌄" button became a 44 px chevron beside the remaining
-  whole-assessment bar. The two bars plus the button had been taking about a
-  quarter of a phone screen before the first criterion appeared.
+  whole-assessment bar; the lesson-name and "Section n of m · 50 pts total"
+  row above it went too. The header had been taking about a quarter of a
+  phone screen before the first criterion appeared, and everything removed is
+  still on the screen: the section heading below the header names the section
+  and its points, and the jump list names every section in the phase.
 - First-load JS went 171 kB → **176 kB** against the 180 KB budget. The
   stepper ships alongside the long form because IPT still needs it; the next
   screen added to the shell will need that budget looked at properly.

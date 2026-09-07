@@ -427,21 +427,16 @@ export function TpMarkingStepper({
           </div>
         </div>
 
-        <div className="mt-1 flex items-baseline justify-between gap-2">
-          <span className="text-[17px] font-bold tracking-[-0.2px]">{phaseLabels.label}</span>
-          <span className="text-[12px] text-[#5f6f7c]">
-            Section {stepIndex + 1} of {sections.length} · {phase.maxTotal} pts total
-          </span>
-        </div>
-
         {/* One bar, not two, and the jump control as an icon beside it. The
             supervisor's screen is for the criteria: an earlier version spent
             a quarter of a phone screen on two progress bars and a full-width
             "Sections" button before a single question was visible. The bar
             that survived is the trainee's WHOLE assessment — both lessons,
             63 criteria — because that is the one a supervisor plans their
-            afternoon around; how far through the current lesson they are is
-            already spelled out by "Section 2 of 10" above it. */}
+            afternoon around. The lesson name and the "Section 2 of 10 · 50
+            pts total" counter that used to sit above the bar went with the
+            same pass: both are repeated on the section heading immediately
+            below the header, and the jump list names every section anyway. */}
         <div className="mt-2 flex items-center gap-2.5">
           <div className="min-w-0 flex-1">
             <div className="flex items-baseline justify-between gap-2">
