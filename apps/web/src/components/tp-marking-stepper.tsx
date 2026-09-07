@@ -205,8 +205,6 @@ export function TpMarkingStepper({
   const sections = sectionsByPhase[phaseIndex] ?? [];
   const section = sections[Math.min(stepIndex, sections.length - 1)];
   const phaseLabels = tpPhaseLabels(phase.code);
-  const phaseDone = scoredCount(phase.criteria, marks);
-  const phasePct = percentComplete(phaseDone, phase.criteria.length);
   const lastSection = stepIndex >= sections.length - 1;
   const nextPhase = phases[phaseIndex + 1];
 
@@ -436,44 +434,46 @@ export function TpMarkingStepper({
           </span>
         </div>
 
-        {/* Two bars, because they answer two different questions. The teal one
-            is "how far through this lesson am I"; the amber one is "how far
-            through this trainee's whole assessment am I", which is the one a
-            supervisor plans their afternoon around. */}
-        <div className="mt-2.5">
-          <div className="h-1.5 overflow-hidden rounded-full bg-[#e6ecea]">
-            <div
-              className="h-full rounded-full bg-[#0d4a43] transition-[width]"
-              style={{ width: `${phasePct}%` }}
-            />
+        {/* One bar, not two, and the jump control as an icon beside it. The
+            supervisor's screen is for the criteria: an earlier version spent
+            a quarter of a phone screen on two progress bars and a full-width
+            "Sections" button before a single question was visible. The bar
+            that survived is the trainee's WHOLE assessment — both lessons,
+            63 criteria — because that is the one a supervisor plans their
+            afternoon around; how far through the current lesson they are is
+            already spelled out by "Section 2 of 10" above it. */}
+        <div className="mt-2 flex items-center gap-2.5">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="text-[11px] font-semibold text-[#5f6f7c]">Whole assessment</span>
+              <span className="text-[11px] font-bold text-[#5f6f7c]">
+                {overall.done}/{overall.total} · {overall.pct}%
+              </span>
+            </div>
+            <div className="mt-1 h-[7px] overflow-hidden rounded-full bg-[#e6ecea]">
+              <div
+                className="h-full rounded-full transition-[width]"
+                style={{
+                  width: `${overall.pct}%`,
+                  background: overall.pct === 100 ? '#1c7a5e' : '#a35c00',
+                }}
+              />
+            </div>
           </div>
-          <div className="mt-1 flex items-center justify-between gap-2">
-            <span className="text-[11px] font-semibold text-[#5f6f7c]">
-              {phaseLabels.short} {phaseDone}/{phase.criteria.length}
-            </span>
-            <span className="text-[11px] font-semibold text-[#5f6f7c]">
-              Whole assessment {overall.done} of {overall.total} · {overall.pct}%
-            </span>
-          </div>
-          <div className="mt-1 h-[7px] overflow-hidden rounded-full bg-[#e6ecea]">
-            <div
-              className="h-full rounded-full transition-[width]"
-              style={{
-                width: `${overall.pct}%`,
-                background: overall.pct === 100 ? '#1c7a5e' : '#a35c00',
-              }}
-            />
-          </div>
-        </div>
 
-        <button
-          type="button"
-          aria-expanded={jumpOpen}
-          onClick={() => setJumpOpen(!jumpOpen)}
-          className="focus:outline-accent mt-2.5 min-h-11 w-full rounded-lg border border-[#ccd7d4] bg-white text-[13px] font-bold text-[#3c4c58] focus:outline focus:outline-[3px] focus:outline-offset-2"
-        >
-          {jumpOpen ? 'Hide ⌃' : 'Sections ⌄'}
-        </button>
+          {/* Icon only, but never smaller than a thumb: 44 px is the floor on
+              this screen (AGENTS.md § UI rules), and the accessible name is
+              what carries the meaning the word "Sections" used to. */}
+          <button
+            type="button"
+            aria-expanded={jumpOpen}
+            aria-label={jumpOpen ? 'Hide the section list' : 'Jump to a section'}
+            onClick={() => setJumpOpen(!jumpOpen)}
+            className="focus:outline-accent flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg border border-[#ccd7d4] bg-white text-[15px] font-bold text-[#3c4c58] focus:outline focus:outline-[3px] focus:outline-offset-2"
+          >
+            {jumpOpen ? '⌃' : '⌄'}
+          </button>
+        </div>
 
         {jumpOpen ? (
           <ul className="mt-2 flex max-h-[46vh] flex-col gap-1.5 overflow-y-auto pb-1">

@@ -104,6 +104,11 @@ untouched — the stepper renders the same `CriterionCard` the long form does,
 extracted so the two screens cannot drift.
 
 **Watch out for**
+- The stepper header was compacted the same day: the per-lesson progress bar
+  was dropped (the "Section n of m" counter already says that) and the
+  full-width "Sections ⌄" button became a 44 px chevron beside the remaining
+  whole-assessment bar. The two bars plus the button had been taking about a
+  quarter of a phone screen before the first criterion appeared.
 - First-load JS went 171 kB → **176 kB** against the 180 KB budget. The
   stepper ships alongside the long form because IPT still needs it; the next
   screen added to the shell will need that budget looked at properly.
