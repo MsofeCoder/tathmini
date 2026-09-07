@@ -162,8 +162,8 @@ function DraftedList({ rows }: { rows: DraftedRow[] }) {
   if (rows.length === 0) {
     return (
       <Empty
-        title="No drafts"
-        detail="A report you save instead of sending waits here until you are ready. You have none."
+        title="Nothing waiting to send"
+        detail="An assessment appears here as soon as it is fully marked, and stays until you send its report. You have none."
       />
     );
   }
@@ -173,8 +173,15 @@ function DraftedList({ rows }: { rows: DraftedRow[] }) {
       {rows.map((row) => (
         <li key={row.traineeId} className="rounded-2xl border border-[#e0c39a] bg-[#fff8ec] p-3.5">
           <p className="text-[15px] font-semibold text-[#14232e]">{row.traineeName}</p>
+          {/* A draft the supervisor CHOSE to hold reads differently from one
+              that is merely finished — the first was a decision, the second is
+              just where the work got to. Both need the same tap. */}
           <p className="mt-0.5 text-[12.5px] text-[#7a5a12]">
-            Saved as a draft {describeAge(row.savedAt)}
+            {row.held
+              ? `Saved as a draft ${describeAge(row.savedAt)}`
+              : row.savedAt > 0
+                ? `Marking finished ${describeAge(row.savedAt)} · report not sent`
+                : 'Marking finished · report not sent'}
           </p>
           {row.note ? (
             <p className="mt-1.5 text-[12.5px] leading-relaxed text-[#5a4212]">{row.note}</p>
@@ -195,8 +202,8 @@ function SubmittedList({ rows }: { rows: SubmittedRow[] }) {
   if (rows.length === 0) {
     return (
       <Empty
-        title="Nothing submitted yet"
-        detail="An assessment appears here once your marks have reached the College. Open your route list with a connection to bring this device up to date."
+        title="Nothing sent yet"
+        detail="An assessment appears here once you have sent its report. Until then it waits on the Drafted tab, however much of it is marked."
       />
     );
   }

@@ -148,6 +148,27 @@ export function TpMarkingStepper({
   // Autosave the lesson being marked. Nothing else on this screen writes, so
   // there is one draft to keep and it is written at most every 400 ms.
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /**
+   * Which unmarked criterion the gate warning points at next. The warning
+   * says how many are missing; tapping it takes the supervisor to one of
+   * them, and tapping again walks to the next, so a section with several
+   * gaps does not need hunting through on a phone.
+   *
+   * The list is recomputed from `marks` on every tap rather than captured
+   * when the warning appeared: by then the supervisor may have scored some
+   * of them, and being sent to a row that is already marked reads as a bug.
+   *
+   * IT MUST STAY UP HERE, WITH THE OTHER HOOKS, ABOVE THE EARLY RETURNS.
+   * It was declared below them, next to jumpToUnmarked() where it reads
+   * best, and that crashed the app at the worst possible moment: `queued`
+   * flips to true when a supervisor submits, the `if (queued)` return then
+   * fires BEFORE this line, React counts one hook fewer than the previous
+   * render on the same instance, and throws "Rendered fewer hooks than
+   * expected". Offline, at the end of a full TP assessment. Reading order is
+   * not worth that.
+   */
+  const gateCursor = useRef(0);
   const phase = phases[startPhaseIndex];
   const phaseId = phase?.instrumentId;
   useEffect(() => {
@@ -269,18 +290,6 @@ export function TpMarkingStepper({
   function goToTop() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
-
-  /**
-   * Which unmarked criterion the gate warning points at next. The warning
-   * says how many are missing; tapping it takes the supervisor to one of
-   * them, and tapping again walks to the next, so a section with several
-   * gaps does not need hunting through on a phone.
-   *
-   * The list is recomputed from `marks` on every tap rather than captured
-   * when the warning appeared: by then the supervisor may have scored some
-   * of them, and being sent to a row that is already marked reads as a bug.
-   */
-  const gateCursor = useRef(0);
 
   function jumpToUnmarked() {
     if (!section) return;
