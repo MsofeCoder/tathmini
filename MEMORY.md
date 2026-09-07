@@ -47,6 +47,230 @@ the diff. This file is for knowledge that would otherwise be lost.
 
 ---
 
+## 2026-09-07 · bugfix · A trainee is "Draft" when the marks are finished, "Assessed" only when they are sent
+
+**Kind:** bugfix
+**Phase:** 1
+**Commit / PR:** (branch) claude/trainee-filters-tp-stepper-n86jj3 — PR #47
+
+**What changed**
+The route list's four buckets now describe where the WORK is, not which
+buttons were pressed:
+
+| State | Means |
+|---|---|
+| Not started | nothing marked |
+| In progress | started and not finished — a part-scored draft, or one lesson submitted and the other not |
+| **Draft** | every criterion of every lesson still to be submitted carries a score, and none of it has been sent |
+| **Assessed** | the marks are with the College |
+
+Two rules changed with it. `traineeCategory()` takes `draftProgress`
+('none' | 'partial' | 'complete') rather than a boolean `hasDraft`, computed by
+`draftProgressFor()` in `lib/local/derive.ts` from the criteria on the device
+and the drafts on the device. And the route-list ROW BADGE now follows the
+bucket for anything not yet assessed: "◐ Draft", "◔ In progress", "○ Not yet
+assessed". An assessed trainee keeps `statusMeta()`'s badge, which says which
+assessor the College is still waiting for.
+
+**Why this way**
+"Draft" was previously any trainee with a draft row of any kind, so a
+supervisor who had scored one criterion and a supervisor who had finished
+both lessons looked identical, and the distinction that matters in the field —
+*is this trainee ready to send?* — was invisible. Completeness is decided by
+the same rule `tpReadyToSubmit()` uses for the Submit button, so a trainee
+reads as a Draft on the route list exactly when their profile offers to send
+them.
+
+Assessed deliberately still means SUBMITTED MARKS, not a sent PDF report. The
+report is a separate flow with its own screen and its own outbox; a trainee
+whose marks are in but whose report has not gone would otherwise fall into no
+bucket at all (the drafts are cleared on submit). If the College means the
+report, that is a fifth state and a bigger change — flagged to the user rather
+than assumed.
+
+**Watch out for**
+- `routeProgress()` is unchanged and still counts any draft as "in progress":
+  its three numbers feed the headline "N of M trainees assessed" bar, and the
+  pills split its in-progress figure into Draft + In progress. The test
+  pinning the two together is what keeps them arithmetically the same claim.
+- `buildRouteRows(rows, drafts)` takes a second argument now. It defaults to
+  `[]`, which reads as "nothing unsent on this device" — correct for any
+  caller that has not got the drafts, but it means a caller who forgets them
+  shows every drafted trainee as not started.
+- Dexie untouched again: `listDraftMarks()` splits the existing
+  `${traineeId}:${instrumentId}` key of the existing `drafts` store. No new
+  store, no new version.
+- First-load JS 175 kB → **176 kB**, still inside the 180 KB budget.
+
+**Verified by**
+`pnpm format:check && pnpm lint && pnpm test && pnpm typecheck` green — 453
+Vitest cases in `apps/web`, including `draftProgressFor` through
+`buildRouteRows` (one lesson marked → partial; both → complete; a submitted
+lesson ignored; criteria missing from the phone never complete) and the
+rewritten `traineeCategory` suite. `pnpm --filter web build` clean at 176 kB.
+
+## 2026-09-07 · feature · TP lessons unchained: each marked on its own, submitted when both are complete
+
+**Kind:** feature
+**Phase:** 1
+**Commit / PR:** (branch) claude/trainee-filters-tp-stepper-n86jj3 — PR #47
+
+**What changed**
+The TP stepper no longer walks Theory into Practical and no longer ends at a
+review page. It marks ONE lesson: its progress bar counts that lesson's
+criteria only, Back on the first section returns to the trainee profile, and
+the last section's button reads **Save assessment** — which writes the draft
+and returns to the profile.
+
+The profile is the pre-assessment page. Both lessons are started from it, in
+either order, and marking one never depends on having started the other.
+
+Submission became a state rather than a destination. Once every criterion of
+every not-yet-submitted phase carries a score, the Save button at the end of a
+lesson becomes **Submit assessment**, and a **Submit TP assessment** card
+appears on the profile itself. Both ask `lib/tp-submit.ts`; the send is
+`submitTpAssessment()` in `lib/submit-phase.ts`, one statement per instrument
+exactly as before.
+
+**Why this way**
+The chaining was wrong about the visit, not just about the UI. A supervisor
+may watch the classroom lesson on Tuesday and the workshop lesson on Thursday;
+a flow that treats Theory as the doorway to Practical makes the second visit
+feel like a resumption of the first, and made the combined 63-criterion
+progress bar read as unfinished work on a lesson that was finished.
+
+Submission stayed a both-lessons act because the College's mark is the pair,
+and `assessment_marks` is append-only: sending Theory alone would leave a
+half-recorded trainee that only an Administrator override could complete. The
+draft on the device is the safe place for a lesson waiting for its partner,
+and it already was — nothing new is stored.
+
+The pure half (`phaseComplete`, `tpReadyToSubmit`, `buildPhasePayload`) sits in
+`lib/tp-submit.ts` with no `@/` imports, because `apps/web` has no vitest
+config and therefore no path alias: a module that reaches the server action
+cannot be unit-tested. What decides whether an assessment may be sent must be.
+
+**Watch out for**
+- A lesson whose draft is fully scored now shows on the profile as a green
+  "TP Theory marked ✓ · 👁 Review" button instead of "Start TP Theory
+  Assessment". It is a link back into the same paginated lesson, not a badge:
+  nothing has been sent, and it must never read like "Submitted". The four
+  states on that page are now Start · Marked · Waiting to send · Submitted,
+  and only the last comes from the server.
+- **Dexie is untouched.** No new store, no new version, no renumbering: the
+  drafts are the same `drafts` rows keyed per (trainee, instrument) that the
+  long form has always written, which is exactly why a lesson can wait days
+  for its partner. Rule 8 of AGENTS.md § "The app shell" did not need to be
+  spent on this feature.
+- The profile's Submit card reads the drafts on mount. It is a full page load
+  after a lesson saves (`window.location.assign`), so it always sees the
+  lesson just written — but a card left open in another tab will not notice a
+  draft finished elsewhere until it reloads.
+- If either phase queues offline, the whole submission reads as queued. Both
+  drafts stay until the outbox confirms each one.
+- First-load JS 176 kB → **175 kB** (the review screen came out).
+
+**Verified by**
+`pnpm format:check && pnpm lint && pnpm test && pnpm typecheck` green — 447
+Vitest cases in `apps/web`, including a new `tp-submit.test.ts` (readiness with
+one lesson already submitted, a zero counting as scored, an empty form never
+counting as complete) and `buildTpPending` in `derive.test.ts`.
+`pnpm --filter web build` clean at 175 kB. Still not exercised on a real
+device.
+
+## 2026-09-07 · feature · Route-list filters, Theory-first buttons, and the TP one-section-per-page stepper
+
+**Kind:** feature
+**Phase:** 1
+**Commit / PR:** (branch) claude/trainee-filters-tp-stepper-n86jj3
+
+**What changed**
+Three things the College asked for on the field app, all on the device, no
+migration and no new Dexie version:
+
+1. **A filter row on the route list** — All · Assessed · In progress · Drafted
+   · Not started, with live counts, sitting above the existing search. The four
+   buckets come from `traineeCategory()` in `lib/trainees.ts`, computed from
+   exactly the same inputs as the three summary tiles, so `drafted +
+   in-progress` is always the IN PROGRESS tile and a pill can never contradict
+   a counter above it. A test asserts that identity.
+2. **Theory before Practical, and "Assessment" in the button** — the profile's
+   instrument buttons now read "Start TP Theory Assessment", "Start TP
+   Practical Assessment", "Start IPT Assessment", and are sorted by
+   `instrumentOrder()` rather than by whatever order IndexedDB returned. The
+   labels themselves are unchanged instrument rows; only the surrounding copy
+   and the sort are new.
+3. **The TP stepper** (`components/tp-marking-stepper.tsx`) — one section per
+   page across both TP instruments: section subtotal, per-section jump
+   dropdown, two progress bars (this lesson, and the trainee's whole 63-criterion
+   assessment), a section gate on Next with the prototype's own wording, and a
+   review-and-confirm last page. IPT keeps the long scrolling form.
+
+**Why this way**
+The stepper spans both TP instruments because TP is *two instruments but one
+visit*: a supervisor watches a classroom lesson and a workshop lesson for the
+same trainee in one sitting, and the prototype (`stepNext`/`stepBack`, lines
+2412–2447) walks straight from the last Theory section into the first Practical
+one. `buildTpMarking()` therefore returns both phases, and Back on the first
+Practical section returns to the last Theory section rather than disabling
+itself.
+
+What it deliberately does NOT do is merge the two into one mark. Each phase
+keeps its own draft key (`draftKey(traineeId, instrumentId)`) and submits its
+own statement through the same path as before — `lib/submit-phase.ts` is that
+path, extracted so the loop could call it twice; the per-(trainee, instrument,
+slot) unique index and `validate_and_finalize_mark()` are untouched, and a
+supervisor who submitted Theory last week is offered Practical alone (a
+submitted phase is dropped from `phases`, never shown read-only, because marks
+are append-only).
+
+`marking-form.tsx` keeps its own proven submit path rather than being
+refactored onto `submitPhase()`. On go-live day the IPT flow is the one thing
+this change had no reason to touch, and the duplication is three lines. Worth
+collapsing next week.
+
+The gate copy, the "Sections ⌄" / "Hide ⌃" toggle, the ✓ markers and the
+`done/total` counts are the prototype's, per AGENTS.md. Criterion wording is
+untouched — the stepper renders the same `CriterionCard` the long form does,
+extracted so the two screens cannot drift.
+
+**Watch out for**
+- The stepper header was compacted the same day: the per-lesson progress bar
+  was dropped (the "Section n of m" counter already says that) and the
+  full-width "Sections ⌄" button became a 44 px chevron beside the remaining
+  whole-assessment bar; the lesson-name and "Section n of m · 50 pts total"
+  row above it went too. The header had been taking about a quarter of a
+  phone screen before the first criterion appeared, and everything removed is
+  still on the screen: the section heading below the header names the section
+  and its points, and the jump list names every section in the phase.
+- First-load JS went 171 kB → **176 kB** against the 180 KB budget. The
+  stepper ships alongside the long form because IPT still needs it; the next
+  screen added to the shell will need that budget looked at properly.
+- The review screen prints subtotals only — no grade, no GPA, no verdict.
+  Those are Postgres's (AGENTS.md rule 3) and printing a client-side guess
+  minutes before the real one is how two numbers end up in front of a trainee.
+- If both phases are submitted at review and one is queued offline, the whole
+  submission reads as queued. That is deliberate: telling a supervisor "half
+  sent" invites them to mark the other half again.
+- The route list's filter pills are the departure from the earlier note that
+  said this screen deliberately has none. The College asked; the note in
+  `route-list.tsx` now records that. The three-tile ASSESSED / IN PROGRESS /
+  NOT STARTED row that used to sit under the progress bar was then removed —
+  the pills carry the same counts and are tappable, so the tiles were
+  repeating the row below them. `routeProgress()` still returns all four
+  numbers; the test that pins the pills to the tiles is what keeps them
+  honest.
+
+**Verified by**
+`pnpm format:check && pnpm lint && pnpm test && pnpm typecheck` all green (435
+Vitest cases in `apps/web`, including new suites for `traineeCategory`,
+`sectionGateWarning`, `sectionJumpRows`, `instrumentOrder` and
+`buildTpMarking`); `pnpm --filter web build` clean at 176 kB first-load JS.
+Not yet exercised on a real device — the stepper's offline journey wants a
+Playwright pass before Monday.
+
+---
+
 ## 2026-09-07 · feature · One sign-out only, on Account; explanatory notes removed from four screens
 
 **Kind:** feature

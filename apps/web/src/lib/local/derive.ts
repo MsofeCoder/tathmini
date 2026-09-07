@@ -1,3 +1,4 @@
+import type { DraftMarksRow } from '../drafts';
 import type {
   LocalAssignment,
   LocalCriterion,
@@ -8,8 +9,8 @@ import type {
   LocalTrainee,
   SessionMeta,
 } from '../db';
-import type { CriterionRow } from '../marking';
-import { deriveStatus, type TraineeStatus } from '../trainees';
+import { instrumentOrder, isTpPhaseCode, TP_PHASE_CODES, type CriterionRow } from '../marking';
+import { deriveStatus, type DraftProgress, type TraineeStatus } from '../trainees';
 
 /**
  * Turning the device's rows into exactly what each screen already expected
@@ -54,6 +55,8 @@ export interface RouteListRow {
   status: TraineeStatus;
   ownSubmittedCount: number;
   requiredCount: number;
+  /** How far the unsent work on THIS device has got. See draftProgressFor(). */
+  draftProgress: DraftProgress;
 }
 
 /** How many instruments each track requires: TP 2 (theory + practical), IPT 1. */
@@ -83,6 +86,57 @@ function lockedByTrainee(results: LocalResult[]): Map<string, string | null> {
 }
 
 /**
+ * How far this device's unsent work on one trainee has got.
+ *
+ *   - `none` — nothing marked, or nothing left to mark.
+ *   - `partial` — some criteria scored, but not every one of every lesson
+ *     still to be submitted. This is work in progress in the plainest sense:
+ *     the supervisor has started and has not finished.
+ *   - `complete` — every criterion of every lesson still to be submitted
+ *     carries a score. The assessment is finished and is sitting on this
+ *     phone unsent: a DRAFT, whether or not the supervisor pressed anything
+ *     to make it one.
+ *
+ * The rule is the same one `tpReadyToSubmit` uses to decide whether the
+ * Submit button may appear, so a trainee reads as a draft on the route list
+ * exactly when their profile offers to send them.
+ */
+export function draftProgressFor({
+  trainee,
+  instruments,
+  criteria,
+  submittedInstrumentIds,
+  draftsByInstrument,
+}: {
+  trainee: LocalTrainee;
+  instruments: LocalInstrument[];
+  criteria: LocalCriterion[];
+  submittedInstrumentIds: Set<string>;
+  draftsByInstrument: Map<string, DraftMarksRow>;
+}): DraftProgress {
+  const pending = instruments.filter(
+    (i) => i.track === trainee.track && !submittedInstrumentIds.has(i.id),
+  );
+  if (pending.length === 0) return 'none';
+
+  let anyScored = false;
+  let allComplete = true;
+
+  for (const instrument of pending) {
+    const rows = criteria.filter((c) => c.instrumentId === instrument.id);
+    const marks = draftsByInstrument.get(instrument.id)?.marks ?? {};
+    const scored = rows.filter((c) => marks[c.id]?.score != null).length;
+    if (scored > 0) anyScored = true;
+    // A lesson whose criteria have not reached this phone can never be
+    // complete — an empty form is not a finished one.
+    if (rows.length === 0 || scored < rows.length) allComplete = false;
+  }
+
+  if (allComplete) return 'complete';
+  return anyScored ? 'partial' : 'none';
+}
+
+/**
  * The route list.
  *
  * Sorted by name — the one deliberate difference from the server-rendered
@@ -91,14 +145,22 @@ function lockedByTrainee(results: LocalResult[]): Map<string, string | null> {
  * random uuid, so leaving it unsorted would have shuffled a supervisor's
  * route on every sync. Alphabetical is also how the paper register reads.
  */
-export function buildRouteRows(rows: DeviceRows): RouteListRow[] {
+export function buildRouteRows(rows: DeviceRows, drafts: DraftMarksRow[] = []): RouteListRow[] {
   const required = requiredByTrack(rows.instruments);
   const submitted = submittedByTrainee(rows.marks);
   const locked = lockedByTrainee(rows.results);
 
+  const draftsByTrainee = new Map<string, Map<string, DraftMarksRow>>();
+  for (const draft of drafts) {
+    const byInstrument = draftsByTrainee.get(draft.traineeId) ?? new Map<string, DraftMarksRow>();
+    byInstrument.set(draft.instrumentId, draft);
+    draftsByTrainee.set(draft.traineeId, byInstrument);
+  }
+
   return rows.trainees
     .map((trainee) => {
-      const ownSubmittedCount = submitted.get(trainee.id)?.length ?? 0;
+      const submittedInstrumentIds = new Set(submitted.get(trainee.id) ?? []);
+      const ownSubmittedCount = submittedInstrumentIds.size;
       const requiredCount = required.get(trainee.track) ?? 0;
       return {
         id: trainee.id,
@@ -113,6 +175,13 @@ export function buildRouteRows(rows: DeviceRows): RouteListRow[] {
         }),
         ownSubmittedCount,
         requiredCount,
+        draftProgress: draftProgressFor({
+          trainee,
+          instruments: rows.instruments,
+          criteria: rows.criteria,
+          submittedInstrumentIds,
+          draftsByInstrument: draftsByTrainee.get(trainee.id) ?? new Map(),
+        }),
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -162,8 +231,13 @@ export function buildProfile(rows: DeviceRows, traineeId: string): ProfileView |
     rows.marks.filter((m) => m.traineeId === traineeId && m.submittedAt).map((m) => m.instrumentId),
   );
 
+  // Theory before Practical — see `instrumentOrder`. IndexedDB hands these
+  // back in primary-key order, and the primary key is a random uuid, so
+  // without the sort the same trainee could offer the two TP buttons in
+  // either order.
   const actions: ProfileAction[] = rows.instruments
     .filter((i) => i.track === trainee.track)
+    .sort((a, b) => instrumentOrder(a.code) - instrumentOrder(b.code))
     .map((i) => ({
       instrumentId: i.id,
       code: i.code,
@@ -254,4 +328,73 @@ export function buildMarking(
       (m) => m.traineeId === traineeId && m.instrumentId === instrument.id && m.submittedAt,
     ),
   };
+}
+
+export interface TpPhaseView {
+  instrument: LocalInstrument;
+  criteria: CriterionRow[];
+}
+
+export interface TpMarkingView {
+  trainee: LocalTrainee;
+  slot: 'a1' | 'a2';
+  /** Theory first, Practical second — and only the phases still to be marked. */
+  phases: TpPhaseView[];
+  /** Where in `phases` the url the supervisor opened lands. */
+  startPhaseIndex: number;
+}
+
+/**
+ * Every TP phase still to be marked, Theory first.
+ *
+ * TP is two instruments and one trainee, but NOT one walk: the profile is the
+ * pre-assessment page and each lesson is opened from it on its own, in either
+ * order, on different days if that is how the visits fall. This is the list
+ * both the stepper and the profile's Submit button work from — the stepper to
+ * know whether the lesson it is showing ends at Save or at Submit, the
+ * profile to know whether the whole assessment can be sent.
+ *
+ * A phase already submitted is dropped rather than shown read-only: marks are
+ * append-only, so re-opening one could only mislead. A phase whose criteria
+ * have not reached this phone (an interrupted sync) is dropped too — the
+ * other one is still markable, and an empty form never is.
+ */
+export function buildTpPending(rows: DeviceRows, traineeId: string): TpMarkingView | null {
+  const trainee = rows.trainees.find((t) => t.id === traineeId);
+  if (!trainee || trainee.track !== 'TP') return null;
+
+  const assignment = rows.assignments.find((a) => a.traineeId === traineeId);
+  if (!assignment) return null;
+
+  const phases: TpPhaseView[] = [];
+  for (const code of TP_PHASE_CODES) {
+    const view = buildMarking(rows, traineeId, code);
+    if (!view || view.alreadySubmitted) continue;
+    phases.push({ instrument: view.instrument, criteria: view.criteria });
+  }
+
+  return { trainee, slot: assignment.slot, phases, startPhaseIndex: 0 };
+}
+
+/**
+ * The same list, positioned on the phase whose url the supervisor opened.
+ *
+ * Returns null when that phase is not one of the pending ones — an unknown
+ * code, the other track's instrument, or a lesson this supervisor has already
+ * submitted (which the mark screen reports in its own words).
+ */
+export function buildTpMarking(
+  rows: DeviceRows,
+  traineeId: string,
+  instrumentCode: string,
+): TpMarkingView | null {
+  if (!isTpPhaseCode(instrumentCode)) return null;
+
+  const pending = buildTpPending(rows, traineeId);
+  if (!pending) return null;
+
+  const startPhaseIndex = pending.phases.findIndex((p) => p.instrument.code === instrumentCode);
+  if (startPhaseIndex === -1) return null;
+
+  return { ...pending, startPhaseIndex };
 }

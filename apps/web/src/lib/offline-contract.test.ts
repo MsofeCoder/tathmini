@@ -129,7 +129,7 @@ describe('the device’s rows drive the screens completely', () => {
         status: t.status,
         ownSubmittedCount: t.ownSubmittedCount,
         requiredCount: t.requiredCount,
-        hasDraft: false,
+        draftProgress: t.draftProgress,
       })),
     );
 
@@ -138,7 +138,7 @@ describe('the device’s rows drive the screens completely', () => {
 
   it('counts an unsent local draft as in progress, which only the device knows', () => {
     const progress = routeProgress([
-      { status: 'pending', ownSubmittedCount: 0, requiredCount: 1, hasDraft: true },
+      { status: 'pending', ownSubmittedCount: 0, requiredCount: 1, draftProgress: 'complete' },
     ]);
     expect(progress.inProgress).toBe(1);
     expect(progress.notStarted).toBe(0);
