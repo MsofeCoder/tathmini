@@ -123,7 +123,12 @@ extracted so the two screens cannot drift.
   sent" invites them to mark the other half again.
 - The route list's filter pills are the departure from the earlier note that
   said this screen deliberately has none. The College asked; the note in
-  `route-list.tsx` now records that.
+  `route-list.tsx` now records that. The three-tile ASSESSED / IN PROGRESS /
+  NOT STARTED row that used to sit under the progress bar was then removed —
+  the pills carry the same counts and are tappable, so the tiles were
+  repeating the row below them. `routeProgress()` still returns all four
+  numbers; the test that pins the pills to the tiles is what keeps them
+  honest.
 
 **Verified by**
 `pnpm format:check && pnpm lint && pnpm test && pnpm typecheck` all green (435

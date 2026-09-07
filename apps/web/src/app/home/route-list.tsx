@@ -84,7 +84,12 @@ export function RouteList({ routeCode, routeLabel, trainees, loaded, syncedAt }:
   const draftTraineeIds = useDraftTraineeIds();
   const syncStatus = useSyncStatus();
 
-  const { assessed, inProgress, notStarted, pct } = useMemo(
+  // Only the headline pair is read here now. The three-tile ASSESSED / IN
+  // PROGRESS / NOT STARTED row below the bar was removed on 2026-09-07: the
+  // filter pills carry the same counts and are tappable, so the tiles were
+  // repeating a number the row underneath already showed. routeProgress still
+  // returns all four — the tests assert the pills against them.
+  const { assessed, pct } = useMemo(
     () =>
       routeProgress(
         trainees.map((t) => ({
@@ -203,21 +208,6 @@ export function RouteList({ routeCode, routeLabel, trainees, loaded, syncedAt }:
               Try again
             </button>
           ) : null}
-        </div>
-
-        <div className="mt-3 flex gap-2">
-          <div className="flex-1 rounded-[10px] border border-[#d5e6df] bg-[#f1f6f4] px-2.5 py-2">
-            <p className="text-[20px] font-bold text-[#1c6650]">{assessed}</p>
-            <p className="text-[10.5px] font-bold tracking-[0.4px] text-[#40614f]">ASSESSED</p>
-          </div>
-          <div className="flex-1 rounded-[10px] border border-[#f0dcb4] bg-[#fffaf0] px-2.5 py-2">
-            <p className="text-[20px] font-bold text-[#6b4400]">{inProgress}</p>
-            <p className="text-[10.5px] font-bold tracking-[0.4px] text-[#6b4400]">IN PROGRESS</p>
-          </div>
-          <div className="flex-1 rounded-[10px] border border-[#dae3e0] bg-[#f1f3f4] px-2.5 py-2">
-            <p className="text-[20px] font-bold text-[#4d5f6c]">{notStarted}</p>
-            <p className="text-[10.5px] font-bold tracking-[0.4px] text-[#4d5f6c]">NOT STARTED</p>
-          </div>
         </div>
       </div>
 
