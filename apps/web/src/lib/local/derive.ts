@@ -1,3 +1,4 @@
+import type { DraftMarksRow } from '../drafts';
 import type {
   LocalAssignment,
   LocalCriterion,
@@ -9,7 +10,7 @@ import type {
   SessionMeta,
 } from '../db';
 import { instrumentOrder, isTpPhaseCode, TP_PHASE_CODES, type CriterionRow } from '../marking';
-import { deriveStatus, type TraineeStatus } from '../trainees';
+import { deriveStatus, type DraftProgress, type TraineeStatus } from '../trainees';
 
 /**
  * Turning the device's rows into exactly what each screen already expected
@@ -54,6 +55,8 @@ export interface RouteListRow {
   status: TraineeStatus;
   ownSubmittedCount: number;
   requiredCount: number;
+  /** How far the unsent work on THIS device has got. See draftProgressFor(). */
+  draftProgress: DraftProgress;
 }
 
 /** How many instruments each track requires: TP 2 (theory + practical), IPT 1. */
@@ -83,6 +86,57 @@ function lockedByTrainee(results: LocalResult[]): Map<string, string | null> {
 }
 
 /**
+ * How far this device's unsent work on one trainee has got.
+ *
+ *   - `none` — nothing marked, or nothing left to mark.
+ *   - `partial` — some criteria scored, but not every one of every lesson
+ *     still to be submitted. This is work in progress in the plainest sense:
+ *     the supervisor has started and has not finished.
+ *   - `complete` — every criterion of every lesson still to be submitted
+ *     carries a score. The assessment is finished and is sitting on this
+ *     phone unsent: a DRAFT, whether or not the supervisor pressed anything
+ *     to make it one.
+ *
+ * The rule is the same one `tpReadyToSubmit` uses to decide whether the
+ * Submit button may appear, so a trainee reads as a draft on the route list
+ * exactly when their profile offers to send them.
+ */
+export function draftProgressFor({
+  trainee,
+  instruments,
+  criteria,
+  submittedInstrumentIds,
+  draftsByInstrument,
+}: {
+  trainee: LocalTrainee;
+  instruments: LocalInstrument[];
+  criteria: LocalCriterion[];
+  submittedInstrumentIds: Set<string>;
+  draftsByInstrument: Map<string, DraftMarksRow>;
+}): DraftProgress {
+  const pending = instruments.filter(
+    (i) => i.track === trainee.track && !submittedInstrumentIds.has(i.id),
+  );
+  if (pending.length === 0) return 'none';
+
+  let anyScored = false;
+  let allComplete = true;
+
+  for (const instrument of pending) {
+    const rows = criteria.filter((c) => c.instrumentId === instrument.id);
+    const marks = draftsByInstrument.get(instrument.id)?.marks ?? {};
+    const scored = rows.filter((c) => marks[c.id]?.score != null).length;
+    if (scored > 0) anyScored = true;
+    // A lesson whose criteria have not reached this phone can never be
+    // complete — an empty form is not a finished one.
+    if (rows.length === 0 || scored < rows.length) allComplete = false;
+  }
+
+  if (allComplete) return 'complete';
+  return anyScored ? 'partial' : 'none';
+}
+
+/**
  * The route list.
  *
  * Sorted by name — the one deliberate difference from the server-rendered
@@ -91,14 +145,22 @@ function lockedByTrainee(results: LocalResult[]): Map<string, string | null> {
  * random uuid, so leaving it unsorted would have shuffled a supervisor's
  * route on every sync. Alphabetical is also how the paper register reads.
  */
-export function buildRouteRows(rows: DeviceRows): RouteListRow[] {
+export function buildRouteRows(rows: DeviceRows, drafts: DraftMarksRow[] = []): RouteListRow[] {
   const required = requiredByTrack(rows.instruments);
   const submitted = submittedByTrainee(rows.marks);
   const locked = lockedByTrainee(rows.results);
 
+  const draftsByTrainee = new Map<string, Map<string, DraftMarksRow>>();
+  for (const draft of drafts) {
+    const byInstrument = draftsByTrainee.get(draft.traineeId) ?? new Map<string, DraftMarksRow>();
+    byInstrument.set(draft.instrumentId, draft);
+    draftsByTrainee.set(draft.traineeId, byInstrument);
+  }
+
   return rows.trainees
     .map((trainee) => {
-      const ownSubmittedCount = submitted.get(trainee.id)?.length ?? 0;
+      const submittedInstrumentIds = new Set(submitted.get(trainee.id) ?? []);
+      const ownSubmittedCount = submittedInstrumentIds.size;
       const requiredCount = required.get(trainee.track) ?? 0;
       return {
         id: trainee.id,
@@ -113,6 +175,13 @@ export function buildRouteRows(rows: DeviceRows): RouteListRow[] {
         }),
         ownSubmittedCount,
         requiredCount,
+        draftProgress: draftProgressFor({
+          trainee,
+          instruments: rows.instruments,
+          criteria: rows.criteria,
+          submittedInstrumentIds,
+          draftsByInstrument: draftsByTrainee.get(trainee.id) ?? new Map(),
+        }),
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name));

@@ -176,7 +176,7 @@ describe('routeProgress', () => {
     status: 'pending',
     ownSubmittedCount: 0,
     requiredCount: 2,
-    hasDraft: false,
+    draftProgress: 'none',
     ...over,
   });
 
@@ -214,16 +214,16 @@ describe('routeProgress', () => {
     expect(progress).toEqual({ assessed: 0, inProgress: 1, notStarted: 0, pct: 0 });
   });
 
-  it('counts a local draft as in progress', () => {
-    // The only signal available for a single-instrument IPT trainee.
-    const progress = routeProgress([trainee({ requiredCount: 1, hasDraft: true })]);
+  it('counts a local draft as in progress, finished or not', () => {
+    // The tile does not split the two; the filter pills do.
+    const progress = routeProgress([trainee({ requiredCount: 1, draftProgress: 'complete' })]);
 
     expect(progress).toEqual({ assessed: 0, inProgress: 1, notStarted: 0, pct: 0 });
   });
 
   it('does not double-count a draft on an already-assessed trainee', () => {
     const progress = routeProgress([
-      trainee({ status: 'partial', ownSubmittedCount: 2, hasDraft: true }),
+      trainee({ status: 'partial', ownSubmittedCount: 2, draftProgress: 'complete' }),
     ]);
 
     expect(progress).toEqual({ assessed: 1, inProgress: 0, notStarted: 0, pct: 100 });
@@ -259,26 +259,37 @@ describe('traineeCategory', () => {
     status: 'pending' as const,
     ownSubmittedCount: 0,
     requiredCount: 2,
-    hasDraft: false,
+    draftProgress: 'none' as const,
   };
 
-  it('counts a locked or partial trainee as assessed', () => {
+  // Assessed means the College has the marks. A finished assessment sitting
+  // on a phone has reached nobody, and calling it assessed is how a
+  // supervisor comes to believe a trainee is done when there is no record.
+  it('counts only submitted marks as assessed', () => {
     expect(traineeCategory({ ...base, status: 'locked' })).toBe('assessed');
     expect(traineeCategory({ ...base, status: 'partial' })).toBe('assessed');
+  });
+
+  // The state describes the marks, not the gesture: a trainee becomes a draft
+  // on the last criterion scored, whether or not anything was pressed.
+  it('counts a fully scored, unsent assessment as drafted', () => {
+    expect(traineeCategory({ ...base, draftProgress: 'complete' })).toBe('drafted');
+  });
+
+  it('counts a part-scored draft as in progress', () => {
+    expect(traineeCategory({ ...base, draftProgress: 'partial' })).toBe('in-progress');
   });
 
   it('counts a part-submitted track as in progress', () => {
     expect(traineeCategory({ ...base, ownSubmittedCount: 1 })).toBe('in-progress');
   });
 
-  it('counts an unsent local draft as drafted', () => {
-    expect(traineeCategory({ ...base, hasDraft: true })).toBe('drafted');
-  });
-
-  // Submitted work outranks a draft: to everyone but this phone, a trainee
-  // whose theory is already in is in progress.
-  it('prefers in progress over drafted when both are true', () => {
-    expect(traineeCategory({ ...base, ownSubmittedCount: 1, hasDraft: true })).toBe('in-progress');
+  // Finished work outranks the half-submitted track it completes: the pair is
+  // ready to send, which is what "draft" means here.
+  it('prefers drafted over in progress when the remaining lesson is finished', () => {
+    expect(traineeCategory({ ...base, ownSubmittedCount: 1, draftProgress: 'complete' })).toBe(
+      'drafted',
+    );
   });
 
   it('counts an untouched trainee as not started', () => {
@@ -292,11 +303,42 @@ describe('the filter buckets against the summary tiles', () => {
   // IN PROGRESS tile, and nothing may fall outside a bucket.
   it('splits the IN PROGRESS tile into drafted and in-progress, and nothing else', () => {
     const trainees = [
-      { status: 'locked' as const, ownSubmittedCount: 2, requiredCount: 2, hasDraft: false },
-      { status: 'partial' as const, ownSubmittedCount: 2, requiredCount: 2, hasDraft: false },
-      { status: 'pending' as const, ownSubmittedCount: 1, requiredCount: 2, hasDraft: false },
-      { status: 'pending' as const, ownSubmittedCount: 0, requiredCount: 1, hasDraft: true },
-      { status: 'pending' as const, ownSubmittedCount: 0, requiredCount: 2, hasDraft: false },
+      {
+        status: 'locked' as const,
+        ownSubmittedCount: 2,
+        requiredCount: 2,
+        draftProgress: 'none' as const,
+      },
+      {
+        status: 'partial' as const,
+        ownSubmittedCount: 2,
+        requiredCount: 2,
+        draftProgress: 'none' as const,
+      },
+      {
+        status: 'pending' as const,
+        ownSubmittedCount: 1,
+        requiredCount: 2,
+        draftProgress: 'none' as const,
+      },
+      {
+        status: 'pending' as const,
+        ownSubmittedCount: 0,
+        requiredCount: 1,
+        draftProgress: 'complete' as const,
+      },
+      {
+        status: 'pending' as const,
+        ownSubmittedCount: 0,
+        requiredCount: 2,
+        draftProgress: 'partial' as const,
+      },
+      {
+        status: 'pending' as const,
+        ownSubmittedCount: 0,
+        requiredCount: 2,
+        draftProgress: 'none' as const,
+      },
     ];
     const counts = { assessed: 0, 'in-progress': 0, drafted: 0, 'not-started': 0 };
     for (const t of trainees) counts[traineeCategory(t)] += 1;

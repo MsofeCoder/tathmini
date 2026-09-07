@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { signOut } from '@/app/home/actions';
 import { RouteList } from '@/app/home/route-list';
 import { buildRouteRows } from '@/lib/local/derive';
-import { useDeviceRows } from '@/lib/local/use-device';
+import { useDeviceRows, useDraftMarks } from '@/lib/local/use-device';
 
 /**
  * The supervisor's route list — rendered entirely from the device.
@@ -31,7 +31,11 @@ import { useDeviceRows } from '@/lib/local/use-device';
  */
 export function HomeScreen() {
   const rows = useDeviceRows();
-  const trainees = rows ? buildRouteRows(rows) : [];
+  // The unsent work on this phone, live. It is what tells a part-marked
+  // trainee (in progress) from one whose whole assessment is finished and
+  // waiting to be sent (draft).
+  const drafts = useDraftMarks();
+  const trainees = rows ? buildRouteRows(rows, drafts) : [];
   const role = rows?.session?.role;
 
   useEffect(() => {

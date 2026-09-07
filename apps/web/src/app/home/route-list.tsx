@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import {
+  categoryMeta,
   emptyFilterMessage,
   initials,
   matchesFilter,
@@ -12,10 +13,11 @@ import {
   traineeCategory,
   traineeFilterLabel,
   TRAINEE_FILTERS,
+  type DraftProgress,
   type TraineeFilter,
   type TraineeStatus,
 } from '@/lib/trainees';
-import { useDraftTraineeIds, useSyncStatus } from '@/lib/local/use-device';
+import { useSyncStatus } from '@/lib/local/use-device';
 import { requestSync } from '@/lib/sync/client';
 import { emptyRouteMessage } from '@/lib/local/route-status';
 
@@ -30,6 +32,8 @@ export interface RouteListTrainee {
   ownSubmittedCount: number;
   /** Instruments this trainee's track requires (TP: 2, IPT: 1). */
   requiredCount: number;
+  /** How far this device's unsent work on this trainee has got. */
+  draftProgress: DraftProgress;
 }
 
 export interface RouteListProps {
@@ -77,11 +81,10 @@ export function RouteList({ routeCode, routeLabel, trainees, loaded, syncedAt }:
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<TraineeFilter>('all');
 
-  // Live, so a trainee moves to "in progress" the moment the first score is
-  // tapped and back out when their marks drain — without this screen being
-  // reopened. The trainees themselves arrive the same way, from the same
-  // IndexedDB that Realtime writes into.
-  const draftTraineeIds = useDraftTraineeIds();
+  // The rows carry their own draft progress (see buildRouteRows), read live
+  // from the same IndexedDB the trainees come from — so a trainee moves into
+  // "In progress" on the first score tapped, into "Draft" on the last one,
+  // and out again when their marks drain, without this screen being reopened.
   const syncStatus = useSyncStatus();
 
   // Only the headline pair is read here now. The three-tile ASSESSED / IN
@@ -96,10 +99,10 @@ export function RouteList({ routeCode, routeLabel, trainees, loaded, syncedAt }:
           status: t.status,
           ownSubmittedCount: t.ownSubmittedCount,
           requiredCount: t.requiredCount,
-          hasDraft: draftTraineeIds.has(t.id),
+          draftProgress: t.draftProgress,
         })),
       ),
-    [trainees, draftTraineeIds],
+    [trainees],
   );
   const outstanding = trainees.length - assessed;
 
@@ -115,12 +118,12 @@ export function RouteList({ routeCode, routeLabel, trainees, loaded, syncedAt }:
           status: t.status,
           ownSubmittedCount: t.ownSubmittedCount,
           requiredCount: t.requiredCount,
-          hasDraft: draftTraineeIds.has(t.id),
+          draftProgress: t.draftProgress,
         }),
       );
     }
     return byId;
-  }, [trainees, draftTraineeIds]);
+  }, [trainees]);
 
   const filterCounts = useMemo(() => {
     const counts: Record<TraineeFilter, number> = {
@@ -293,7 +296,10 @@ export function RouteList({ routeCode, routeLabel, trainees, loaded, syncedAt }:
         ) : (
           <ul className="mt-4 flex flex-col gap-2.5">
             {matched.map((t) => {
-              const meta = statusMeta(t.status);
+              const category = categories.get(t.id) ?? 'not-started';
+              // A finished-but-unsent assessment must not wear the same badge
+              // as an untouched trainee — that was the whole complaint.
+              const meta = category === 'assessed' ? statusMeta(t.status) : categoryMeta(category);
               const track = trackChipStyle(t.track);
               return (
                 <li key={t.id}>

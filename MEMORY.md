@@ -47,6 +47,68 @@ the diff. This file is for knowledge that would otherwise be lost.
 
 ---
 
+## 2026-09-07 · bugfix · A trainee is "Draft" when the marks are finished, "Assessed" only when they are sent
+
+**Kind:** bugfix
+**Phase:** 1
+**Commit / PR:** (branch) claude/trainee-filters-tp-stepper-n86jj3 — PR #47
+
+**What changed**
+The route list's four buckets now describe where the WORK is, not which
+buttons were pressed:
+
+| State | Means |
+|---|---|
+| Not started | nothing marked |
+| In progress | started and not finished — a part-scored draft, or one lesson submitted and the other not |
+| **Draft** | every criterion of every lesson still to be submitted carries a score, and none of it has been sent |
+| **Assessed** | the marks are with the College |
+
+Two rules changed with it. `traineeCategory()` takes `draftProgress`
+('none' | 'partial' | 'complete') rather than a boolean `hasDraft`, computed by
+`draftProgressFor()` in `lib/local/derive.ts` from the criteria on the device
+and the drafts on the device. And the route-list ROW BADGE now follows the
+bucket for anything not yet assessed: "◐ Draft", "◔ In progress", "○ Not yet
+assessed". An assessed trainee keeps `statusMeta()`'s badge, which says which
+assessor the College is still waiting for.
+
+**Why this way**
+"Draft" was previously any trainee with a draft row of any kind, so a
+supervisor who had scored one criterion and a supervisor who had finished
+both lessons looked identical, and the distinction that matters in the field —
+*is this trainee ready to send?* — was invisible. Completeness is decided by
+the same rule `tpReadyToSubmit()` uses for the Submit button, so a trainee
+reads as a Draft on the route list exactly when their profile offers to send
+them.
+
+Assessed deliberately still means SUBMITTED MARKS, not a sent PDF report. The
+report is a separate flow with its own screen and its own outbox; a trainee
+whose marks are in but whose report has not gone would otherwise fall into no
+bucket at all (the drafts are cleared on submit). If the College means the
+report, that is a fifth state and a bigger change — flagged to the user rather
+than assumed.
+
+**Watch out for**
+- `routeProgress()` is unchanged and still counts any draft as "in progress":
+  its three numbers feed the headline "N of M trainees assessed" bar, and the
+  pills split its in-progress figure into Draft + In progress. The test
+  pinning the two together is what keeps them arithmetically the same claim.
+- `buildRouteRows(rows, drafts)` takes a second argument now. It defaults to
+  `[]`, which reads as "nothing unsent on this device" — correct for any
+  caller that has not got the drafts, but it means a caller who forgets them
+  shows every drafted trainee as not started.
+- Dexie untouched again: `listDraftMarks()` splits the existing
+  `${traineeId}:${instrumentId}` key of the existing `drafts` store. No new
+  store, no new version.
+- First-load JS 175 kB → **176 kB**, still inside the 180 KB budget.
+
+**Verified by**
+`pnpm format:check && pnpm lint && pnpm test && pnpm typecheck` green — 453
+Vitest cases in `apps/web`, including `draftProgressFor` through
+`buildRouteRows` (one lesson marked → partial; both → complete; a submitted
+lesson ignored; criteria missing from the phone never complete) and the
+rewritten `traineeCategory` suite. `pnpm --filter web build` clean at 176 kB.
+
 ## 2026-09-07 · feature · TP lessons unchained: each marked on its own, submitted when both are complete
 
 **Kind:** feature

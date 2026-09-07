@@ -3,7 +3,7 @@
 import { liveQuery } from 'dexie';
 import { useEffect, useState } from 'react';
 import { db, type SessionMeta } from '../db';
-import { traineeIdsWithDrafts } from '../drafts';
+import { listDraftMarks, traineeIdsWithDrafts, type DraftMarksRow } from '../drafts';
 import { getSyncStatus, subscribeSyncStatus, type SyncStatus } from '../sync/client';
 import { buildReportsView, waitingCount, type ReportsView } from './reports';
 import type { DeviceRows } from './derive';
@@ -79,6 +79,27 @@ export function useDeviceRows(): DeviceRows | undefined {
  * and folding it into the main read would re-run all seven tables against the
  * 50 ms tap budget in AGENTS.md.
  */
+/**
+ * Every draft on this device, live, split back into (trainee, instrument).
+ *
+ * `useDraftTraineeIds` answers "has this trainee been started"; the route list
+ * needs "how far", so that a finished-but-unsent assessment reads as a Draft
+ * and a part-marked one as In progress.
+ */
+export function useDraftMarks(): DraftMarksRow[] {
+  const [rows, setRows] = useState<DraftMarksRow[]>([]);
+
+  useEffect(() => {
+    const subscription = liveQuery(() => listDraftMarks()).subscribe({
+      next: setRows,
+      error: () => {},
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  return rows;
+}
+
 export function useDraftTraineeIds(): Set<string> {
   const [ids, setIds] = useState<Set<string>>(() => new Set());
 

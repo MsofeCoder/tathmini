@@ -474,3 +474,81 @@ describe('buildTpPending', () => {
     expect(buildTpPending(tp({ trainees: [trainee('t1', 'AMINA JUMA', 'IPT')] }), 't1')).toBeNull();
   });
 });
+
+describe('buildRouteRows — draft progress', () => {
+  const criteria = [
+    {
+      id: 'th1',
+      instrumentId: 'i-theory',
+      sectionCode: '1',
+      sectionLabel: 'LESSON PREPARATION',
+      sectionMax: 6,
+      itemCode: 'i',
+      itemLabel: 'Scheme of work',
+      itemMax: 1,
+      orderIndex: 1,
+    },
+    {
+      id: 'pr1',
+      instrumentId: 'i-practical',
+      sectionCode: '1',
+      sectionLabel: 'LESSON PREPARATION',
+      sectionMax: 15,
+      itemCode: 'i',
+      itemLabel: 'Scheme of work',
+      itemMax: 2,
+      orderIndex: 1,
+    },
+  ];
+
+  const scored = (traineeId: string, instrumentId: string, criterionId: string) => ({
+    traineeId,
+    instrumentId,
+    marks: { [criterionId]: { score: 1, comment: '' } },
+  });
+
+  const base = rows({ trainees: [trainee('t1', 'AMINA JUMA')], criteria });
+
+  it('is none with nothing marked', () => {
+    expect(buildRouteRows(base)[0]!.draftProgress).toBe('none');
+  });
+
+  // One lesson of two scored: started, not finished.
+  it('is partial when only one lesson is marked', () => {
+    const [row] = buildRouteRows(base, [scored('t1', 'i-theory', 'th1')]);
+    expect(row!.draftProgress).toBe('partial');
+  });
+
+  // The state describes the marks, not a button: this trainee is a Draft the
+  // moment the last criterion is scored.
+  it('is complete once every lesson still to be submitted is fully scored', () => {
+    const [row] = buildRouteRows(base, [
+      scored('t1', 'i-theory', 'th1'),
+      scored('t1', 'i-practical', 'pr1'),
+    ]);
+    expect(row!.draftProgress).toBe('complete');
+  });
+
+  it('ignores the lesson already submitted, so the remaining one alone completes it', () => {
+    const withSubmittedTheory = rows({
+      trainees: [trainee('t1', 'AMINA JUMA')],
+      criteria,
+      marks: [
+        { key: 't1:i-theory', traineeId: 't1', instrumentId: 'i-theory', submittedAt: 'now' },
+      ],
+    });
+    const [row] = buildRouteRows(withSubmittedTheory, [scored('t1', 'i-practical', 'pr1')]);
+    expect(row!.draftProgress).toBe('complete');
+  });
+
+  // An interrupted sync leaves a lesson with no criteria on this phone. An
+  // empty form is not a finished one.
+  it('is never complete when a lesson’s criteria have not reached this phone', () => {
+    const partialSync = rows({
+      trainees: [trainee('t1', 'AMINA JUMA')],
+      criteria: criteria.filter((c) => c.instrumentId === 'i-theory'),
+    });
+    const [row] = buildRouteRows(partialSync, [scored('t1', 'i-theory', 'th1')]);
+    expect(row!.draftProgress).toBe('partial');
+  });
+});

@@ -66,7 +66,10 @@ export function AssessmentActions({
         async ([instrumentId, criteria]) =>
           [
             instrumentId,
-            phaseComplete(criteria, (await loadDraft(draftKey(traineeId, instrumentId)))?.marks ?? {}),
+            phaseComplete(
+              criteria,
+              (await loadDraft(draftKey(traineeId, instrumentId)))?.marks ?? {},
+            ),
           ] as const,
       ),
     ).then((rows) => {
