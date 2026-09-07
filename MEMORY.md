@@ -47,6 +47,40 @@ the diff. This file is for knowledge that would otherwise be lost.
 
 ---
 
+## 2026-09-07 · feature · The section gate warning scrolls to the unmarked criterion
+
+**Kind:** feature
+**Phase:** 3
+**Commit / PR:** this branch
+
+**What changed**
+The "1 criterion is still unmarked in this section" warning on the TP stepper
+is now a button. Tapping it scrolls the first still-unscored sub-criterion of
+the section into view; tapping again walks to the next one, wrapping around.
+No copy changed — the sentence is still verbatim from the prototype's
+stepNext(), with a "Take me to it ›" affordance under it.
+
+**Why this way**
+The warning told a supervisor how many criteria were missing but not where,
+so on a 12-row section on a phone the only way to find them was to scroll and
+read every "Not yet scored" line. The anchor contract already existed
+(`#criterion-<id>` from `criterion-card.tsx`, which the IPT gap list uses), so
+this reuses it rather than inventing a second scroll mechanism.
+
+The target list is recomputed from `marks` at each tap, not captured when the
+warning appeared: by then some of the gaps may have been scored, and being
+sent to an already-marked row reads as a bug. If nothing is unmarked any more,
+the tap clears the now-stale warning instead of scrolling nowhere.
+
+**Watch out for**
+The whole alert box is the button, so the tap target is the message itself —
+keep `p-4` on the button rather than the wrapper, or the box loses its 44 px
+height. `role="alert"` stays on the wrapper so the warning is still announced.
+
+**Verified by**
+Manual check by the user on the field app (no automated test added; the gate
+copy itself is already covered by `marking.test.ts`).
+
 ## 2026-09-07 · bugfix · A trainee is "Draft" when the marks are finished, "Assessed" only when they are sent
 
 **Kind:** bugfix
