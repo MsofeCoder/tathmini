@@ -14,6 +14,7 @@ import {
   type MarksByCriterion,
 } from '@/lib/marking';
 import { clearDraft, draftKey, loadDraft, saveDraft } from '@/lib/drafts';
+import { navigateTo } from '@/lib/local/shell-navigation';
 import { db } from '@/lib/db';
 import { isReachable } from '@/lib/reachability';
 import { refreshReachability, useReachability } from '@/lib/local/use-reachable';
@@ -176,8 +177,9 @@ export function MarkingForm({
     setSubmitting(true);
     if (saveTimer.current) clearTimeout(saveTimer.current);
     await saveDraft(key, { marks, sectionComments, generalComment });
-    // A full navigation, not router.push — see the note in handleSubmit.
-    window.location.assign(backHref);
+    // See the note in handleSubmit. Saving a draft is not a submit, so this
+    // one pushes: Back to the form just saved is a reasonable thing to want.
+    navigateTo(backHref);
   }
 
   async function handleSubmit() {
@@ -257,13 +259,18 @@ export function MarkingForm({
       submittedAt: new Date().toISOString(),
     });
 
-    // A full navigation, not router.push. A client-side navigation fetches
-    // the target route's payload from the server; with signal that has just
-    // dropped, that fails and takes the app down at the worst possible moment
-    // — immediately after a submit, when the supervisor most needs to see
-    // their work land. The service worker answers a full navigation from the
-    // cached shell whether or not there is a connection.
-    window.location.assign(backHref);
+    // `navigateTo`, not a full page load and not next/navigation's router.
+    // The router is still wrong here — it fetches the target route's payload
+    // from the server, which fails on signal that has just dropped. But a
+    // full page load was wrong too: it reboots React, re-reads IndexedDB and
+    // rebuilds the Realtime socket, and the shell's first paint is
+    // route-independent, so the supervisor got a blank frame before the
+    // trainee screen appeared — arriving somewhere that looked like nowhere.
+    // `navigateTo` is a pushState and a re-render, touches no network at all,
+    // and the trainee screen re-derives from Dexie's liveQuery the moment the
+    // write lands. `replace` because Back must not return to the marking form
+    // of an assessment that has just been submitted.
+    navigateTo(backHref, { replace: true });
   }
 
   if (queued) {

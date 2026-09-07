@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { draftKey, loadDraft, type DraftState } from '@/lib/drafts';
+import { navigateTo } from '@/lib/local/shell-navigation';
 import { refreshReachability, useReachability } from '@/lib/local/use-reachable';
 import { submitTpAssessment } from '@/lib/submit-phase';
 import { tpReadyToSubmit, type TpSubmitPhase } from '@/lib/tp-submit';
@@ -107,7 +108,15 @@ export function TpSubmitButton({
       setQueued(true);
       return;
     }
-    window.location.reload();
+    // Was a reload, which is where the unpredictability came from: a reload
+    // returns to whatever url the phone is on and reboots React, so the
+    // screen went blank (the shell's first paint is route-independent),
+    // re-read IndexedDB, rebuilt the Realtime socket, and only then redrew —
+    // and where it landed depended on the url rather than on what had just
+    // happened. This says where to go instead. Nothing needs reloading:
+    // `useDeviceRows()` is a Dexie liveQuery, so the profile re-derives from
+    // the submitted mark on its own.
+    navigateTo(`/trainee/${traineeId}`, { replace: true });
   }
 
   // Waiting on the probe. Neither answer may be guessed: a Submit drawn for a

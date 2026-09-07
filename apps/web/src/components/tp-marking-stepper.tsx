@@ -17,6 +17,7 @@ import {
   type TpPhaseCode,
 } from '@/lib/marking';
 import { draftKey, loadDraft, saveDraft, type DraftState } from '@/lib/drafts';
+import { navigateTo } from '@/lib/local/shell-navigation';
 import { refreshReachability, useReachability } from '@/lib/local/use-reachable';
 import { submitTpAssessment } from '@/lib/submit-phase';
 import { tpReadyToSubmit, type TpSubmitPhase } from '@/lib/tp-submit';
@@ -331,7 +332,7 @@ export function TpMarkingStepper({
     if (readyToSubmit && !online) {
       setSubmitting(true);
       await flushDraft();
-      window.location.assign(backHref);
+      navigateTo(backHref);
       return;
     }
 
@@ -367,10 +368,18 @@ export function TpMarkingStepper({
         setQueued(true);
         return;
       }
-      // A full navigation, not router.push: a client-side one fetches the
-      // target route's payload from the server, which fails on signal that
-      // has just dropped — right after a submit, at the worst moment.
-      window.location.assign(backHref);
+      // `navigateTo`, not a full page load and not next/navigation's router.
+      // The router is still wrong here — it fetches the target route's payload
+      // from the server, which fails on signal that has just dropped. But a
+      // full page load was wrong too: it reboots React, re-reads IndexedDB and
+      // rebuilds the Realtime socket, and the shell's first paint is
+      // route-independent, so the supervisor got a blank frame before the
+      // trainee screen appeared — arriving somewhere that looked like nowhere.
+      // `navigateTo` is a pushState and a re-render, touches no network at
+      // all, and the trainee screen re-derives from Dexie's liveQuery the
+      // moment the write lands. `replace` because Back must not return to the
+      // marking form of an assessment that has just been submitted.
+      navigateTo(backHref, { replace: true });
       return;
     }
 
@@ -379,7 +388,7 @@ export function TpMarkingStepper({
     // back to this one another day.
     setSubmitting(true);
     await flushDraft();
-    window.location.assign(backHref);
+    navigateTo(backHref);
   }
 
   function stepNext() {
@@ -407,7 +416,7 @@ export function TpMarkingStepper({
       goToTop();
       return;
     }
-    window.location.assign(backHref);
+    navigateTo(backHref);
   }
 
   function jumpTo(targetStepIndex: number) {

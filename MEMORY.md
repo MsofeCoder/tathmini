@@ -216,6 +216,57 @@ the diff. This file is for knowledge that would otherwise be lost.
 
 ---
 
+## 2026-09-07 · bugfix · Leaving the marking and submit screens is an in-shell navigation, not a page load
+
+**Kind:** bugfix
+**Phase:** 1
+**Commit / PR:** (pushed to main)
+
+**What changed**
+Every "return to the trainee" in the marking flow now calls `navigateTo()`
+instead of doing a full page load:
+
+* `marking-form.tsx` — save-draft and post-submit
+* `tp-marking-stepper.tsx` — offline save, post-submit, plain save, and
+  stepping back off the first step
+* `tp-submit-button.tsx` — was `window.location.reload()`, now
+  `navigateTo('/trainee/<id>', { replace: true })`
+
+Post-submit navigations use `replace`; ordinary saves push.
+
+**Why this way**
+This is what made the routing feel unpredictable. `window.location.assign`
+and `reload` reboot React, and the shell's first paint is deliberately
+route-independent — `pathname` starts null and is filled in by an effect — so
+a supervisor got a blank frame before the trainee screen appeared, plus a
+re-read of IndexedDB and a torn-down and rebuilt Realtime socket every time.
+`reload` was worse than the others: it returns to whatever url the phone is
+on, so where the supervisor landed depended on the url rather than on what
+had just happened.
+
+The comments at those call sites argued for a full load over `router.push`,
+and that argument was right about the Next router — it fetches the target
+route's payload from the server, which is fatal on signal that has just
+dropped. It just did not notice that `navigateTo()` is neither: a
+`history.pushState` plus a re-render, touching no network at all. It is the
+mechanism `shell-navigation.ts` exists to provide, and the bottom nav and
+every in-app anchor already went through it.
+
+Nothing needed a reload to show the new state: `useDeviceRows()` is a Dexie
+`liveQuery`, so the profile re-derives the moment the submitted mark is
+written.
+
+**Watch out for**
+The four remaining `window.location.assign` calls are correct and must stay
+full navigations: a signed Storage url in `report-download-button.tsx` (twice),
+`/login` and the change-password route in `sync-provider.tsx`, and
+`/admin`/`/coordinator` in `home-screen.tsx` — all of them off the shell by
+design (AGENTS.md § The app shell, rule 7).
+
+**Not done in this change:** persisting the bottom nav on every screen was
+asked for and then withdrawn, once it was pointed out that the bar is absent
+while marking on purpose. `NAV_SCREENS` in `app-shell.tsx` is untouched.
+
 ## 2026-09-07 · feature · Submit-page notes removed; the correction request no longer asks "How do you know?"
 
 **Kind:** feature
