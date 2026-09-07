@@ -89,6 +89,12 @@ config and therefore no path alias: a module that reaches the server action
 cannot be unit-tested. What decides whether an assessment may be sent must be.
 
 **Watch out for**
+- A lesson whose draft is fully scored now shows on the profile as a green
+  "TP Theory marked ✓ · 👁 Review" button instead of "Start TP Theory
+  Assessment". It is a link back into the same paginated lesson, not a badge:
+  nothing has been sent, and it must never read like "Submitted". The four
+  states on that page are now Start · Marked · Waiting to send · Submitted,
+  and only the last comes from the server.
 - **Dexie is untouched.** No new store, no new version, no renumbering: the
   drafts are the same `drafts` rows keyed per (trainee, instrument) that the
   long form has always written, which is exactly why a lesson can wait days

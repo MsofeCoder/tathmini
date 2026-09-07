@@ -135,7 +135,20 @@ export function TraineeScreen({ traineeId }: { traineeId: string }) {
 
         {view.canAssess ? (
           <>
-            <AssessmentActions traineeId={trainee.id} actions={view.actions} />
+            <AssessmentActions
+              traineeId={trainee.id}
+              actions={view.actions}
+              /* Lets a fully marked lesson show as marked rather than as
+                 "Start" — TP only; IPT has one instrument and no page to
+                 come back to. */
+              criteriaByInstrument={
+                tpPending
+                  ? Object.fromEntries(
+                      tpPending.phases.map((phase) => [phase.instrument.id, phase.criteria]),
+                    )
+                  : undefined
+              }
+            />
             {/* This screen is the pre-assessment page: the two TP lessons are
                 started from it in either order and each one comes back here.
                 The send lives here as well as at the end of a lesson, so a

@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { draftKey } from '@/lib/drafts';
+import { draftKey, loadDraft } from '@/lib/drafts';
+import type { CriterionRow } from '@/lib/marking';
 import { listQueued } from '@/lib/outbox';
+import { phaseComplete } from '@/lib/tp-submit';
 import { ReportPreviewButton } from './report-preview';
 
 export interface AssessmentAction {
@@ -14,23 +16,67 @@ export interface AssessmentAction {
 }
 
 /**
- * Per-instrument Start / Submitted / Waiting-to-send buttons for the
- * trainee profile.
+ * Per-instrument buttons on the trainee profile — the pre-assessment page.
  *
- * The submitted state comes from the server, but "waiting to send" can only
- * be known on the device — a submission queued offline exists nowhere else
- * yet. Without this the profile would still say "Start", and a supervisor
- * who marked a trainee in a dead zone would have no way to tell their work
- * was captured, and would reasonably mark them a second time.
+ * Four states, and each one is a different thing to a supervisor standing in
+ * front of a trainee:
+ *
+ *   - **Start** — nothing marked yet.
+ *   - **Marked ✓** — every criterion of that lesson carries a score and the
+ *     draft is saved on this phone, but nothing has been sent. TP lessons are
+ *     marked one at a time and submitted together, so this state can last
+ *     days, and it is the one the profile most needs to show: without it a
+ *     finished lesson still read "Start", and a supervisor with two visits
+ *     behind them had no way to see which one was done. It is a button, not a
+ *     badge — it reopens the same paginated lesson to look the scores over or
+ *     change one before sending.
+ *   - **Waiting to send** — submitted while offline; the outbox holds it.
+ *   - **Submitted ✓** — on the server, read-only.
+ *
+ * Only the last of those comes from the server. Marked and Waiting are both
+ * device-only facts: a saved draft and a queued submission exist nowhere else
+ * yet, and a supervisor who cannot see them will reasonably mark the trainee
+ * a second time.
  */
 export function AssessmentActions({
   traineeId,
   actions,
+  criteriaByInstrument,
 }: {
   traineeId: string;
   actions: AssessmentAction[];
+  /**
+   * The criteria of each instrument still to be submitted, so a saved draft
+   * can be told apart from a half-finished one. Absent for IPT, which is one
+   * instrument with no pre-assessment page to come back to.
+   */
+  criteriaByInstrument?: Record<string, CriterionRow[]>;
 }) {
   const [queuedInstrumentIds, setQueuedInstrumentIds] = useState<Set<string>>(new Set());
+  const [markedInstrumentIds, setMarkedInstrumentIds] = useState<Set<string>>(new Set());
+
+  // Which lessons are fully marked on this phone. Read once per profile
+  // render: a lesson is saved by a full navigation back to this page, so
+  // there is nothing to subscribe to.
+  useEffect(() => {
+    if (!criteriaByInstrument) return;
+    let cancelled = false;
+    Promise.all(
+      Object.entries(criteriaByInstrument).map(
+        async ([instrumentId, criteria]) =>
+          [
+            instrumentId,
+            phaseComplete(criteria, (await loadDraft(draftKey(traineeId, instrumentId)))?.marks ?? {}),
+          ] as const,
+      ),
+    ).then((rows) => {
+      if (cancelled) return;
+      setMarkedInstrumentIds(new Set(rows.filter(([, complete]) => complete).map(([id]) => id)));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [traineeId, criteriaByInstrument]);
 
   useEffect(() => {
     void listQueued().then((queued) => {
@@ -64,6 +110,27 @@ export function AssessmentActions({
                 />
               </span>
             </div>
+          );
+        }
+        if (markedInstrumentIds.has(action.instrumentId)) {
+          // Green, ticked, and still a way in. The eye says what tapping it
+          // does: look the lesson over. Nothing has been sent, so this is not
+          // "Submitted" and must never read like it.
+          return (
+            <a
+              key={action.code}
+              href={`/trainee/${traineeId}/mark/${action.code}`}
+              className="focus:outline-accent flex min-h-[52px] items-center justify-between gap-2 rounded-xl border border-[#b9d3c8] bg-[#e2f0ea] px-4 text-[15px] font-bold text-[#1c6650] focus:outline focus:outline-[3px] focus:outline-offset-2"
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                <span aria-hidden="true">✓</span>
+                <span className="truncate">{action.label} marked</span>
+              </span>
+              <span className="flex shrink-0 items-center gap-1.5 text-[13px] font-semibold">
+                <span aria-hidden="true">👁</span>
+                Review
+              </span>
+            </a>
           );
         }
         if (queuedInstrumentIds.has(action.instrumentId)) {
