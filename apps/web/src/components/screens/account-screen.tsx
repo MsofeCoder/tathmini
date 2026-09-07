@@ -64,11 +64,6 @@ export function AccountScreen() {
           </div>
         </div>
 
-        <p className="mt-4 text-[12.5px] leading-relaxed text-[#5f6f7c]">
-          Your account is issued by the Administrator. If you need your password changed, or you
-          believe someone else knows it, contact the Administrator.
-        </p>
-
         <form action={signOutAndClearDevice} className="mt-4">
           <button
             type="submit"
@@ -77,11 +72,6 @@ export function AccountScreen() {
             Sign out
           </button>
         </form>
-
-        <p className="mt-3 text-[12.5px] leading-relaxed text-[#5f6f7c]">
-          Anything you have marked but not yet sent stays on this phone and is listed under Pending.
-          Check it is empty before you sign out.
-        </p>
       </div>
     </main>
   );

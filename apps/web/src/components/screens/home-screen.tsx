@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect } from 'react';
-import { signOut } from '@/app/home/actions';
 import { RouteList } from '@/app/home/route-list';
 import { buildRouteRows } from '@/lib/local/derive';
 import { useDeviceRows } from '@/lib/local/use-device';
@@ -54,16 +53,6 @@ export function HomeScreen() {
         loaded={rows !== undefined}
         syncedAt={rows?.session?.syncedAt ?? null}
       />
-      <div className="p-4">
-        <form action={signOut}>
-          <button
-            type="submit"
-            className="focus:outline-accent min-h-[48px] w-full rounded-xl border border-[#e0b6ab] bg-white text-[15px] font-semibold text-[#8a3a2a] focus:outline focus:outline-[3px] focus:outline-offset-2"
-          >
-            Sign out
-          </button>
-        </form>
-      </div>
     </div>
   );
 }

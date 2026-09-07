@@ -133,18 +133,6 @@ function Empty({ title, detail }: { title: string; detail: string }) {
   );
 }
 
-/** Said once per list rather than per row — the preview is the only thing on
- * this screen that cannot work in a dead zone, and thirty repetitions of it
- * would be noise. */
-function NeedsSignalNote() {
-  return (
-    <p className="mt-3 text-[12px] leading-relaxed text-[#5f6f7c]">
-      A preview is built by the College server from the marks it holds, so it needs a connection.
-      Everything else on this screen is read from this phone and works without one.
-    </p>
-  );
-}
-
 /**
  * A plain anchor, never `next/link` — the shell intercepts it and swaps the
  * screen without touching the network. `next/link` would fetch the target
@@ -181,36 +169,25 @@ function DraftedList({ rows }: { rows: DraftedRow[] }) {
   }
 
   return (
-    <>
-      <p className="rounded-lg bg-[#fff8ec] px-3 py-2 text-[12.5px] font-semibold leading-relaxed text-[#7a5a12]">
-        {rows.length === 1 ? 'This report is' : `These ${rows.length} reports are`} waiting for you.
-        Nothing sends them automatically — open the trainee and send when you are ready. Each will
-        be dated the day you send it.
-      </p>
-      <ul className="mt-2.5 flex flex-col gap-2.5">
-        {rows.map((row) => (
-          <li
-            key={row.traineeId}
-            className="rounded-2xl border border-[#e0c39a] bg-[#fff8ec] p-3.5"
-          >
-            <p className="text-[15px] font-semibold text-[#14232e]">{row.traineeName}</p>
-            <p className="mt-0.5 text-[12.5px] text-[#7a5a12]">
-              Saved as a draft {describeAge(row.savedAt)}
-            </p>
-            {row.note ? (
-              <p className="mt-1.5 text-[12.5px] leading-relaxed text-[#5a4212]">{row.note}</p>
-            ) : null}
-            <ReportPreviewButton traineeId={row.traineeId} />
-            <OpenTraineeLink
-              traineeId={row.traineeId}
-              label="Open and send"
-              tone="border border-[#12665b] text-[#12665b]"
-            />
-          </li>
-        ))}
-      </ul>
-      <NeedsSignalNote />
-    </>
+    <ul className="mt-2.5 flex flex-col gap-2.5">
+      {rows.map((row) => (
+        <li key={row.traineeId} className="rounded-2xl border border-[#e0c39a] bg-[#fff8ec] p-3.5">
+          <p className="text-[15px] font-semibold text-[#14232e]">{row.traineeName}</p>
+          <p className="mt-0.5 text-[12.5px] text-[#7a5a12]">
+            Saved as a draft {describeAge(row.savedAt)}
+          </p>
+          {row.note ? (
+            <p className="mt-1.5 text-[12.5px] leading-relaxed text-[#5a4212]">{row.note}</p>
+          ) : null}
+          <ReportPreviewButton traineeId={row.traineeId} />
+          <OpenTraineeLink
+            traineeId={row.traineeId}
+            label="Open and send"
+            tone="border border-[#12665b] text-[#12665b]"
+          />
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -225,34 +202,26 @@ function SubmittedList({ rows }: { rows: SubmittedRow[] }) {
   }
 
   return (
-    <>
-      <p className="rounded-lg bg-[#f1f8f4] px-3 py-2 text-[12.5px] font-semibold leading-relaxed text-[#1c6650]">
-        {rows.length === 1 ? 'This assessment has' : `These ${rows.length} assessments have`}{' '}
-        reached the College. There is nothing left to do for them — do not mark these trainees
-        again.
-      </p>
-      <ul className="mt-2.5 flex flex-col gap-2.5">
-        {rows.map((row) => (
-          <li key={row.traineeId} className="rounded-2xl border border-[#cfe3d8] bg-white p-3.5">
-            <p className="text-[15px] font-semibold text-[#14232e]">{row.traineeName}</p>
-            <p className="mt-0.5 text-[12.5px] text-[#1c6650]">
-              {row.sentAt !== null
-                ? `Report sent ${describeAge(row.sentAt)}`
-                : row.marksComplete
-                  ? 'Marks submitted. Report not sent from this phone.'
-                  : 'Marks submitted.'}
-            </p>
-            <ReportPreviewButton traineeId={row.traineeId} />
-            <OpenTraineeLink
-              traineeId={row.traineeId}
-              label="Open the trainee"
-              tone="border border-[#ccd7d4] text-[#3c4c58]"
-            />
-          </li>
-        ))}
-      </ul>
-      <NeedsSignalNote />
-    </>
+    <ul className="mt-2.5 flex flex-col gap-2.5">
+      {rows.map((row) => (
+        <li key={row.traineeId} className="rounded-2xl border border-[#cfe3d8] bg-white p-3.5">
+          <p className="text-[15px] font-semibold text-[#14232e]">{row.traineeName}</p>
+          <p className="mt-0.5 text-[12.5px] text-[#1c6650]">
+            {row.sentAt !== null
+              ? `Report sent ${describeAge(row.sentAt)}`
+              : row.marksComplete
+                ? 'Marks submitted. Report not sent from this phone.'
+                : 'Marks submitted.'}
+          </p>
+          <ReportPreviewButton traineeId={row.traineeId} />
+          <OpenTraineeLink
+            traineeId={row.traineeId}
+            label="Open the trainee"
+            tone="border border-[#ccd7d4] text-[#3c4c58]"
+          />
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -297,7 +266,6 @@ function PendingList({ rows }: { rows: PendingRow[] }) {
           </li>
         ))}
       </ul>
-      <NeedsSignalNote />
     </>
   );
 }

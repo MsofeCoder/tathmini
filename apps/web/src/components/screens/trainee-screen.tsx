@@ -86,12 +86,6 @@ export function TraineeScreen({ traineeId }: { traineeId: string }) {
           ))}
         </div>
 
-        <p className="mt-3 text-[12.5px] leading-relaxed text-[#5f6f7c]">
-          Every particular above is pre-loaded from the College register and read-only, so the
-          printed report carries the full VETA heading without the supervisor typing anything in the
-          field.
-        </p>
-
         {/*
           Read-only does not mean unchallengeable. The person who notices a wrong
           e-mail address is the supervisor standing in front of the trainee, and
