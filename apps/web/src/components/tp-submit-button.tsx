@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { draftKey, loadDraft, type DraftState } from '@/lib/drafts';
+import { refreshReachability, useReachability } from '@/lib/local/use-reachable';
 import { submitTpAssessment } from '@/lib/submit-phase';
 import { tpReadyToSubmit, type TpSubmitPhase } from '@/lib/tp-submit';
 
@@ -23,6 +24,13 @@ import { tpReadyToSubmit, type TpSubmitPhase } from '@/lib/tp-submit';
  * Reads the device only — the drafts are in the same Dexie `drafts` store
  * they have always been in, keyed per (trainee, instrument). No store, no
  * version, no network.
+ *
+ * WITH NO CONNECTION there is no Submit. Nothing replays a queue on reconnect
+ * any more, so a Submit tapped in a workshop would leave two lessons' marks
+ * sitting in a list nobody is watching while the supervisor walked away
+ * believing the College had them. What is offered instead is the truth: both
+ * lessons are already saved as a draft on this phone, and this is the screen
+ * to come back to.
  */
 export function TpSubmitButton({
   traineeId,
@@ -39,6 +47,8 @@ export function TpSubmitButton({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [queued, setQueued] = useState(false);
+  const reachability = useReachability();
+  const online = reachability === 'online';
 
   useEffect(() => {
     let cancelled = false;
@@ -60,9 +70,15 @@ export function TpSubmitButton({
       <div className="mt-4 rounded-xl border border-[#f0dcb4] bg-[#fffaf0] px-4 py-3.5">
         <p className="text-[13px] font-bold text-[#6b4400]">Waiting to send</p>
         <p className="mt-1.5 text-[13px] leading-relaxed text-[#6b4400]">
-          There is no signal right now. Both lessons are stored on this phone and will send
-          themselves when there is a connection — you do not need to mark this trainee again.
+          The connection went before this could be sent. Both lessons are stored on this phone —
+          open Reports when you have signal and tap Send. Do not mark this trainee again.
         </p>
+        <a
+          href="/reports"
+          className="focus:outline-accent mt-3 flex min-h-[44px] items-center justify-center rounded-xl border border-[#b8863a] bg-white text-[14px] font-semibold text-[#6b4400] focus:outline focus:outline-[3px] focus:outline-offset-2"
+        >
+          Go to Reports
+        </a>
       </div>
     );
   }
@@ -87,10 +103,30 @@ export function TpSubmitButton({
       return;
     }
     if (result.kind === 'queued') {
+      void refreshReachability();
       setQueued(true);
       return;
     }
     window.location.reload();
+  }
+
+  // Waiting on the probe. Neither answer may be guessed: a Submit drawn for a
+  // quarter of a second offline is a Submit somebody taps.
+  if (reachability === 'checking') return <div className="mt-4 min-h-[52px]" aria-hidden="true" />;
+
+  if (!online) {
+    return (
+      <div className="mt-4 rounded-xl border border-[#e0c39a] bg-[#fff8ec] px-4 py-3.5">
+        <p className="text-[13px] font-bold text-[#7a5a12]">
+          Both lessons are marked — saved as a draft
+        </p>
+        <p className="mt-1.5 text-[13px] leading-relaxed text-[#5a4212]">
+          There is no connection, so this cannot be submitted yet. Every score is held on this phone
+          and nothing will be lost. Come back to this screen when you have signal and the Submit
+          button will be here.
+        </p>
+      </div>
+    );
   }
 
   return (

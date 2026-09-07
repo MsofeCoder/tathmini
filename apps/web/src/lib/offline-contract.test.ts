@@ -56,6 +56,7 @@ function device(trainees: LocalTrainee[], overrides: Partial<DeviceRows> = {}): 
     marks: [],
     results: [],
     reports: [],
+    sentReports: [],
     session: null,
     ...overrides,
   };

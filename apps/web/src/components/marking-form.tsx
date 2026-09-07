@@ -16,6 +16,7 @@ import {
 import { clearDraft, draftKey, loadDraft, saveDraft } from '@/lib/drafts';
 import { db } from '@/lib/db';
 import { isReachable } from '@/lib/reachability';
+import { refreshReachability, useReachability } from '@/lib/local/use-reachable';
 import { enqueueSubmission } from '@/lib/outbox';
 import type { SubmitAssessmentInput } from '@/lib/submission';
 import { submitAssessment } from '@/app/actions/submit-assessment';
@@ -70,6 +71,18 @@ export function MarkingForm({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [queued, setQueued] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /**
+   * Whether this assessment can be sent at all right now.
+   *
+   * With no connection the footer offers "Save draft" and nothing else. The
+   * app no longer replays a queue when signal returns, so a Submit tapped in a
+   * workshop would put the marks somewhere nobody is watching — and the
+   * supervisor would walk away believing the College had them. The draft is
+   * the honest offer: it is already being written on every tap, and this makes
+   * that the button.
+   */
+  const reachability = useReachability();
+  const online = reachability === 'online';
 
   // Restore a local draft (crash/reload survival), then start autosaving.
   useEffect(() => {
@@ -150,6 +163,23 @@ export function MarkingForm({
       ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
+  /**
+   * "Save draft" — the only thing offered with no connection.
+   *
+   * The draft is already written on a 400 ms timer after every tap, so this
+   * adds no new store and no new state; what it adds is a definite end to the
+   * screen. Flushing now rather than waiting for that timer matters because
+   * the supervisor is about to leave, and a phone that dies in the next second
+   * would otherwise lose the last criterion they scored.
+   */
+  async function handleSaveDraft() {
+    setSubmitting(true);
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    await saveDraft(key, { marks, sectionComments, generalComment });
+    // A full navigation, not router.push — see the note in handleSubmit.
+    window.location.assign(backHref);
+  }
+
   async function handleSubmit() {
     if (gaps.length > 0) {
       setGapsShown(true);
@@ -202,6 +232,7 @@ export function MarkingForm({
       // so queue them rather than making the supervisor stand in a dead zone.
       // The draft deliberately stays until the outbox confirms it sent.
       await enqueueSubmission({ key, payload, traineeName, instrumentLabel });
+      void refreshReachability();
       setSubmitting(false);
       setQueued(true);
       return;
@@ -417,15 +448,29 @@ export function MarkingForm({
         </section>
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 flex gap-2.5 border-t border-[#e1e9e6] bg-[#eceff0] p-4">
-        <button
-          type="button"
-          onClick={handleSubmit}
-          disabled={submitting}
-          className="focus:outline-accent min-h-[52px] flex-1 rounded-xl bg-[#12665b] text-[16px] font-bold text-white focus:outline focus:outline-[3px] focus:outline-offset-2 disabled:opacity-60"
-        >
-          {submitting ? 'Submitting…' : 'Submit assessment'}
-        </button>
+      <div className="fixed bottom-0 left-0 right-0 border-t border-[#e1e9e6] bg-[#eceff0] p-4">
+        {!online && reachability !== 'checking' ? (
+          <p className="mb-2.5 rounded-lg bg-[#fff2d8] px-3 py-2 text-[12.5px] font-semibold leading-relaxed text-[#6b4400]">
+            No connection. Save a draft — it stays on this phone, and you submit it from the trainee
+            or from Reports once you have signal.
+          </p>
+        ) : null}
+        <div className="flex gap-2.5">
+          <button
+            type="button"
+            onClick={online ? handleSubmit : () => void handleSaveDraft()}
+            disabled={submitting || reachability === 'checking'}
+            className="focus:outline-accent min-h-[52px] flex-1 rounded-xl bg-[#12665b] text-[16px] font-bold text-white focus:outline focus:outline-[3px] focus:outline-offset-2 disabled:opacity-60"
+          >
+            {submitting
+              ? online
+                ? 'Submitting…'
+                : 'Saving…'
+              : online
+                ? 'Submit assessment'
+                : 'Save draft'}
+          </button>
+        </div>
       </div>
     </main>
   );
@@ -453,9 +498,9 @@ export function QueuedConfirmation({
           There is no signal right now
         </h1>
         <p className="mt-3 text-[13.5px] leading-relaxed text-[#3c4c58]">
-          Your complete {instrumentLabel} assessment is stored safely on this phone. It will send
-          itself as soon as there is a connection — you do not need to keep this screen open, and
-          you do not need to mark this trainee again.
+          Your complete {instrumentLabel} assessment is stored safely on this phone. Nothing sends
+          on its own: open Reports when you have a connection and tap Send. Do not mark this trainee
+          again.
         </p>
         <a
           href={returnHref}

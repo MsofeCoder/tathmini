@@ -7,6 +7,7 @@ import type {
   LocalReport,
   LocalResult,
   LocalTrainee,
+  SentReportRecord,
   SessionMeta,
 } from '../db';
 import { instrumentOrder, isTpPhaseCode, TP_PHASE_CODES, type CriterionRow } from '../marking';
@@ -42,6 +43,16 @@ export interface DeviceRows {
   marks: LocalMark[];
   results: LocalResult[];
   reports: LocalReport[];
+  /**
+   * On-device receipts for reports that have actually left this phone.
+   *
+   * Part of the replica's read set rather than a separate concern, because
+   * `buildProfile` cannot answer "has this one already been sent" without it.
+   * The server's `reports` row is the authority, but it arrives on the next
+   * full sync — seconds later at best, and not at all until there is signal —
+   * and the supervisor is looking at the trainee NOW. See `alreadySentAt`.
+   */
+  sentReports: SentReportRecord[];
   session: SessionMeta | null;
 }
 
@@ -205,7 +216,10 @@ export interface ProfileView {
   canAssess: boolean;
   /** Every instrument this track requires carries this supervisor's mark. */
   ownSlotComplete: boolean;
-  /** When this assessor already sent their report, if they have. */
+  /**
+   * When this assessor already sent their report, if they have — from the
+   * server's row or this phone's own receipt, whichever is available.
+   */
   alreadySentAt: string | null;
   maxTotalByCode: Map<string, number>;
 }
@@ -256,9 +270,36 @@ export function buildProfile(rows: DeviceRows, traineeId: string): ProfileView |
     // what makes a report available, so an absent second assessor never
     // blocks it.
     ownSlotComplete: !!assignment && actions.length > 0 && actions.every((a) => a.submitted),
-    alreadySentAt: rows.reports.find((r) => r.traineeId === traineeId)?.generatedAt ?? null,
+    alreadySentAt: reportSentAt(rows, traineeId),
     maxTotalByCode: new Map(rows.instruments.map((i) => [i.code, i.maxTotal])),
   };
+}
+
+/**
+ * When this supervisor's report for a trainee was sent — or null if it never
+ * was.
+ *
+ * TWO sources, and both are needed. `rows.reports` is the server's own row,
+ * replicated down: it is the authority, it survives a reinstall, and it is
+ * what a second device would see. `rows.sentReports` is the receipt this
+ * phone wrote the moment the server confirmed the send.
+ *
+ * Reading only the server row is the bug this function exists to fix. A
+ * supervisor would send a report, watch it download, walk back to their route
+ * and open the same trainee — and be offered "Submit and send report" all
+ * over again, because the `reports` row had not synced down yet (and, with no
+ * signal, would not for hours). The whole point of the send being irreversible
+ * is that the app must never invite it twice.
+ *
+ * The server's timestamp WINS when both exist, so the date on this screen is
+ * the date printed on the report itself rather than the moment this phone
+ * happened to notice.
+ */
+export function reportSentAt(rows: DeviceRows, traineeId: string): string | null {
+  const server = rows.reports.find((r) => r.traineeId === traineeId)?.generatedAt;
+  if (server) return server;
+  const receipt = rows.sentReports.find((r) => r.key === traineeId);
+  return receipt ? new Date(receipt.sentAt).toISOString() : null;
 }
 
 export interface MarkingView {

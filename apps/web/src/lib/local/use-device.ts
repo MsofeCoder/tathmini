@@ -26,17 +26,32 @@ import type { DeviceRows } from './derive';
 /** Everything the screens read. Small by design — a route is tens of trainees
  * and the criteria are 89 rows shared by everyone. */
 export async function readDeviceRows(): Promise<DeviceRows> {
-  const [trainees, assignments, instruments, criteria, marks, results, reports, session] =
-    await Promise.all([
-      db.trainees.toArray(),
-      db.assignments.toArray(),
-      db.instruments.toArray(),
-      db.criteria.toArray(),
-      db.marks.toArray(),
-      db.results.toArray(),
-      db.reports.toArray(),
-      db.meta.get('session') as Promise<SessionMeta | undefined>,
-    ]);
+  const [
+    trainees,
+    assignments,
+    instruments,
+    criteria,
+    marks,
+    results,
+    reports,
+    sentReports,
+    session,
+  ] = await Promise.all([
+    db.trainees.toArray(),
+    db.assignments.toArray(),
+    db.instruments.toArray(),
+    db.criteria.toArray(),
+    db.marks.toArray(),
+    db.results.toArray(),
+    db.reports.toArray(),
+    // Small, and written once per report rather than per tap, so it belongs in
+    // the main read: without it `buildProfile` cannot tell that a report has
+    // already gone until the server's own row syncs down, and offers the send
+    // a second time. Being in this read set is also what makes the trainee
+    // screen flip to "already sent" the instant the receipt is written.
+    db.sentReports.toArray(),
+    db.meta.get('session') as Promise<SessionMeta | undefined>,
+  ]);
 
   return {
     trainees,
@@ -46,6 +61,7 @@ export async function readDeviceRows(): Promise<DeviceRows> {
     marks,
     results,
     reports,
+    sentReports,
     session: session ?? null,
   };
 }
@@ -132,14 +148,22 @@ export function useReportsView(): ReportsView | undefined {
 
   useEffect(() => {
     const subscription = liveQuery(async () => {
-      const [rows, drafts, queuedMarks, queuedReports, sentReports] = await Promise.all([
+      const [rows, drafts, queuedMarks, queuedReports] = await Promise.all([
         readDeviceRows(),
         db.reportDrafts.toArray(),
         db.outbox.toArray(),
         db.reportOutbox.toArray(),
-        db.sentReports.toArray(),
       ]);
-      return buildReportsView({ rows, drafts, queuedMarks, queuedReports, sentReports });
+      // `sentReports` now comes down with the rest of the replica read rather
+      // than as a ninth query — one source, so this screen and the trainee
+      // profile can never disagree about whether a report has gone.
+      return buildReportsView({
+        rows,
+        drafts,
+        queuedMarks,
+        queuedReports,
+        sentReports: rows.sentReports,
+      });
     }).subscribe({
       next: setView,
       // A failed read leaves the last good lists on screen rather than

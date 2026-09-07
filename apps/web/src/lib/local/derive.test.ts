@@ -56,6 +56,7 @@ function rows(overrides: Partial<DeviceRows> = {}): DeviceRows {
     marks: [],
     results: [],
     reports: [],
+    sentReports: [],
     session: {
       key: 'session',
       userId: 'u1',
@@ -237,6 +238,48 @@ describe('buildProfile', () => {
       't1',
     )!;
     expect(view.alreadySentAt).toBe('2026-09-06T09:00:00Z');
+  });
+
+  /**
+   * The bug this pair of tests exists for. A supervisor sent a report, watched
+   * it download, walked back to their route and opened the same trainee — and
+   * was offered the whole send flow again, because the server's `reports` row
+   * had not synced down yet and nothing else was consulted. With no signal it
+   * would not sync for hours, which is exactly when it matters.
+   */
+  it('treats this phone\u2019s own send receipt as already sent, before the server row arrives', () => {
+    const view = buildProfile(
+      rows({
+        trainees: [trainee('t1', 'AMINA JUMA')],
+        reports: [],
+        sentReports: [
+          { key: 't1', traineeName: 'AMINA JUMA', sentAt: Date.parse('2026-09-06T09:00:00Z') },
+        ],
+      }),
+      't1',
+    )!;
+    expect(view.alreadySentAt).toBe('2026-09-06T09:00:00.000Z');
+  });
+
+  // The server's row is the authority: it is what the report itself is dated
+  // by, and a second device would see it. The receipt only fills the gap.
+  it('prefers the server\u2019s timestamp over the receipt when it holds both', () => {
+    const view = buildProfile(
+      rows({
+        trainees: [trainee('t1', 'AMINA JUMA')],
+        reports: [{ traineeId: 't1', generatedAt: '2026-09-06T09:00:00Z' }],
+        sentReports: [
+          { key: 't1', traineeName: 'AMINA JUMA', sentAt: Date.parse('2026-09-06T11:30:00Z') },
+        ],
+      }),
+      't1',
+    )!;
+    expect(view.alreadySentAt).toBe('2026-09-06T09:00:00Z');
+  });
+
+  it('is null for a trainee whose report has never been sent from anywhere', () => {
+    const view = buildProfile(rows({ trainees: [trainee('t1', 'AMINA JUMA')] }), 't1')!;
+    expect(view.alreadySentAt).toBeNull();
   });
 });
 

@@ -17,6 +17,7 @@ import {
   type TpPhaseCode,
 } from '@/lib/marking';
 import { draftKey, loadDraft, saveDraft, type DraftState } from '@/lib/drafts';
+import { refreshReachability, useReachability } from '@/lib/local/use-reachable';
 import { submitTpAssessment } from '@/lib/submit-phase';
 import { tpReadyToSubmit, type TpSubmitPhase } from '@/lib/tp-submit';
 import { AdviceSuggestions } from './advice-suggestions';
@@ -112,6 +113,15 @@ export function TpMarkingStepper({
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [queued, setQueued] = useState(false);
+  /**
+   * Nothing is sent without a connection, and nothing is queued behind the
+   * supervisor's back either — the app stopped replaying queues on reconnect.
+   * So the last step of the walk becomes "Save draft" rather than "Submit
+   * assessment" when there is no signal, and the assessment is submitted later
+   * from the trainee screen or from Reports.
+   */
+  const reachability = useReachability();
+  const online = reachability === 'online';
 
   const [state, setState] = useState<Record<string, PhaseState>>(() =>
     Object.fromEntries(phases.map((p) => [p.instrumentId, emptyPhaseState()])),
@@ -148,6 +158,21 @@ export function TpMarkingStepper({
   // Autosave the lesson being marked. Nothing else on this screen writes, so
   // there is one draft to keep and it is written at most every 400 ms.
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /**
+   * Which unmarked criterion the gate warning jumps to next — see
+   * `jumpToUnmarked`, which walks this cursor so a section with several gaps
+   * does not need hunting through on a phone.
+   *
+   * Declared HERE, with the other hooks, and not beside the function that uses
+   * it. It was, and that was a crash rather than a style point: this component
+   * returns early when a submission is queued and when there is no phase left
+   * to mark, so a `useRef` below those returns is called on some renders and
+   * not others. The render after an offline submit — `queued` flipping true —
+   * is exactly the transition that renders fewer hooks than the one before it,
+   * and React tears the tree down with "Rendered fewer hooks than expected" on
+   * the screen a supervisor reaches at the end of a full TP assessment.
+   */
+  const gateCursor = useRef(0);
   const phase = phases[startPhaseIndex];
   const phaseId = phase?.instrumentId;
   useEffect(() => {
@@ -280,8 +305,6 @@ export function TpMarkingStepper({
    * when the warning appeared: by then the supervisor may have scored some
    * of them, and being sent to a row that is already marked reads as a bug.
    */
-  const gateCursor = useRef(0);
-
   function jumpToUnmarked() {
     if (!section) return;
     const unmarked = section.criteria.filter((c) => marks[c.id]?.score == null);
@@ -306,6 +329,16 @@ export function TpMarkingStepper({
   }
 
   async function handleFinish() {
+    // Ready, but nothing can leave the phone: save and return. The draft is
+    // the whole assessment, both phases, and the trainee screen will offer
+    // Submit the moment there is signal.
+    if (readyToSubmit && !online) {
+      setSubmitting(true);
+      await flushDraft();
+      window.location.assign(backHref);
+      return;
+    }
+
     if (readyToSubmit) {
       setSubmitting(true);
       setSubmitError(null);
@@ -332,6 +365,9 @@ export function TpMarkingStepper({
         return;
       }
       if (result.kind === 'queued') {
+        // Reachable when the button was drawn, gone by the time it was
+        // pressed. Tell the banner and every other send control at once.
+        void refreshReachability();
         setQueued(true);
         return;
       }
@@ -386,7 +422,7 @@ export function TpMarkingStepper({
   }
 
   const jumpRows = section ? sectionJumpRows(sections, marks, stepIndex) : [];
-  const finishLabel = readyToSubmit ? 'Submit assessment' : 'Save assessment';
+  const finishLabel = readyToSubmit && online ? 'Submit assessment' : 'Save assessment';
   const nextLabel = !lastSection ? 'Next' : finishLabel;
 
   return (
@@ -612,9 +648,11 @@ export function TpMarkingStepper({
               </div>
 
               <p className="mt-2 text-[12px] leading-relaxed text-[#5f6f7c]">
-                {readyToSubmit
+                {readyToSubmit && online
                   ? 'Both lessons are fully scored, so this sends the whole TP assessment to the College.'
-                  : 'This saves the lesson on this phone and takes you back to the trainee. You can mark the other lesson now or another day; nothing is sent until both are complete.'}
+                  : readyToSubmit
+                    ? 'Both lessons are fully scored, but there is no connection. This saves them on this phone — open the trainee when you have signal and submit from there. Nothing sends on its own.'
+                    : 'This saves the lesson on this phone and takes you back to the trainee. You can mark the other lesson now or another day; nothing is sent until both are complete.'}
               </p>
             </div>
           ) : null}

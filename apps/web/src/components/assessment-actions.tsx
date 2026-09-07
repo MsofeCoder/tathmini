@@ -147,8 +147,8 @@ export function AssessmentActions({
                 <span className="text-[13px] font-bold text-[#6b4400]">Waiting to send</span>
               </div>
               <p className="mt-1 text-[12.5px] leading-relaxed text-[#6b4400]">
-                Marked and saved on this phone. It will send itself when there is signal — you do
-                not need to mark this trainee again.
+                Marked and saved on this phone. Nothing sends on its own — open Reports when you
+                have signal and tap Send. Do not mark this trainee again.
               </p>
             </div>
           );

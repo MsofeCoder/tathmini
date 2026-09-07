@@ -11,7 +11,9 @@ import type { OutboxRecord, ReportDraftRecord, ReportOutboxRecord, SentReportRec
  *   and nothing ever will be until they come back. It is their decision, held
  *   on the device.
  * - PENDING — they tapped send, and it could not go: no signal, or the server
- *   refused. The work is queued and sends itself. The only wrong thing a
+ *   refused, or the connection died mid-request. The work is queued and stays
+ *   queued until the supervisor taps Send on this screen — nothing drains it
+ *   on reconnect any more (lib/send-pending.ts). The only wrong thing a
  *   supervisor can do here is mark the trainee again, because
  *   `assessment_marks` is append-only and a duplicate is permanent.
  * - SUBMITTED — it went. Marks are on the server, or the report has been sent
@@ -108,7 +110,9 @@ export function traineeIdFromOutboxKey(key: string): string {
  * visible as queued, because the mistake it prevents (marking that trainee a
  * second time) is permanent; and a held draft has to outrank "submitted",
  * because nothing sends a draft on its own and a trainee filed under
- * "Submitted" is one the supervisor stops thinking about.
+ * "Submitted" is one the supervisor stops thinking about. That reason now
+ * applies to PENDING too: since the drainer was removed, a queued item is
+ * waiting on a person exactly as a draft is.
  */
 export function buildReportsView({
   rows,
