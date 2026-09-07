@@ -47,6 +47,60 @@ the diff. This file is for knowledge that would otherwise be lost.
 
 ---
 
+## 2026-09-07 · bugfix · The TP stepper crashed on submit — a hook below an early return
+
+**Kind:** bugfix
+**Phase:** 1
+**Commit / PR:** (branch) claude/status-draft-until-report-sent
+
+**What changed**
+`gateCursor` — the `useRef` that walks the gate warning to the next unmarked
+criterion — was declared next to `jumpToUnmarked()`, which reads well and is
+BELOW two early returns. It moved up to sit with the other hooks.
+
+**Why this way**
+It is not a style point, and `react-hooks/rules-of-hooks` was not being fussy.
+The component's hook count changed between renders of the same instance:
+
+```
+const [queued, setQueued] = useState(false);   // line 114
+...
+if (queued) return <QueuedConfirmation …/>;    // early return
+...
+const gateCursor = useRef(0);                  // 15th hook, never reached
+```
+
+`setQueued(true)` runs when a submission goes to the outbox — that is, when a
+supervisor presses Submit with no signal. React re-renders the SAME mounted
+component, takes the early return, and calls fourteen hooks where the previous
+render called fifteen. That throws:
+
+> Rendered fewer hooks than expected. This may be caused by an accidental early
+> return statement.
+
+So the app crashed at the end of a full TP assessment, offline, at the moment
+the marks were handed over. The queued confirmation never rendered. The marks
+themselves were already in the outbox and safe, but the supervisor had no way
+to know that.
+
+It reached `main` in `ed46765` and was live. Found while resolving a merge
+conflict on an unrelated branch: `pnpm lint` failed on `main` itself, which is
+what the fourth gate is for.
+
+**Watch out for**
+The comment at the declaration now says loudly why it cannot move back down.
+Any hook in this component must stay above `if (queued)` and `if (!phase)`.
+
+**Verified by**
+`pnpm lint` green on the merged tree (it was RED on `main`), alongside the
+other three gates and 464 tests.
+
+**Not verified in a browser.** The check is the one that matters most here:
+airplane mode, mark a full TP assessment, press Submit, and confirm the queued
+confirmation appears instead of a blank screen.
+
+---
+
 ## 2026-09-07 · bugfix · "Assessed" now means the report was sent, not that the marks were submitted
 
 **Kind:** bugfix
@@ -114,6 +168,40 @@ reads Draft and they appear under Reports → Drafted; send the report; confirm
 the row flips to Assessed and they move to Reports → Submitted.
 
 ---
+
+## 2026-09-07 · feature · The section gate warning scrolls to the unmarked criterion
+
+**Kind:** feature
+**Phase:** 3
+**Commit / PR:** this branch
+
+**What changed**
+The "1 criterion is still unmarked in this section" warning on the TP stepper
+is now a button. Tapping it scrolls the first still-unscored sub-criterion of
+the section into view; tapping again walks to the next one, wrapping around.
+No copy changed — the sentence is still verbatim from the prototype's
+stepNext(), with a "Take me to it ›" affordance under it.
+
+**Why this way**
+The warning told a supervisor how many criteria were missing but not where,
+so on a 12-row section on a phone the only way to find them was to scroll and
+read every "Not yet scored" line. The anchor contract already existed
+(`#criterion-<id>` from `criterion-card.tsx`, which the IPT gap list uses), so
+this reuses it rather than inventing a second scroll mechanism.
+
+The target list is recomputed from `marks` at each tap, not captured when the
+warning appeared: by then some of the gaps may have been scored, and being
+sent to an already-marked row reads as a bug. If nothing is unmarked any more,
+the tap clears the now-stale warning instead of scrolling nowhere.
+
+**Watch out for**
+The whole alert box is the button, so the tap target is the message itself —
+keep `p-4` on the button rather than the wrapper, or the box loses its 44 px
+height. `role="alert"` stays on the wrapper so the warning is still announced.
+
+**Verified by**
+Manual check by the user on the field app (no automated test added; the gate
+copy itself is already covered by `marking.test.ts`).
 
 ## 2026-09-07 · bugfix · A trainee is "Draft" when the marks are finished, "Assessed" only when they are sent
 

@@ -20,7 +20,7 @@ import { draftKey, loadDraft, saveDraft, type DraftState } from '@/lib/drafts';
 import { submitTpAssessment } from '@/lib/submit-phase';
 import { tpReadyToSubmit, type TpSubmitPhase } from '@/lib/tp-submit';
 import { AdviceSuggestions } from './advice-suggestions';
-import { CriterionCard } from './criterion-card';
+import { CriterionCard, criterionAnchor } from './criterion-card';
 import { QueuedConfirmation } from './marking-form';
 
 /**
@@ -148,6 +148,27 @@ export function TpMarkingStepper({
   // Autosave the lesson being marked. Nothing else on this screen writes, so
   // there is one draft to keep and it is written at most every 400 ms.
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /**
+   * Which unmarked criterion the gate warning points at next. The warning
+   * says how many are missing; tapping it takes the supervisor to one of
+   * them, and tapping again walks to the next, so a section with several
+   * gaps does not need hunting through on a phone.
+   *
+   * The list is recomputed from `marks` on every tap rather than captured
+   * when the warning appeared: by then the supervisor may have scored some
+   * of them, and being sent to a row that is already marked reads as a bug.
+   *
+   * IT MUST STAY UP HERE, WITH THE OTHER HOOKS, ABOVE THE EARLY RETURNS.
+   * It was declared below them, next to jumpToUnmarked() where it reads
+   * best, and that crashed the app at the worst possible moment: `queued`
+   * flips to true when a supervisor submits, the `if (queued)` return then
+   * fires BEFORE this line, React counts one hook fewer than the previous
+   * render on the same instance, and throws "Rendered fewer hooks than
+   * expected". Offline, at the end of a full TP assessment. Reading order is
+   * not worth that.
+   */
+  const gateCursor = useRef(0);
   const phase = phases[startPhaseIndex];
   const phaseId = phase?.instrumentId;
   useEffect(() => {
@@ -270,6 +291,22 @@ export function TpMarkingStepper({
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
+  function jumpToUnmarked() {
+    if (!section) return;
+    const unmarked = section.criteria.filter((c) => marks[c.id]?.score == null);
+    if (unmarked.length === 0) {
+      // Everything got scored while the warning was on screen; the warning is
+      // stale, so clear it rather than scroll to nothing.
+      setGateWarning(null);
+      return;
+    }
+    const target = unmarked[gateCursor.current % unmarked.length]!;
+    gateCursor.current += 1;
+    document
+      .getElementById(criterionAnchor(target.id))
+      ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
   /** Write the draft now rather than on the 400 ms timer — the supervisor is
    * about to leave the screen. */
   async function flushDraft() {
@@ -326,6 +363,7 @@ export function TpMarkingStepper({
     if (!section) return;
     const warning = sectionGateWarning(section, marks);
     if (warning) {
+      gateCursor.current = 0;
       setGateWarning(warning);
       goToTop();
       return;
@@ -461,9 +499,23 @@ export function TpMarkingStepper({
       {gateWarning ? (
         <div
           role="alert"
-          className="mx-4 mt-4 rounded-xl border border-l-4 border-[#f0d3ca] border-l-[#8a3a2a] bg-[#fdf1ee] p-4"
+          className="mx-4 mt-4 rounded-xl border border-l-4 border-[#f0d3ca] border-l-[#8a3a2a] bg-[#fdf1ee]"
         >
-          <p className="text-[13.5px] leading-relaxed text-[#7a3325]">{gateWarning}</p>
+          {/* The whole warning is the target, not a small link inside it: on a
+              phone held one-handed the thumb lands somewhere in the message,
+              and 44 px of padding makes the whole box that size anyway. */}
+          <button
+            type="button"
+            onClick={jumpToUnmarked}
+            className="focus:outline-accent block w-full rounded-xl p-4 text-left focus:outline focus:outline-[3px] focus:outline-offset-2"
+          >
+            <span className="block text-[13.5px] leading-relaxed text-[#7a3325]">
+              {gateWarning}
+            </span>
+            <span className="mt-2 block text-[12.5px] font-bold text-[#8a3a2a] underline">
+              Take me to it ›
+            </span>
+          </button>
         </div>
       ) : null}
 
