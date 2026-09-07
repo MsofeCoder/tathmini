@@ -41,6 +41,60 @@ The test, query or manual check that proves it works.
 
 ---
 
+
+## 2026-09-07 · decision · Merging the manual-send branch with main's "Assessed means sent"
+
+**Kind:** decision
+**Phase:** 1–2
+**Commit / PR:** merge of `origin/main` (0d98a3d) into
+`claude/report-submission-offline-flow-0zz176`
+
+**What changed**
+
+Two branches reached the same conclusion from opposite ends the same night and
+had to be reconciled. Nothing was reverted; two things below correct the entry
+directly under this one, which is left as written.
+
+- **The `gateCursor` hook-order crash was already fixed on main** (`d027e5c`),
+  independently and with a fuller comment. The entry below claims that fix as
+  this branch's; it was a duplicate, and main's wording won the conflict. The
+  bug and the reasoning are the same — see the entry two below this one.
+- **Receipts now reach `buildRouteRows` by two roads, and are unioned.** Main
+  added a third parameter fed by a new `useSentReportIds()` hook; this branch
+  put `sentReports` into `DeviceRows` because `buildProfile` needed it for
+  `reportSentAt()`. Both are kept and merged into one set inside the function.
+  That is deliberate rather than lazy: a union cannot drift, whereas two
+  parallel sources of "has this report gone" is exactly how the route list and
+  the trainee screen would come to disagree — the class of bug both branches
+  were fixing.
+
+The two changes compose without argument, which is worth recording because it
+was not obvious in advance. Main tightened what "Assessed" means (only once a
+report has been sent); this branch removed the machinery that used to send
+reports without being asked. Together they say one thing: **a trainee is
+finished only when a report exists for them, and nothing moves them there but a
+supervisor pressing Send.** The Reports screen's header comment was stale on
+both branches — it described the pre-main tab semantics — and is rewritten once,
+accurately, in the merged tree.
+
+**Watch out for**
+
+The entry below reports 463 web tests and a 177 kB build. The merged tree has
+**474** web tests (464 from main, 10 from this branch) and still builds at
+177 kB against the 180 KB budget. Nothing was dropped in the merge; the four
+gates are green on the merge commit, not only on each parent.
+
+**Verified by**
+
+`pnpm format:check && pnpm lint && pnpm test && pnpm typecheck` green on the
+merged tree — 474 web, 112 db, 37 shared. `pnpm --filter web build` clean at
+177 kB first-load JS on `● /[[...slug]]`. The one textual conflict
+(`tp-marking-stepper.tsx`, both branches hoisting `gateCursor`) was resolved to
+main's side; every auto-merged file was then read back rather than trusted —
+`derive.ts`, `use-device.ts`, `reports.ts` and `reports-screen.tsx` all carry
+both branches' changes.
+
+---
 ## 2026-09-07 · decision · Nothing sends itself: the outbox drainer is removed, and a sent report is detected from the device
 
 **Kind:** decision
@@ -159,6 +213,128 @@ gating and the manual Send have not been driven on a device.
 
 Routine commits, formatting, dependency bumps, or anything already legible from
 the diff. This file is for knowledge that would otherwise be lost.
+
+---
+
+## 2026-09-07 · bugfix · The TP stepper crashed on submit — a hook below an early return
+
+**Kind:** bugfix
+**Phase:** 1
+**Commit / PR:** (branch) claude/status-draft-until-report-sent
+
+**What changed**
+`gateCursor` — the `useRef` that walks the gate warning to the next unmarked
+criterion — was declared next to `jumpToUnmarked()`, which reads well and is
+BELOW two early returns. It moved up to sit with the other hooks.
+
+**Why this way**
+It is not a style point, and `react-hooks/rules-of-hooks` was not being fussy.
+The component's hook count changed between renders of the same instance:
+
+```
+const [queued, setQueued] = useState(false);   // line 114
+...
+if (queued) return <QueuedConfirmation …/>;    // early return
+...
+const gateCursor = useRef(0);                  // 15th hook, never reached
+```
+
+`setQueued(true)` runs when a submission goes to the outbox — that is, when a
+supervisor presses Submit with no signal. React re-renders the SAME mounted
+component, takes the early return, and calls fourteen hooks where the previous
+render called fifteen. That throws:
+
+> Rendered fewer hooks than expected. This may be caused by an accidental early
+> return statement.
+
+So the app crashed at the end of a full TP assessment, offline, at the moment
+the marks were handed over. The queued confirmation never rendered. The marks
+themselves were already in the outbox and safe, but the supervisor had no way
+to know that.
+
+It reached `main` in `ed46765` and was live. Found while resolving a merge
+conflict on an unrelated branch: `pnpm lint` failed on `main` itself, which is
+what the fourth gate is for.
+
+**Watch out for**
+The comment at the declaration now says loudly why it cannot move back down.
+Any hook in this component must stay above `if (queued)` and `if (!phase)`.
+
+**Verified by**
+`pnpm lint` green on the merged tree (it was RED on `main`), alongside the
+other three gates and 464 tests.
+
+**Not verified in a browser.** The check is the one that matters most here:
+airplane mode, mark a full TP assessment, press Submit, and confirm the queued
+confirmation appears instead of a blank screen.
+
+---
+
+## 2026-09-07 · bugfix · "Assessed" now means the report was sent, not that the marks were submitted
+
+**Kind:** bugfix
+**Phase:** 1
+**Commit / PR:** (branch) claude/status-draft-until-report-sent
+
+**What changed**
+A supervisor finished both TP lessons on a real trainee and the row jumped
+straight to "✓ Assessed" while the report was still sitting unsent on the
+phone. The status ladder is now, exactly:
+
+- **Not started** — nothing scored, nothing submitted.
+- **In progress** — part of the track submitted, or a part-scored local draft.
+- **Draft** — the assessment is FINISHED and the report has not gone. Reached
+  automatically, by either road: every instrument submitted, or every criterion
+  scored on this phone. Pressing "Save as a draft" is not required.
+- **Assessed** — the report has been sent. Nothing else earns it.
+
+`traineeCategory()` takes a new `reportSent` and returns `assessed` only for
+that. `routeProgress()` is now DERIVED from `traineeCategory()` rather than
+repeating its rules, so the headline count and the filter pills cannot drift
+apart again. `buildRouteRows()` fills `reportSent` from two sources: the
+replicated `reports` row (the server's own, and the authority) and the
+`sentReports` receipts (which cover the minutes before the next sync).
+
+The Reports screen was changed in the same pass, because it disagreed the
+moment the route list changed: its **Submitted** tab used to include trainees
+whose marks were merely all in. Submitted is now reachable only by having sent,
+and those trainees appear under **Drafted** with `held: false` — the list says
+"Marking finished … · report not sent" for them and "Saved as a draft …" for
+one the supervisor actually chose to hold.
+
+**Why this way**
+The previous rule looked reasonable and was wrong in the one direction a status
+must never be wrong: optimistic. Submitting the marks gets numbers to the
+College; the report is the document the result travels on, and it is what
+reaches the trainee and the Coordinator. Calling the job done at the moment the
+last step had NOT been taken is how a supervisor comes to believe a trainee is
+finished when no report exists for them.
+
+A locked result is deliberately still a Draft while its report is unsent. Both
+assessors being in does not discharge this supervisor's own last action, and
+the badge should show the thing they can still do.
+
+**Watch out for**
+- `traineeCategory()` no longer reads `status` at all. `deriveStatus()` and
+  `statusMeta()` are untouched and still describe the SERVER's view (locked /
+  own-marks-in / neither) — that is what the "◑ 1 of 2 assessors" badge says,
+  and an assessed row still prefers it over the plain "✓ Assessed".
+- `requiredCount > 0` is load-bearing in the drafted branch. It is 0 mid-sync,
+  before the instruments land, and `ownSubmittedCount >= 0` would otherwise
+  file an unassessable trainee as finished. A test pins it.
+- Nothing about a stored mark, a total, a grade or the Competent verdict is
+  touched. This is presentation only: which word appears on a row.
+
+**Verified by**
+Four gates green — 464 tests in apps/web (up from 461), 112 in packages/db, 37
+in packages/shared. New cases cover the reported defect directly (marks fully
+submitted, report unsent → Draft), a locked result with no report, `reportSent`
+arriving from each of the two sources, and the identity between the pills and
+the headline. Build clean at 176 kB against the 180 KB budget.
+
+**Not verified in a browser.** The check is: finish a trainee, confirm the row
+reads Draft and they appear under Reports → Drafted; send the report; confirm
+the row flips to Assessed and they move to Reports → Submitted.
 
 ---
 

@@ -71,6 +71,52 @@ function rows(overrides: Partial<DeviceRows> = {}): DeviceRows {
   };
 }
 
+describe('buildRouteRows — reportSent', () => {
+  // What separates "Draft" from "Assessed" on the route list. Two sources,
+  // because neither alone is enough: the server's replicated row survives a
+  // reinstall, the on-device receipt exists in the minutes before the next
+  // sync carries that row down — which is exactly when the supervisor is
+  // looking at the list they just sent from.
+  it('reads the sent report from the replicated server row', () => {
+    const result = buildRouteRows(
+      rows({
+        trainees: [trainee('t1', 'AMINA JUMA')],
+        reports: [{ traineeId: 't1', generatedAt: '2026-09-07T08:00:00Z' }],
+      }),
+    );
+    expect(result[0]?.reportSent).toBe(true);
+  });
+
+  it('reads it from the on-device receipt before that row has synced', () => {
+    const result = buildRouteRows(
+      rows({ trainees: [trainee('t1', 'AMINA JUMA')] }),
+      [],
+      new Set(['t1']),
+    );
+    expect(result[0]?.reportSent).toBe(true);
+  });
+
+  it('is false for a trainee whose marks are all in but whose report is unsent', () => {
+    // The reported defect: both TP lessons submitted, row read "✓ Assessed",
+    // report still on the phone.
+    const result = buildRouteRows(
+      rows({
+        trainees: [trainee('t1', 'AMINA JUMA')],
+        marks: [
+          { key: 't1:i-theory', traineeId: 't1', instrumentId: 'i-theory', submittedAt: 'now' },
+          {
+            key: 't1:i-practical',
+            traineeId: 't1',
+            instrumentId: 'i-practical',
+            submittedAt: 'now',
+          },
+        ],
+      }),
+    );
+    expect(result[0]).toMatchObject({ ownSubmittedCount: 2, status: 'partial', reportSent: false });
+  });
+});
+
 describe('buildRouteRows', () => {
   it('counts only SUBMITTED marks — a started, unfinalized row is not progress', () => {
     const result = buildRouteRows(

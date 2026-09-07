@@ -158,19 +158,25 @@ export function TpMarkingStepper({
   // Autosave the lesson being marked. Nothing else on this screen writes, so
   // there is one draft to keep and it is written at most every 400 ms.
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   /**
-   * Which unmarked criterion the gate warning jumps to next — see
-   * `jumpToUnmarked`, which walks this cursor so a section with several gaps
-   * does not need hunting through on a phone.
+   * Which unmarked criterion the gate warning points at next. The warning
+   * says how many are missing; tapping it takes the supervisor to one of
+   * them, and tapping again walks to the next, so a section with several
+   * gaps does not need hunting through on a phone.
    *
-   * Declared HERE, with the other hooks, and not beside the function that uses
-   * it. It was, and that was a crash rather than a style point: this component
-   * returns early when a submission is queued and when there is no phase left
-   * to mark, so a `useRef` below those returns is called on some renders and
-   * not others. The render after an offline submit — `queued` flipping true —
-   * is exactly the transition that renders fewer hooks than the one before it,
-   * and React tears the tree down with "Rendered fewer hooks than expected" on
-   * the screen a supervisor reaches at the end of a full TP assessment.
+   * The list is recomputed from `marks` on every tap rather than captured
+   * when the warning appeared: by then the supervisor may have scored some
+   * of them, and being sent to a row that is already marked reads as a bug.
+   *
+   * IT MUST STAY UP HERE, WITH THE OTHER HOOKS, ABOVE THE EARLY RETURNS.
+   * It was declared below them, next to jumpToUnmarked() where it reads
+   * best, and that crashed the app at the worst possible moment: `queued`
+   * flips to true when a supervisor submits, the `if (queued)` return then
+   * fires BEFORE this line, React counts one hook fewer than the previous
+   * render on the same instance, and throws "Rendered fewer hooks than
+   * expected". Offline, at the end of a full TP assessment. Reading order is
+   * not worth that.
    */
   const gateCursor = useRef(0);
   const phase = phases[startPhaseIndex];
@@ -295,16 +301,6 @@ export function TpMarkingStepper({
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  /**
-   * Which unmarked criterion the gate warning points at next. The warning
-   * says how many are missing; tapping it takes the supervisor to one of
-   * them, and tapping again walks to the next, so a section with several
-   * gaps does not need hunting through on a phone.
-   *
-   * The list is recomputed from `marks` on every tap rather than captured
-   * when the warning appeared: by then the supervisor may have scored some
-   * of them, and being sent to a row that is already marked reads as a bug.
-   */
   function jumpToUnmarked() {
     if (!section) return;
     const unmarked = section.criteria.filter((c) => marks[c.id]?.score == null);

@@ -179,14 +179,38 @@ describe('buildReportsView', () => {
     expect(submitted.map((row) => row.traineeId)).toEqual(['t2', 't1']);
   });
 
-  it('counts a trainee whose own marks are all in as Submitted, with no signal', () => {
-    // The device replica is the only thing readable offline that knows the
-    // server has the marks. Without it the Submitted tab would be empty for
-    // every trainee marked before report-sending existed.
-    const { submitted } = buildReportsView(input({ rows: device({ submittedMarks: 2 }) }));
-    expect(submitted).toEqual([
-      { traineeId: 't1', traineeName: 'Asha Juma', sentAt: null, marksComplete: true },
+  it('files a trainee whose marks are all in under Drafted, not Submitted', () => {
+    // Corrected 2026-09-07, and the reason the route list and this screen now
+    // agree: the marks reaching the College does not deliver the result. The
+    // report does, and it has not been sent.
+    const { drafted, submitted } = buildReportsView(input({ rows: device({ submittedMarks: 2 }) }));
+    expect(submitted).toHaveLength(0);
+    expect(drafted).toEqual([
+      {
+        traineeId: 't1',
+        traineeName: 'Asha Juma',
+        savedAt: Date.parse('2026-09-06T08:00:00.000Z'),
+        held: false,
+      },
     ]);
+  });
+
+  it('marks an explicitly saved draft as held, and a merely finished one as not', () => {
+    // Both are waiting on the same tap, but only one was a decision — the
+    // list says different things about them.
+    const held = buildReportsView(input({ drafts: [draft('t1')] }));
+    expect(held.drafted[0]?.held).toBe(true);
+
+    const finished = buildReportsView(input({ rows: device({ submittedMarks: 2 }) }));
+    expect(finished.drafted[0]?.held).toBe(false);
+  });
+
+  it('moves a finished trainee out of Drafted once the report goes', () => {
+    const { drafted, submitted } = buildReportsView(
+      input({ rows: device({ submittedMarks: 2 }), sentReports: [sent('t1', 9_000)] }),
+    );
+    expect(drafted).toHaveLength(0);
+    expect(submitted.map((r) => r.traineeId)).toEqual(['t1']);
   });
 
   it('does not call a half-marked trainee Submitted', () => {
@@ -219,6 +243,15 @@ describe('buildReportsView', () => {
     expect(submitted).toEqual([
       { traineeId: 't1', traineeName: 'Asha Juma', sentAt: 4_000, marksComplete: false },
     ]);
+  });
+
+  it('never lists a submitted row without a send time', () => {
+    // Submitted is now reachable only by having sent, so `sentAt` is always
+    // real — nothing lands here off the back of marks alone.
+    const { submitted } = buildReportsView(
+      input({ rows: device({ submittedMarks: 2 }), sentReports: [sent('t1', 5_000)] }),
+    );
+    expect(submitted.every((r) => r.sentAt !== null)).toBe(true);
   });
 
   it('ignores an unparseable server timestamp rather than sorting on NaN', () => {

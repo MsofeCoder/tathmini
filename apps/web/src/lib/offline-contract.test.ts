@@ -108,6 +108,11 @@ describe('the device’s rows drive the screens completely', () => {
         ],
         {
           results: [{ traineeId: 'a', lockedAt: '2026-09-06T08:00:00Z' }],
+          // Only a's report has actually gone, so only a is assessed. b's
+          // marks are all in and b is still a draft — the correction of
+          // 2026-09-07, proved here through the real derivation rather than
+          // against a hand-built input.
+          reports: [{ traineeId: 'a', generatedAt: '2026-09-06T09:00:00Z' }],
           marks: [
             // b: both instruments in — this supervisor's half is done.
             { key: 'b:i-theory', traineeId: 'b', instrumentId: 'i-theory', submittedAt: 'now' },
@@ -131,15 +136,26 @@ describe('the device’s rows drive the screens completely', () => {
         ownSubmittedCount: t.ownSubmittedCount,
         requiredCount: t.requiredCount,
         draftProgress: t.draftProgress,
+        reportSent: t.reportSent,
       })),
     );
 
-    expect(progress).toEqual({ assessed: 2, inProgress: 1, notStarted: 1, pct: 50 });
+    // a: report sent → assessed. b: both instruments submitted, no report →
+    // a draft, and so still counted as outstanding. c: half submitted. d:
+    // untouched.
+    expect(rows.map((r) => r.reportSent)).toEqual([true, false, false, false]);
+    expect(progress).toEqual({ assessed: 1, inProgress: 2, notStarted: 1, pct: 25 });
   });
 
   it('counts an unsent local draft as in progress, which only the device knows', () => {
     const progress = routeProgress([
-      { status: 'pending', ownSubmittedCount: 0, requiredCount: 1, draftProgress: 'complete' },
+      {
+        status: 'pending',
+        ownSubmittedCount: 0,
+        requiredCount: 1,
+        draftProgress: 'complete',
+        reportSent: false,
+      },
     ]);
     expect(progress.inProgress).toBe(1);
     expect(progress.notStarted).toBe(0);

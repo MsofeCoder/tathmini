@@ -34,6 +34,9 @@ export interface RouteListTrainee {
   requiredCount: number;
   /** How far this device's unsent work on this trainee has got. */
   draftProgress: DraftProgress;
+  /** Whether this supervisor's report for this trainee has been sent. It is
+   * the one thing that makes a row "Assessed" rather than "Draft". */
+  reportSent: boolean;
 }
 
 export interface RouteListProps {
@@ -100,6 +103,7 @@ export function RouteList({ routeCode, routeLabel, trainees, loaded, syncedAt }:
           ownSubmittedCount: t.ownSubmittedCount,
           requiredCount: t.requiredCount,
           draftProgress: t.draftProgress,
+          reportSent: t.reportSent,
         })),
       ),
     [trainees],
@@ -119,6 +123,7 @@ export function RouteList({ routeCode, routeLabel, trainees, loaded, syncedAt }:
           ownSubmittedCount: t.ownSubmittedCount,
           requiredCount: t.requiredCount,
           draftProgress: t.draftProgress,
+          reportSent: t.reportSent,
         }),
       );
     }
@@ -299,7 +304,16 @@ export function RouteList({ routeCode, routeLabel, trainees, loaded, syncedAt }:
               const category = categories.get(t.id) ?? 'not-started';
               // A finished-but-unsent assessment must not wear the same badge
               // as an untouched trainee — that was the whole complaint.
-              const meta = category === 'assessed' ? statusMeta(t.status) : categoryMeta(category);
+              //
+              // An assessed row prefers statusMeta(), which additionally says
+              // WHICH assessor the College is still waiting for. It only has
+              // that to say once the server has the marks, so a report sent
+              // against anything else falls back to a plain "✓ Assessed"
+              // rather than statusMeta's "○ Not yet assessed".
+              const meta =
+                category === 'assessed' && (t.status === 'locked' || t.status === 'partial')
+                  ? statusMeta(t.status)
+                  : categoryMeta(category);
               const track = trackChipStyle(t.track);
               return (
                 <li key={t.id}>

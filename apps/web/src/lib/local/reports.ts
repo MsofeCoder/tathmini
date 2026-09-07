@@ -37,12 +37,20 @@ export const REPORT_TABS: readonly { id: ReportTab; label: string }[] = [
   { id: 'pending', label: 'Pending' },
 ];
 
-/** A report the supervisor finished and chose to hold back. */
+/** A finished assessment whose report has not been sent. */
 export interface DraftedRow {
   traineeId: string;
   traineeName: string;
+  /** When it became a draft — saved, or finished, whichever applies. */
   savedAt: number;
   note?: string;
+  /**
+   * True when the supervisor actually pressed "Save as a draft and send
+   * later"; false when it became a draft by being finished. The list says
+   * different things about the two — one was a decision, the other is just
+   * where the work got to — but both are waiting on the same tap.
+   */
+  held: boolean;
 }
 
 /**
@@ -158,20 +166,6 @@ export function buildReportsView({
 
   const pendingTraineeIds = new Set(pending.map((row) => row.traineeId));
 
-  // Oldest first: a report held back for a week is the one most likely to have
-  // been forgotten, so it belongs at the top of the list.
-  const drafted: DraftedRow[] = drafts
-    .filter((draft) => !pendingTraineeIds.has(draft.key))
-    .map((draft) => ({
-      traineeId: draft.key,
-      traineeName: draft.traineeName,
-      savedAt: draft.savedAt,
-      ...(draft.note ? { note: draft.note } : {}),
-    }))
-    .sort((a, b) => a.savedAt - b.savedAt);
-
-  const draftedTraineeIds = new Set(drafted.map((row) => row.traineeId));
-
   /**
    * When the report went, from BOTH sources, server first.
    *
@@ -188,13 +182,54 @@ export function buildReportsView({
     if (!Number.isNaN(at)) sentAtById.set(report.traineeId, at);
   }
 
+  /**
+   * Trainees whose every instrument is submitted. These are DRAFTS, not
+   * submitted work, until a report goes — the same rule the route list badges
+   * follow (`traineeCategory` in lib/trainees.ts). The two screens are read
+   * minutes apart by the same person, and a trainee filed under "Draft" on one
+   * and "Submitted" on the other is the sort of contradiction that makes a
+   * supervisor stop believing either.
+   */
   const marksCompleteIds = new Set(
     trainees
       .filter((t) => t.requiredCount > 0 && t.ownSubmittedCount >= t.requiredCount)
       .map((t) => t.id),
   );
 
-  const submitted: SubmittedRow[] = [...new Set([...sentAtById.keys(), ...marksCompleteIds])]
+  /** When the last of this supervisor's marks went in — the moment an
+   * unheld assessment became a draft, so the list can age it honestly. */
+  const finishedAtById = new Map<string, number>();
+  for (const mark of rows.marks) {
+    if (!mark.submittedAt) continue;
+    const at = Date.parse(mark.submittedAt);
+    if (Number.isNaN(at)) continue;
+    finishedAtById.set(mark.traineeId, Math.max(finishedAtById.get(mark.traineeId) ?? 0, at));
+  }
+
+  const heldById = new Map(drafts.map((draft) => [draft.key, draft]));
+
+  // Oldest first: a report held back for a week is the one most likely to have
+  // been forgotten, so it belongs at the top of the list.
+  const drafted: DraftedRow[] = [...new Set([...heldById.keys(), ...marksCompleteIds])]
+    .filter((id) => !pendingTraineeIds.has(id) && !sentAtById.has(id))
+    .map((id) => {
+      const held = heldById.get(id);
+      const note = held?.note;
+      return {
+        traineeId: id,
+        traineeName: held?.traineeName ?? nameById.get(id) ?? 'This trainee',
+        savedAt: held?.savedAt ?? finishedAtById.get(id) ?? 0,
+        ...(note ? { note } : {}),
+        held: held !== undefined,
+      };
+    })
+    .sort((a, b) => a.savedAt - b.savedAt);
+
+  const draftedTraineeIds = new Set(drafted.map((row) => row.traineeId));
+
+  // SUBMITTED IS THE REPORT, NOT THE MARKS. A trainee reaches this list by one
+  // route only: their report has gone. Marks alone leave them under Drafted.
+  const submitted: SubmittedRow[] = [...sentAtById.keys()]
     .filter((id) => !pendingTraineeIds.has(id) && !draftedTraineeIds.has(id))
     .map((id) => ({
       traineeId: id,
@@ -203,13 +238,8 @@ export function buildReportsView({
       marksComplete: marksCompleteIds.has(id),
     }))
     // Most recently sent first — the one just finished is the one being looked
-    // for. Trainees whose report has not been sent sort after, by name.
-    .sort((a, b) => {
-      if (a.sentAt !== null && b.sentAt !== null) return b.sentAt - a.sentAt;
-      if (a.sentAt !== null) return -1;
-      if (b.sentAt !== null) return 1;
-      return a.traineeName.localeCompare(b.traineeName);
-    });
+    // for.
+    .sort((a, b) => (b.sentAt ?? 0) - (a.sentAt ?? 0));
 
   return { drafted, submitted, pending };
 }

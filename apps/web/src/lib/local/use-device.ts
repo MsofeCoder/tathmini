@@ -131,6 +131,31 @@ export function useDraftTraineeIds(): Set<string> {
 }
 
 /**
+ * Trainee ids whose report this device has seen leave, live.
+ *
+ * The receipts only — `rows.reports`, the server's own replicated row, comes
+ * through `useDeviceRows` and is merged in `buildRouteRows`. Kept separate
+ * because the two have different lifetimes: a receipt is written the instant a
+ * send is confirmed, the replicated row arrives at the next full sync.
+ */
+export function useSentReportIds(): Set<string> {
+  const [ids, setIds] = useState<Set<string>>(() => new Set());
+
+  useEffect(() => {
+    const subscription = liveQuery(async () => {
+      const keys = (await db.sentReports.toCollection().primaryKeys()) as string[];
+      return new Set(keys);
+    }).subscribe({
+      next: setIds,
+      error: () => {},
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  return ids;
+}
+
+/**
  * The Reports screen's three lists, live.
  *
  * One subscription over every source the screen needs: the device replica, the
