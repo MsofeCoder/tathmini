@@ -114,21 +114,22 @@ export function TraineeScreen({ traineeId }: { traineeId: string }) {
           <div className="mt-4 rounded-xl border border-[#dae3e0] bg-white px-4 py-3.5">
             <p className="text-[13px] font-bold text-[#3c4c58]">Your report</p>
             {/*
-              Three different things to say, and which one is right turns on
-              whether this report has ALREADY been sent — from the server's row
-              or from this phone's own receipt (see `reportSentAt`). Before
-              that receipt was consulted, a supervisor who sent a report and
-              later reopened the trainee was told to "preview it, then submit
-              it" a second time, under a Submit button that would have posted
-              the trainee a second copy of their result.
+              Two things left to say, and which one is right turns on whether
+              this report has ALREADY been sent — from the server's row or from
+              this phone's own receipt (see `reportSentAt`). Before that receipt
+              was consulted, a supervisor who sent a report and later reopened
+              the trainee was told to submit it a second time, under a Submit
+              button that would have posted the trainee a second copy of their
+              result. Nothing is said in the ordinary "finished, not yet sent"
+              case: the Submit button below says it.
             */}
-            <p className="mt-1.5 text-[13px] leading-relaxed text-[#5b6b78]">
-              {view.alreadySentAt
-                ? 'This report has already been submitted. There is nothing left to send — preview it, or take another copy below.'
-                : view.locked
-                  ? 'Both assessors have submitted, so this report also carries the consolidated official result.'
-                  : 'You have finished your own assessment. Preview it, then submit it to be stored — you do not need to wait for the second assessor.'}
-            </p>
+            {view.alreadySentAt || view.locked ? (
+              <p className="mt-1.5 text-[13px] leading-relaxed text-[#5b6b78]">
+                {view.alreadySentAt
+                  ? 'This report has already been submitted. There is nothing left to send — preview it, or take another copy below.'
+                  : 'Both assessors have submitted, so this report also carries the consolidated official result.'}
+              </p>
+            ) : null}
             <ReportPreviewButton traineeId={trainee.id} />
             <ReportDownloadButton
               traineeId={trainee.id}

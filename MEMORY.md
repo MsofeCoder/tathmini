@@ -216,6 +216,46 @@ the diff. This file is for knowledge that would otherwise be lost.
 
 ---
 
+## 2026-09-07 · feature · Submit-page notes removed; the correction request no longer asks "How do you know?"
+
+**Kind:** feature
+**Phase:** 1
+**Commit / PR:** (branch claude/remove-signout-and-notes-d5j63k)
+
+**What changed**
+Two more paragraphs off the submit path: "You have finished your own
+assessment…" on the trainee screen (the locked-record sentence stays, so the
+block still explains a consolidated result) and "Sending stores the report and
+e-mails it…" under the send/draft buttons.
+
+The "How do you know?" textarea is gone from Report a correction — the field,
+its `required`, and the 8–500 character check in `requestTraineeCorrection`.
+A supervisor now picks the particular and types what it should say, and that is
+the whole request. Migration **0032** drops `trainee_change_requests_reason_check`
+and the column's NOT NULL; the action inserts `reason: null`.
+
+**Why this way**
+Not made optional — removed. An optional box that nobody fills is still a box
+between a supervisor and reporting a wrong e-mail address, and the register
+correction is the thing standing between a trainee and somebody else's result
+e-mail. The Administrator decides against the register itself, which they can
+see in the console next to the request.
+
+The CHECK had to go with the NOT NULL. A null passes `length(trim(reason)) > 0`
+(it evaluates to null, not false), so the insert would have worked — but the
+constraint would have trapped the first caller who wrote `''` instead of null.
+Dropping both keeps the two facts in one place.
+
+**Watch out for**
+The column is still there and older rows still carry their reason; the admin
+console renders the "Because:" line only when one is present. Do not
+back-fill or drop the column — it is the only record of why those requests
+were raised.
+
+**Not touched:** no Dexie rung was spent. The correction form is an online-only
+Server Action that was never in the device replica (`lib/sync/`, `lib/db.ts`),
+and none of these removals adds a route file, a `next/link` or a server read to
+a shell screen. `lib/db.ts` stays at `version(9)`.
 ## 2026-09-07 · bugfix · The TP stepper crashed on submit — a hook below an early return
 
 **Kind:** bugfix

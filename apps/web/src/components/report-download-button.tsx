@@ -380,11 +380,16 @@ export function ReportDownloadButton({
         {online ? 'Save as a draft and send later' : 'Save as a draft'}
       </button>
 
-      <p className="mt-2 text-[12.5px] leading-relaxed text-[#5f6f7c]">
-        {online
-          ? 'Sending stores the report and e-mails it, and can only be done once. Saving a draft sends nothing — it keeps this report on the Drafted list in your Reports tab until you are ready, and the report will be dated the day you send it.'
-          : 'A draft sends nothing and nothing sends on its own. It keeps this report on the Drafted list in your Reports tab until you open it and send it yourself, and the report will be dated the day you send it.'}
-      </p>
+      {/* Kept for the offline case only: with no signal a supervisor cannot
+          send, and needs telling that a draft goes nowhere by itself. The
+          online sentence was removed. */}
+      {online ? null : (
+        <p className="mt-2 text-[12.5px] leading-relaxed text-[#5f6f7c]">
+          A draft sends nothing and nothing sends on its own. It keeps this report on the Drafted
+          list in your Reports tab until you open it and send it yourself, and the report will be
+          dated the day you send it.
+        </p>
+      )}
       {error ? (
         <p role="alert" className="mt-2 text-[13px] leading-relaxed text-[#8a3a2a]">
           {error}

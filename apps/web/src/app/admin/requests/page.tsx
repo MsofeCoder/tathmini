@@ -20,7 +20,7 @@ interface RequestRow {
   field: string;
   current_value: string | null;
   requested_value: string | null;
-  reason: string;
+  reason: string | null;
   status: RequestStatus;
   requested_by_id: string;
   decided_by_id: string | null;
@@ -199,10 +199,13 @@ function RequestCard({
           </p>
         ) : null}
 
-        <p className="text-[13px] leading-relaxed text-[#3c4c58]">
-          <span className="font-semibold text-[#5b6b78]">Because: </span>
-          {request.reason}
-        </p>
+        {/* Only rows raised before migration 0032 carry one. */}
+        {request.reason ? (
+          <p className="text-[13px] leading-relaxed text-[#3c4c58]">
+            <span className="font-semibold text-[#5b6b78]">Because: </span>
+            {request.reason}
+          </p>
+        ) : null}
 
         {request.status === 'pending' ? (
           <DecisionForms
