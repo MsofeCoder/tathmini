@@ -47,6 +47,38 @@ the diff. This file is for knowledge that would otherwise be lost.
 
 ---
 
+## 2026-09-07 · feature · One sign-out only, on Account; explanatory notes removed from four screens
+
+**Kind:** feature
+**Phase:** 1
+**Commit / PR:** (this branch)
+
+**What changed**
+The route list (`home-screen.tsx`) no longer carries a Sign out button — the
+only way out of an account is the Account tab. Five explanatory paragraphs were
+also dropped: the "pre-loaded from the College register" note on the trainee
+pre-start screen, the Drafted banner ("This report is waiting for you…"), the
+`NeedsSignalNote` ("A preview is built by the College server…", which appeared
+on all three Reports lists), the Submitted banner ("These N assessments have
+reached the College…"), and both Account notes ("Your account is issued by the
+Administrator…" and "Anything you have marked but not yet sent…").
+
+**Why this way**
+The route list's button called `signOut()` alone, while Account's calls
+`signOutAndClearDevice()` — clearing the Dexie replica first. Phones are shared
+between tutors at the College, so the route-list button was the one that could
+leave another supervisor's marks on a handed-over device. Removing it makes the
+safe path the only path, rather than adding the clear to two places.
+
+Empty states and the Pending banner were left alone: they are not commentary,
+they tell a supervisor what to do when a list has nothing in it, and the Pending
+one carries the "do not mark these trainees again" warning.
+
+**Watch out for**
+`NeedsSignalNote` is gone entirely, so nothing on Reports now says the preview
+needs a connection; the offline failure is surfaced by the preview button
+itself.
+
 ## 2026-09-06 · feature · The Reports screen (Drafted · Submitted · Pending), built on the app shell
 
 **Kind:** feature
