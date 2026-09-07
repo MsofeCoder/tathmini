@@ -57,6 +57,13 @@ export interface RouteListRow {
   requiredCount: number;
   /** How far the unsent work on THIS device has got. See draftProgressFor(). */
   draftProgress: DraftProgress;
+  /**
+   * Whether this supervisor's report for this trainee has gone. Read from the
+   * replicated `reports` table (the server's own row, and the authority) and
+   * from the on-device receipts, which cover the gap before the next sync
+   * carries that row down. It is what separates "Draft" from "Assessed".
+   */
+  reportSent: boolean;
 }
 
 /** How many instruments each track requires: TP 2 (theory + practical), IPT 1. */
@@ -145,10 +152,21 @@ export function draftProgressFor({
  * random uuid, so leaving it unsorted would have shuffled a supervisor's
  * route on every sync. Alphabetical is also how the paper register reads.
  */
-export function buildRouteRows(rows: DeviceRows, drafts: DraftMarksRow[] = []): RouteListRow[] {
+export function buildRouteRows(
+  rows: DeviceRows,
+  drafts: DraftMarksRow[] = [],
+  sentReportTraineeIds: ReadonlySet<string> = new Set(),
+): RouteListRow[] {
   const required = requiredByTrack(rows.instruments);
   const submitted = submittedByTrainee(rows.marks);
   const locked = lockedByTrainee(rows.results);
+
+  // Both sources, because neither alone is enough. The server's row survives a
+  // reinstall and is what a second device would see; the receipt is what
+  // exists in the seconds-to-minutes after a send, before the next full sync —
+  // which is exactly when the supervisor is looking at this list.
+  const reported = new Set<string>(sentReportTraineeIds);
+  for (const report of rows.reports) reported.add(report.traineeId);
 
   const draftsByTrainee = new Map<string, Map<string, DraftMarksRow>>();
   for (const draft of drafts) {
@@ -182,6 +200,7 @@ export function buildRouteRows(rows: DeviceRows, drafts: DraftMarksRow[] = []): 
           submittedInstrumentIds,
           draftsByInstrument: draftsByTrainee.get(trainee.id) ?? new Map(),
         }),
+        reportSent: reported.has(trainee.id),
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name));

@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { RouteList } from '@/app/home/route-list';
 import { buildRouteRows } from '@/lib/local/derive';
-import { useDeviceRows, useDraftMarks } from '@/lib/local/use-device';
+import { useDeviceRows, useDraftMarks, useSentReportIds } from '@/lib/local/use-device';
 
 /**
  * The supervisor's route list — rendered entirely from the device.
@@ -34,7 +34,10 @@ export function HomeScreen() {
   // trainee (in progress) from one whose whole assessment is finished and
   // waiting to be sent (draft).
   const drafts = useDraftMarks();
-  const trainees = rows ? buildRouteRows(rows, drafts) : [];
+  // Which reports have actually gone. A trainee is "Assessed" only once one
+  // has — finishing the marks makes them a Draft, not a finished job.
+  const sentReportIds = useSentReportIds();
+  const trainees = rows ? buildRouteRows(rows, drafts, sentReportIds) : [];
   const role = rows?.session?.role;
 
   useEffect(() => {

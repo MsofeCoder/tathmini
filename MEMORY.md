@@ -47,6 +47,74 @@ the diff. This file is for knowledge that would otherwise be lost.
 
 ---
 
+## 2026-09-07 · bugfix · "Assessed" now means the report was sent, not that the marks were submitted
+
+**Kind:** bugfix
+**Phase:** 1
+**Commit / PR:** (branch) claude/status-draft-until-report-sent
+
+**What changed**
+A supervisor finished both TP lessons on a real trainee and the row jumped
+straight to "✓ Assessed" while the report was still sitting unsent on the
+phone. The status ladder is now, exactly:
+
+- **Not started** — nothing scored, nothing submitted.
+- **In progress** — part of the track submitted, or a part-scored local draft.
+- **Draft** — the assessment is FINISHED and the report has not gone. Reached
+  automatically, by either road: every instrument submitted, or every criterion
+  scored on this phone. Pressing "Save as a draft" is not required.
+- **Assessed** — the report has been sent. Nothing else earns it.
+
+`traineeCategory()` takes a new `reportSent` and returns `assessed` only for
+that. `routeProgress()` is now DERIVED from `traineeCategory()` rather than
+repeating its rules, so the headline count and the filter pills cannot drift
+apart again. `buildRouteRows()` fills `reportSent` from two sources: the
+replicated `reports` row (the server's own, and the authority) and the
+`sentReports` receipts (which cover the minutes before the next sync).
+
+The Reports screen was changed in the same pass, because it disagreed the
+moment the route list changed: its **Submitted** tab used to include trainees
+whose marks were merely all in. Submitted is now reachable only by having sent,
+and those trainees appear under **Drafted** with `held: false` — the list says
+"Marking finished … · report not sent" for them and "Saved as a draft …" for
+one the supervisor actually chose to hold.
+
+**Why this way**
+The previous rule looked reasonable and was wrong in the one direction a status
+must never be wrong: optimistic. Submitting the marks gets numbers to the
+College; the report is the document the result travels on, and it is what
+reaches the trainee and the Coordinator. Calling the job done at the moment the
+last step had NOT been taken is how a supervisor comes to believe a trainee is
+finished when no report exists for them.
+
+A locked result is deliberately still a Draft while its report is unsent. Both
+assessors being in does not discharge this supervisor's own last action, and
+the badge should show the thing they can still do.
+
+**Watch out for**
+- `traineeCategory()` no longer reads `status` at all. `deriveStatus()` and
+  `statusMeta()` are untouched and still describe the SERVER's view (locked /
+  own-marks-in / neither) — that is what the "◑ 1 of 2 assessors" badge says,
+  and an assessed row still prefers it over the plain "✓ Assessed".
+- `requiredCount > 0` is load-bearing in the drafted branch. It is 0 mid-sync,
+  before the instruments land, and `ownSubmittedCount >= 0` would otherwise
+  file an unassessable trainee as finished. A test pins it.
+- Nothing about a stored mark, a total, a grade or the Competent verdict is
+  touched. This is presentation only: which word appears on a row.
+
+**Verified by**
+Four gates green — 464 tests in apps/web (up from 461), 112 in packages/db, 37
+in packages/shared. New cases cover the reported defect directly (marks fully
+submitted, report unsent → Draft), a locked result with no report, `reportSent`
+arriving from each of the two sources, and the identity between the pills and
+the headline. Build clean at 176 kB against the 180 KB budget.
+
+**Not verified in a browser.** The check is: finish a trainee, confirm the row
+reads Draft and they appear under Reports → Drafted; send the report; confirm
+the row flips to Assessed and they move to Reports → Submitted.
+
+---
+
 ## 2026-09-07 · bugfix · A trainee is "Draft" when the marks are finished, "Assessed" only when they are sent
 
 **Kind:** bugfix

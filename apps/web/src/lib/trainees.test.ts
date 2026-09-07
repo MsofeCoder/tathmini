@@ -177,14 +177,16 @@ describe('routeProgress', () => {
     ownSubmittedCount: 0,
     requiredCount: 2,
     draftProgress: 'none',
+    reportSent: false,
     ...over,
   });
 
-  it('counts a partial as assessed, not as outstanding', () => {
-    // The real defect: a supervisor who had marked three of five trainees
-    // saw "0 of 5 assessed · 5 still to assess", because 'partial' — their
-    // own work done, waiting on the second assessor — fell through to
-    // not-started.
+  it('counts submitted-but-unsent as in progress, not as assessed', () => {
+    // Corrected 2026-09-07. These three have every instrument submitted, so
+    // the College has their marks — but no report has been sent, and the
+    // report is what the result travels on. They are drafts, and the headline
+    // must not tell a supervisor the job is finished while the last step is
+    // outstanding.
     const progress = routeProgress([
       trainee({ status: 'partial', ownSubmittedCount: 2 }),
       trainee({ status: 'partial', ownSubmittedCount: 2 }),
@@ -193,16 +195,32 @@ describe('routeProgress', () => {
       trainee(),
     ]);
 
-    expect(progress).toEqual({ assessed: 3, inProgress: 0, notStarted: 2, pct: 60 });
+    expect(progress).toEqual({ assessed: 0, inProgress: 3, notStarted: 2, pct: 0 });
   });
 
-  it('counts locked as assessed', () => {
+  it('counts a trainee as assessed once the report has gone', () => {
+    const progress = routeProgress([
+      trainee({ status: 'partial', ownSubmittedCount: 2, reportSent: true }),
+      trainee({ status: 'partial', ownSubmittedCount: 2 }),
+      trainee(),
+      trainee(),
+    ]);
+
+    expect(progress).toEqual({ assessed: 1, inProgress: 1, notStarted: 2, pct: 25 });
+  });
+
+  it('does not count a locked result as assessed while the report is unsent', () => {
+    // Both assessors are in and Postgres has locked the result — but this
+    // supervisor still owes the report, and that is an action they can take.
+    // Calling it assessed would hide the one thing left to do.
     const progress = routeProgress([
       trainee({ status: 'locked', ownSubmittedCount: 2 }),
+      trainee({ status: 'locked', ownSubmittedCount: 2, reportSent: true }),
       trainee(),
     ]);
 
     expect(progress.assessed).toBe(1);
+    expect(progress.inProgress).toBe(1);
     expect(progress.notStarted).toBe(1);
   });
 
@@ -223,16 +241,21 @@ describe('routeProgress', () => {
 
   it('does not double-count a draft on an already-assessed trainee', () => {
     const progress = routeProgress([
-      trainee({ status: 'partial', ownSubmittedCount: 2, draftProgress: 'complete' }),
+      trainee({
+        status: 'partial',
+        ownSubmittedCount: 2,
+        draftProgress: 'complete',
+        reportSent: true,
+      }),
     ]);
 
     expect(progress).toEqual({ assessed: 1, inProgress: 0, notStarted: 0, pct: 100 });
   });
 
-  it('reports 100% when every trainee is assessed', () => {
+  it('reports 100% when every report has been sent', () => {
     const progress = routeProgress([
-      trainee({ status: 'locked', ownSubmittedCount: 2 }),
-      trainee({ status: 'partial', ownSubmittedCount: 2 }),
+      trainee({ status: 'locked', ownSubmittedCount: 2, reportSent: true }),
+      trainee({ status: 'partial', ownSubmittedCount: 2, reportSent: true }),
     ]);
 
     expect(progress.pct).toBe(100);
@@ -245,7 +268,7 @@ describe('routeProgress', () => {
 
   it('rounds the percentage to a whole number', () => {
     const progress = routeProgress([
-      trainee({ status: 'locked', ownSubmittedCount: 2 }),
+      trainee({ status: 'locked', ownSubmittedCount: 2, reportSent: true }),
       trainee(),
       trainee(),
     ]);
@@ -260,20 +283,42 @@ describe('traineeCategory', () => {
     ownSubmittedCount: 0,
     requiredCount: 2,
     draftProgress: 'none' as const,
+    reportSent: false,
   };
 
-  // Assessed means the College has the marks. A finished assessment sitting
-  // on a phone has reached nobody, and calling it assessed is how a
-  // supervisor comes to believe a trainee is done when there is no record.
-  it('counts only submitted marks as assessed', () => {
-    expect(traineeCategory({ ...base, status: 'locked' })).toBe('assessed');
-    expect(traineeCategory({ ...base, status: 'partial' })).toBe('assessed');
+  // THE RULE, in one test. Assessed means the report has gone — nothing else.
+  it('counts a trainee as assessed only once the report has been sent', () => {
+    expect(traineeCategory({ ...base, ownSubmittedCount: 2, reportSent: true })).toBe('assessed');
   });
 
-  // The state describes the marks, not the gesture: a trainee becomes a draft
-  // on the last criterion scored, whether or not anything was pressed.
+  // The defect reported from the field on 2026-09-07: a supervisor finished
+  // both TP lessons, the marks went to the College, and the row jumped
+  // straight to "✓ Assessed" with the report still unsent on the phone.
+  it('calls a fully submitted assessment a draft while its report is unsent', () => {
+    expect(traineeCategory({ ...base, status: 'partial', ownSubmittedCount: 2 })).toBe('drafted');
+  });
+
+  it('calls a locked result a draft while its report is unsent', () => {
+    expect(traineeCategory({ ...base, status: 'locked', ownSubmittedCount: 2 })).toBe('drafted');
+  });
+
+  // The state describes the work, not the gesture: a trainee becomes a draft
+  // on the last criterion accounted for, whether or not anything was pressed.
   it('counts a fully scored, unsent assessment as drafted', () => {
     expect(traineeCategory({ ...base, draftProgress: 'complete' })).toBe('drafted');
+  });
+
+  it('reaches drafted by either road — submitted marks or a complete local draft', () => {
+    expect(traineeCategory({ ...base, ownSubmittedCount: 2, requiredCount: 2 })).toBe('drafted');
+    expect(traineeCategory({ ...base, draftProgress: 'complete' })).toBe('drafted');
+  });
+
+  it('never calls a trainee with no instruments drafted', () => {
+    // requiredCount 0 happens mid-sync, before the instruments land. `>=`
+    // alone would satisfy it and file an unassessable trainee as finished.
+    expect(traineeCategory({ ...base, ownSubmittedCount: 0, requiredCount: 0 })).toBe(
+      'not-started',
+    );
   });
 
   it('counts a part-scored draft as in progress', () => {
@@ -308,36 +353,43 @@ describe('the filter buckets against the summary tiles', () => {
         ownSubmittedCount: 2,
         requiredCount: 2,
         draftProgress: 'none' as const,
+        reportSent: true,
       },
       {
+        // Marks all in, report not sent — a draft, not an assessed trainee.
         status: 'partial' as const,
         ownSubmittedCount: 2,
         requiredCount: 2,
         draftProgress: 'none' as const,
+        reportSent: false,
       },
       {
         status: 'pending' as const,
         ownSubmittedCount: 1,
         requiredCount: 2,
         draftProgress: 'none' as const,
+        reportSent: false,
       },
       {
         status: 'pending' as const,
         ownSubmittedCount: 0,
         requiredCount: 1,
         draftProgress: 'complete' as const,
+        reportSent: false,
       },
       {
         status: 'pending' as const,
         ownSubmittedCount: 0,
         requiredCount: 2,
         draftProgress: 'partial' as const,
+        reportSent: false,
       },
       {
         status: 'pending' as const,
         ownSubmittedCount: 0,
         requiredCount: 2,
         draftProgress: 'none' as const,
+        reportSent: false,
       },
     ];
     const counts = { assessed: 0, 'in-progress': 0, drafted: 0, 'not-started': 0 };
