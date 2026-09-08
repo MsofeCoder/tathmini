@@ -42,6 +42,98 @@ The test, query or manual check that proves it works.
 ---
 
 
+## 2026-09-08 · feature · The Coordinator account, and the first-run redirect that made it unusable
+
+**Kind:** feature
+**Phase:** 3
+**Commit / PR:** this branch (`feat/coordinator-account`)
+
+**What changed**
+The `coordinator` role has a holder at last: `hoe.lymo` / Lymo, created
+directly in Supabase by the user on 2026-09-08 at 01:09 UTC — Auth identity
+and `users` row both. `packages/db/src/data/coordinator-accounts.ts` and
+migration `0033_link_coordinator_account.sql` write that account into the seed
+data and the migration history; both are no-ops against production and exist
+so a restore rebuilds it.
+
+The part that was actually missing is code: `landingPathForRole()` in
+`apps/web/src/lib/auth.ts` now decides where a signed-in person belongs, and
+both `signIn()` and `changePassword()` call it. Without it this account could
+not have been used.
+
+**Why this way**
+No new grant, policy or migration to `0001` — and that is the point. A
+coordinator has been able to read everything and write nothing since the first
+RLS migration: `is_coordinator()` is in the USING clause of every select
+policy and in no write policy anywhere. If this account had needed a new
+policy to be useful, the premise would have been wrong. `/coordinator`,
+`/admin`'s read-only rendering and `signIn()`'s routing were all built and
+deployed already; the only thing missing was a row.
+
+The account itself was made in the Supabase dashboard rather than by
+`create:accounts`, which is fine and needed no code — but note what that route
+does NOT do: creating a user in the Auth dashboard creates only the
+`auth.users` identity, never the `public.users` row that holds `role`, `name`
+and `active`. Here both exist, and the FK `users_id_auth_users_id_fk` (0001)
+proves they are the same id — a hand-inserted row with an invented uuid could
+not have been committed. Had only the Auth half existed, sign-in would have
+succeeded and then bounced straight back to /login from `requireAdmin()`'s
+`if (!profile)`, which looks exactly like a wrong password and is not.
+
+The routing bug is the part worth reading. `changePassword()` redirected to
+`/home` unconditionally, and every account is provisioned with
+`must_change_password = true` — so the forced change, not sign-in, is the
+FIRST routing decision a new account meets, and sign-in's correct
+`role === 'coordinator'` branch never ran. The Coordinator's first sight of
+the system would have been the supervisor field app. That is worse than a
+wrong link: `/home` is the offline shell, it is a static document the service
+worker replays for every url and performs no role check of its own, and
+`trainees_select` lets a coordinator read the whole cohort — so the shell
+would have synced all 546 trainees onto their device and offered marking
+buttons the database would then refuse. Declaring the destination once, in a
+pure function both paths call, is what stops the two drifting again.
+
+**Watch out for**
+The redirect fix has to be DEPLOYED before the credentials are handed over.
+The live row carries `must_change_password = true`, so Lymo's first sign-in
+goes through `/change-password` — the exact path that was broken.
+
+`users.name` on the live row is the single word "Lymo", where every other
+account carries a full name ("Denis Michael"). It renders as-is in the console
+header. The seed and migration match production deliberately rather than
+guessing at a fuller name; if the College gives one, change the live row and
+these two files together.
+
+The username `hoe.lymo` is spelled correctly — confirmed by the user, and
+noted in the seed file, because it reads like a typo for "hope" or "joe" and
+will invite a well-meaning correction. It is the sign-in identifier mirroring
+`auth.users.email`, so changing it means changing the Auth identity too; it is
+not a display name, and `users.email` must never be edited on its own.
+
+This account changes nothing about who receives a result report —
+that stays `RESULT_COORDINATOR_EMAIL` in `lib/notifications/recipients.ts`, on
+purpose, because a supervisor cannot read the Coordinator's `users` row and
+widening `users_select` to let them would expose every staff address to every
+supervisor.
+
+One behaviour change beyond the coordinator: an account with no readable
+`users` row used to land on `/admin` after sign-in (`role === 'supervisor' ?
+'/home' : '/admin'`), and now lands on `/home`. Both end up in the same place
+— `requireAdmin()` bounces a roleless session out of the console — but `/home`
+is the honest default.
+
+**Verified by**
+7 tests on `landingPathForRole` (each role, plus null/undefined/unknown); 116
+in `packages/db`, including one pinning the seed to the exact account in
+production so the two cannot drift; 487 in `apps/web`. Typecheck, lint, format
+and a production build all clean.
+
+Not verified: nobody has yet signed in as this account. The whole coordinator
+path — forced password change, `/coordinator`, the read-only `/admin` — has
+never run against a real coordinator session. That is the next thing to do,
+and it needs Lymo's one-time password.
+
+
 ## 2026-09-07 · bugfix · Back is a hierarchy: submit → trainee → Trainees tab
 
 **Kind:** bugfix
