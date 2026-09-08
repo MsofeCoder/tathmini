@@ -20,8 +20,14 @@
  * DATE line. Anything else would print one of them wrongly.
  */
 
-/** Days before today a date may be. Beyond this it is almost certainly a slip. */
+/**
+ * How far either side of today a date may sit. Beyond a year in either
+ * direction it is almost certainly a mistyped year, which is the one mistake
+ * this field really attracts — and the only thing left to catch now that
+ * future dates are allowed.
+ */
 const MAX_DAYS_BACK = 365;
+const MAX_DAYS_AHEAD = 365;
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -56,10 +62,16 @@ export type DateResult = { ok: true; value: string | null } | { ok: false; error
  * one, and it means a cleared box degrades to the old behaviour rather than
  * blocking a supervisor who is trying to file work.
  *
- * A future date is refused outright — an assessment that has not happened
- * cannot be dated, and a report carrying tomorrow is a defect anyone reading
- * it will spot. A date more than a year back is refused as a typed year slip
- * (`2025` for `2026`), which is the mistake this field will actually attract.
+ * A future date is ALLOWED, at the College's request. It was refused at first
+ * on the reasoning that an assessment which has not happened cannot be dated —
+ * but the field is used for more than "the day I observed the lesson": the
+ * College dates some reports to an official day, such as the end of the
+ * assessment period, which is often still ahead when the marks are filed. That
+ * is a decision about the College's own records, not a defect.
+ *
+ * What is still refused is a date more than a year away in either direction. A
+ * mistyped year is the one mistake this field genuinely attracts, and with
+ * both past and future open it is the only check left that can catch one.
  */
 export function validateAssessmentDate(raw: string, today: string): DateResult {
   const value = raw.trim();
@@ -78,11 +90,8 @@ export function validateAssessmentDate(raw: string, today: string): DateResult {
   }
 
   const offset = daysBetween(today, value);
-  if (offset > 0) {
-    return {
-      ok: false,
-      error: 'An assessment cannot be dated in the future. Use the day it was carried out.',
-    };
+  if (offset > MAX_DAYS_AHEAD) {
+    return { ok: false, error: 'That date is more than a year ahead — check the year.' };
   }
   if (offset < -MAX_DAYS_BACK) {
     return { ok: false, error: 'That date is more than a year ago — check the year.' };

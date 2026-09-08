@@ -623,18 +623,29 @@ function consolidatedPage(data: ReportData, reportRef: string, generatedAt: stri
  * is rendered at the instant it is sent, and the preview route is showing what
  * a report submitted right now would say.
  *
- * The per-instrument "Date submitted" on each assessor page is a different
- * date and stays as it is: `assessment_marks.submitted_at`, when that
- * assessment was marked. Marks are append-only, so that date cannot move.
+ * The DATE beside each assessor's signature is a different date again, and a
+ * more important one: `assessment_marks.assessed_on`, the day the supervisor
+ * says the assessment was carried out, falling back to `submitted_at` for
+ * marks that carry none (migration 0034). Both are append-only, so neither can
+ * move.
+ *
+ * Printed as a DATE ONLY, with no clock time. It is a record of a day, and an
+ * assessment record that says 07:41 invites the reader to think the time means
+ * something. It is also formatted in East Africa Time explicitly rather than in
+ * whatever zone the server happens to run in: a report generated at 23:00 in
+ * Morogoro is 20:00 UTC the same day, but one generated at 01:00 would print
+ * yesterday, and the date is now the only thing on that line.
  */
 export function renderReportHtml(
   data: ReportData,
   reportRef: string,
   submittedAt: Date = new Date(),
 ): string {
-  const generatedAt = submittedAt.toLocaleString('en-GB', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
+  const generatedAt = submittedAt.toLocaleDateString('en-GB', {
+    timeZone: 'Africa/Dar_es_Salaam',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
   });
 
   const assessorPages = data.instruments
