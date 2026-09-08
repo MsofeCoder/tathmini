@@ -5,13 +5,17 @@ previous phase's exit gate passes** — the gates are the point, not the tasks.
 
 Six phases, ~20 weeks to institutional handover, pilot at week 14.
 
-> **The phase plan is not the current schedule.** The College goes live on
-> Monday 7 September 2026, and the system must be production-ready on the
-> **evening of Sunday 6 September 2026** — see `HANDOFF.md` for what that means
-> and what has been cut to reach it. Phases 4 and 5 happen *after* a live
-> cohort is already being assessed, which is not how this was planned; the
-> pilot-then-rollout order in Phase 4 no longer describes reality. Read
-> `HANDOFF.md` first and this file second.
+> **The phase plan is not the current schedule, and never became one.** The
+> College went live on **Monday 7 September 2026** and supervisors have been
+> assessing real trainees against production since. Phases 4 and 5 are
+> therefore happening *after* a live cohort is being marked, which is not how
+> this was planned: the pilot-then-rollout order in Phase 4 does not describe
+> reality, and the parallel paper run in Phase 5 is the College's safety net
+> rather than a rehearsal.
+>
+> Ticks below mean *shipped and deployed*. Where something is shipped but has
+> never run against real data, the line says so — that distinction is the whole
+> value of this file now. Read `HANDOFF.md` first and this file second.
 
 Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 
@@ -76,6 +80,7 @@ supervisors, not just code** — see `MEMORY.md` 2026-09-07.
 - [x] Status derivation: pending → partial (1 of 2) → locked (both in) — `results.locked_at` set once `submitted_marks >= expected_marks` in `recompute_result()`; surfaced client-side by `deriveStatus()` (`apps/web/src/lib/trainees.ts`, built Phase 1)
 - [x] PDF generation reproducing the VETA form, per assessor + consolidated page — `apps/web/src/lib/reports/{data,render,pdf}.ts`, both TP and IPT; migration 0014 (**applied live 2026-09-05** — reports table, private Storage bucket, four RLS policies) adds the `reports` table and Storage bucket it needs. **Still unproven end to end:** production has zero locked results, and both the UI gate (`locked_at`) and the insert policy require one, so the download button is unreachable and headless Chromium has never run on Vercel. See `MEMORY.md`
 - [x] SHA-256 hash stored with each generated report — `reports.sha256_hash`, migration 0014
+- [x] **Date of assessment on the report** — not originally listed; asked for by supervisors once they were marking for real. The report printed `submitted_at`, the moment the marks landed, where the paper VETA form carries the day the assessment happened — and offline marking makes those two dates differ by days. The supervisor sets it before submitting (`assessment_marks.assessed_on`, migration `0034`, **applied live 2026-09-08**); it is append-only with the marks, one per instrument, and a future date is allowed for reports dated to an official day (PRs #54, #55)
 - [x] PDF preview in-app before submit (the exact file that will be sent) — an eye beside `Submitted ✓` and a `Preview report` button on the trainee profile, both opening `/trainee/[id]/report/preview` (PR #21/#18). Serves the **same markup** `renderReportHtml()` gives Chromium to print, so there is no second template to drift from `reference/Tathmini Result Report.dc.html`. HTML rather than a rendered PDF deliberately: preview is tapped casually and repeatedly, and every PDF call costs a headless-Chromium cold start — Chromium is reserved for the one deliberate action that stores a file
 - [ ] E-mail delivery to the three named recipient roles (Brevo)
 - [ ] Swahili notification: SMS / WhatsApp / e-mail deep links, personalised
@@ -94,12 +99,24 @@ field for field.
 - [x] Route management and assignment of assessor slots — `/admin/routes` reassigns either slot on a route, and `/admin/trainees/[id]` moves one trainee to another route; both rewrite `routes` **and** `assignments` together, since `assignments` is what RLS reads. A slot carrying a submitted mark is refused and named, not silently moved (`lib/admin/reassignment.ts`, unit-tested). Creating/renaming a route is deliberately not offered — a route code is matched verbatim by the roster importers
 - [~] Reassignment state machine: requested → accepted / declined, with inbox badge — the **administrator's half is built**: `/admin/trainees/[id]` hands a single assessor slot to another supervisor without moving the trainee off their route, refusing once that slot has submitted a mark, and files a `reassignments` row already `accepted` for provenance. The supervisor-initiated half — a request another assessor accepts or declines, with an inbox badge — is still unbuilt. The inert `/moves` tab has been removed from the bottom bar rather than left disabled; it gets its tab back when this lands (see `MEMORY.md` 2026-09-06)
 - [ ] Override as a superseding revision with mandatory typed reason
-- [x] Coordinator read-only dashboard (no write grant exists for the role) — the whole console renders read-only for `coordinator` (`lib/admin/access.ts`); every write is refused twice, once with a readable message and once by Postgres. No coordinator account exists yet, so this is unexercised against a real session
+- [x] Coordinator read-only dashboard (no write grant exists for the role) — the whole console renders read-only for `coordinator` (`lib/admin/access.ts`); every write is refused twice, once with a readable message and once by Postgres. **An account now exists** (`hoe.lymo`, created 2026-09-08, migration `0033`), and sign-in routes it to `/coordinator` rather than the supervisor field app — a bug found while creating it, since the forced first password change sent every new account to `/home` (PR #51). Still unexercised against a real session: nobody has yet signed in as the Coordinator
 - [ ] Excel export — assessor marks sheet + official averages sheet + provenance
 - [x] Audit log viewer, filterable by actor, action, trainee, date — `/admin/audit`, filterable by table and paged; actor names resolved, trainee rows linked. Filtering by actor and by date range is not built (the table filter covers the cases that have come up)
-- [ ] **Backup panel:** last backup status, 30-day outcome calendar, run-now,
-      gated download, last restore-rehearsal result
-- [ ] Nightly `pg_dump` → `age`-encrypted off-site storage; failure alerts
+- [~] **Backup panel:** last backup status, 30-day outcome calendar, run-now,
+      gated download, last restore-rehearsal result — the *download* half is
+      built and in use: `/api/admin/data-export` streams all 17 tables as CSVs
+      with a manifest and a SHA-256 per file (PR #53), beside the existing
+      report-PDF archive. The status panel, the calendar and the
+      restore-rehearsal record are still unbuilt, and there is still nothing
+      scheduled — a copy exists only when somebody presses the button
+- [ ] Nightly `pg_dump` → `age`-encrypted off-site storage; failure alerts —
+      **the Supabase project is on the Free plan, which takes no automatic
+      backups and offers no point-in-time recovery.** `pg_dump` cannot run in a
+      Vercel function (no binary, a 60-second ceiling, and it wants credentials
+      the deployed app must never hold), so the CSV export above is the interim
+      answer. Real recovery needs the Pro plan; that recommendation stands and
+      is the College's decision
+- [x] Correction requests — a supervisor reports a wrong particular, a Super Administrator applies or declines it, and the decision is on the record either way (`/admin/requests`, migrations `0030` + `0032`, **both applied live 2026-09-08**). The Requests tab carries a count of what is waiting and `/admin` raises it as an urgent check, because a queue nobody opens is not an inbox (PR #52). Note the order trap: `0030` alone declares `reason text not null` against a supervisor form that no longer sends one, and would have refused every correction from the field
 - [x] Register correction and register health — not originally listed, but it is what a Super Admin actually spends time on: `/admin/trainees` searches all 546 rows and `/admin/trainees/[id]` corrects particulars and moves routes, replacing the hand-written migrations that did this (0023, 0026, the IPT update). `/admin` counts the defects that have really occurred — test rows on real routes, trainees sharing an e-mail address, empty assessor slots, unassigned trainees — every time it is opened
 - [~] Voiding one trainee's assessment — `/admin/trainees/[id]` returns an assessed trainee to "Not yet assessed" so both assessors can mark them again: the marks, the result and the report rows are archived whole into `voided_assessments` and only then cleared, with a typed reason and the administrator's name. Console code and 12 pgTAP assertions are built and green, and **migration `0031` was applied live on 2026-09-06** with the user's explicit approval (plus a follow-up revoking the `anon` EXECUTE grant Supabase's default privileges had handed the function). Row counts before and after were identical and every existing revocation still holds; the happy path has not yet been run against real data — the first real void will be a Super Admin pressing the button
 - [ ] Deleting a trainee from the console — blocked on purpose: `delete on trainees` is revoked from every signed-in role because it cascades to marks. Needs a reviewed migration adding a guarded, audit-logging function; the console explains this and shows the SQL instead of pretending the button is missing
@@ -118,6 +135,7 @@ and checksums verify, and the panel reports the result.
 - [ ] Rate limiting on sign-in and export; lockout after five failures
 - [ ] CSP, HSTS, security headers verified
 - [ ] Supervisor training session and one-page field guide
+- [x] **A way for users to say what is wrong** — not originally listed, and it should have been: an anonymous bilingual feedback form (`ops/feedback-form/`), announced to supervisors and linked from **Account → Send feedback** in the app (PR #56). Open to trainees and College management too, neither of whom has an account. This is how the remaining items in this phase get prioritised by evidence rather than by guess
 - [ ] Pilot on a single route with real trainees
 
 **Exit gate:** pilot supervisors sign off; no high or critical finding open.

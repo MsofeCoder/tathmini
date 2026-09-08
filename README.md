@@ -27,14 +27,17 @@ what was rejected.
 apps/web           Next.js PWA (supervisor, coordinator, admin surfaces)
 packages/shared     Zod schemas + grading engine, imported by client and server
 packages/db         Drizzle schema, migrations, RLS/functions, pgTAP suite, seed data
+ops/               Things that run outside this workspace but must not be lost
 reference/          The prototype, verbatim VETA forms, architecture doc — read-only
 ```
 
 ## Prerequisites
 
 - Node.js ≥ 20, pnpm ≥ 9 (`corepack enable` will pick up the pinned version)
-- Docker, for running Postgres locally (no hosted Supabase project exists yet
-  — see `ROADMAP.md` Phase 0)
+- Docker, for running Postgres locally — the documented way to prove a schema
+  change before it touches the College's data (`packages/db/README.md`). The
+  real Supabase project has existed since 4 September and is live; this is for
+  rehearsing migrations, not for day-to-day work
 
 ## Getting started
 
