@@ -42,6 +42,119 @@ The test, query or manual check that proves it works.
 ---
 
 
+## 2026-09-08 · ops · Three migrations applied live, and what is now proven in production
+
+**Kind:** ops
+**Phase:** 1-3
+**Commit / PR:** #51, #53, #54, #55, #56 (all merged); migrations 0030, 0032, 0034
+
+**What changed**
+Nothing in the code. This entry exists because several entries below it say
+"not verified" or "not applied", and by the end of 8 September some of those
+were no longer true. Per this file's own rule the originals stand as written;
+this is the correction.
+
+**Applied to the live database on 2026-09-08, with the user's approval, each
+returning "Success. No rows returned" (the correct result for DDL):**
+
+* `0030_trainee_change_requests.sql` and `0032_correction_reason_optional.sql`,
+  in that order and in one sitting. **Correction requests are now switched on
+  in production.** The order mattered: 0030 declares `reason text not null` and
+  the deployed supervisor form sends `reason: null`, so 0030 alone would have
+  lit up the tab and had Postgres refuse every correction reported from the
+  field. See the entry below for how that trap was found.
+* `0034_assessment_marks_assessed_on.sql`. The date of assessment is live and
+  was tested end to end by the user — set a date, submit, and the report prints
+  it beside the assessor's signature.
+
+**Verified in production by the user:**
+
+* The **assessment data export** (#53) — downloaded, opens, contains the
+  cohort. The College now holds a copy of its own assessment data outside
+  Supabase for the first time. The Free plan still takes no automatic backups
+  and the Pro-plan recommendation stands.
+* The **report footer** now reads "Generated 8 Sept 2026" with no clock time
+  (#55), and a **future date of assessment** is accepted (#55) — asked for
+  after the first end-to-end test.
+
+**Still NOT verified, and each is one action away:**
+
+* **Nobody has signed in as the Coordinator.** `hoe.lymo` exists, the redirect
+  fix is deployed, and `/coordinator` has still never carried a real coordinator
+  session. This is the oldest outstanding item in the project — the role has
+  existed since migration 0000.
+* The **Send feedback** link (#56) has not been tapped on a real phone, and its
+  offline branch has not been seen in airplane mode.
+* The **offline exit gate** on a real device, which has been owed since
+  6 September and whose shape changed when #50 deleted the outbox drainer.
+
+**Watch out for**
+`0033` was the coordinator link and `0034` the assessment date, so the next
+migration is `0035`. The journal guard in `packages/db` caught `0034` being
+added without being registered — it works, and it will catch the next one.
+
+---
+
+
+## 2026-09-08 · decision · A feedback form outside the system, and a link to it inside
+
+**Kind:** decision
+**Phase:** 3-4
+**Commit / PR:** #56, plus `ops/feedback-form/` (this branch)
+
+**What changed**
+The College has a channel for hearing from the people who use Tathmini: an
+anonymous, bilingual Google Form, announced to supervisors on WhatsApp and
+linked from **Account → Send feedback** in the app. The Apps Script that builds
+it is committed at `ops/feedback-form/`.
+
+**Why this way**
+A Google Form rather than a screen in Tathmini, because the fastest way to
+learn that the interface is wrong is not to build more interface. It also lets
+trainees and College management answer, none of whom have an account, and it
+costs nothing to run.
+
+Anonymous with optional contact, at the user's choice: the object is honest
+criticism of the interface, and people soften it when they are named. Bilingual
+because supervisors express criticism more precisely in Kiswahili than in
+English, and the form is asking about wording. Exactly one question is
+required — "if you could change ONE thing" — because a busy supervisor
+abandons anything longer.
+
+The **in-app link matters more than the WhatsApp message.** A message is read
+once and scrolled past; the annoyance happens later, in a workshop, with the
+app already open.
+
+**Watch out for**
+**The form is owned by a personal Google account, not the College.** The
+responses belong to that account. If MVTTC has a `@veta.go.tz` Workspace,
+rebuilding the form there would keep the feedback with the institution —
+transferring ownership afterwards is more awkward than starting in the right
+place. Recorded rather than left as a surprise.
+
+Google gives **no API for a form's theme**: the MVTTC header image, colour and
+font are not settable from Apps Script or the Forms API and were applied by
+hand. Anyone rebuilding the form has to do that again — it is not a gap in the
+script.
+
+`setRequireLogin` is Workspace-only and throws on a personal account, *after*
+`FormApp.create` has already made an empty form. That is why the optional
+settings are attempted one at a time in `applyOptionalSettings()`. All four set
+defaults, so a skipped call costs nothing.
+
+The script builds the form's **structure**. Its wording is edited in the Forms
+editor from here on, and the file will drift — that is expected. Re-running the
+script does not update the form; it creates a second one.
+
+**Verified by**
+The form was created, branded and is live at `forms.gle/qW29pWr6oqEry7oY8`.
+Not verified: no response has been submitted yet, so the e-mail alert to the
+developers has never fired against a real submission. `testNotificationEmail()`
+exists to check that half on its own.
+
+---
+
+
 ## 2026-09-08 · feature · Send feedback, from inside the app
 
 **Kind:** feature
