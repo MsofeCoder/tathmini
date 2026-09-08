@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  isInternalNavigation,
-  isShellPath,
-  matchScreen,
-  parentScreenPath,
-} from './route-match';
+import { isInternalNavigation, isShellPath, matchScreen, parentScreenPath } from './route-match';
 
 /**
  * The routing table of the field app. With one precached document answering
