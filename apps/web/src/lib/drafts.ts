@@ -17,6 +17,13 @@ export interface DraftState {
   /** Keyed by `criteria.section_code`. */
   sectionComments: Record<string, string>;
   generalComment: string;
+  /**
+   * The day the assessment was carried out, `YYYY-MM-DD`. Held in the draft so
+   * a supervisor who sets it on Monday and submits on Wednesday still submits
+   * Monday — the whole point of the field would be lost if it reset when the
+   * app was reopened.
+   */
+  assessedOn: string | null;
 }
 
 export function draftKey(traineeId: string, instrumentId: string): string {
@@ -37,6 +44,9 @@ export async function loadDraft(key: string): Promise<DraftState | undefined> {
     marks: record.marks,
     sectionComments: record.sectionComments ?? {},
     generalComment: record.generalComment ?? '',
+    // Absent in every draft written before this field existed, and absent is
+    // the correct answer for those: nobody chose a date.
+    assessedOn: record.assessedOn ?? null,
   };
 }
 
@@ -46,6 +56,7 @@ export async function saveDraft(key: string, state: DraftState): Promise<void> {
     marks: state.marks,
     sectionComments: state.sectionComments,
     generalComment: state.generalComment,
+    assessedOn: state.assessedOn,
     updatedAt: Date.now(),
   });
 }

@@ -42,6 +42,7 @@ const draft = (marks: Record<string, number>) => ({
   ),
   sectionComments: {},
   generalComment: '',
+  assessedOn: null,
 });
 
 describe('phaseComplete', () => {

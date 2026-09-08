@@ -1,3 +1,4 @@
+import { reportDateLine } from '../assessment-date';
 import { evaluate } from '@tathmini/shared';
 import type { CriterionRow } from '@/lib/marking';
 import type { AssessorMarks, InstrumentReport, ReportData } from './data';
@@ -403,7 +404,7 @@ function assessorPage(
     <span style="flex: 1.2;">SUPERVISOR&rsquo;S NAME <span style="font-weight: 700; border-bottom: 1px dotted #000; padding: 0 6px;">${esc(marks.supervisorName)}</span></span>
     <span style="flex: 1;">SIGNATURE <span style="border-bottom: 1px dotted #000; padding: 0 26px;">&nbsp;</span></span>
     <span style="flex: 0.9;">DATE <span style="font-weight: 700; border-bottom: 1px dotted #000; padding: 0 6px;">${esc(
-      marks.submittedAt ? new Date(marks.submittedAt).toLocaleDateString('en-GB') : '—',
+      reportDateLine(marks.assessedOn, marks.submittedAt),
     )}</span></span>
   </div>
   <div style="font-size: 6.5pt; color: #444; text-align: right;">Generated ${esc(generatedAt)}.</div>

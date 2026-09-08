@@ -80,5 +80,9 @@ export function buildPhasePayload({
       comment: draft.sectionComments[section.code] ?? '',
     })),
     generalComment: draft.generalComment,
+    // Per phase, not per trainee: Theory and Practical are two observations
+    // that genuinely happen on different days, and the report gives each its
+    // own page with its own DATE line.
+    assessedOn: draft.assessedOn,
   };
 }

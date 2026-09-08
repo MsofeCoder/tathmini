@@ -6,6 +6,7 @@ import {
   iptCriterionMarkSchema,
   pointsCriterionMarkSchema,
 } from '@tathmini/shared';
+import { todayInEat, validateAssessmentDate } from '@/lib/assessment-date';
 import { createClient } from '@/lib/supabase/server';
 import type { SubmitAssessmentInput, SubmitAssessmentResult } from '@/lib/submission';
 
@@ -89,6 +90,17 @@ export async function submitAssessment(
     }
   }
 
+  /**
+   * The date is re-checked here, not trusted from the client — the same rule
+   * as every score above. A submission can also be replayed from the outbox
+   * days after it was queued, so "not in the future" is judged now, against
+   * today, rather than against the day the supervisor tapped Submit.
+   */
+  const checkedDate = validateAssessmentDate(input.assessedOn ?? '', todayInEat());
+  if (!checkedDate.ok) {
+    return { ok: false, code: 'invalid', error: checkedDate.error };
+  }
+
   // Reuse an existing unfinished row for this (trainee, instrument, slot)
   // rather than re-inserting — a prior attempt may have crashed between the
   // two inserts, and assessment_marks_trainee_instrument_slot_idx is unique.
@@ -112,19 +124,34 @@ export async function submitAssessment(
 
   let markId = existing?.id;
   if (!markId) {
-    const { data: inserted, error: insertError } = await supabase
+    let { data: inserted, error: insertError } = await supabase
       .from('assessment_marks')
-      .insert({
-        trainee_id: input.traineeId,
-        instrument_id: input.instrumentId,
-        supervisor_id: user.id,
-        slot: input.slot,
-        // Only settable here — assessment_marks has no UPDATE grant, so the
-        // general comment is append-only along with the rest of the row.
-        general_comment: input.generalComment.trim() || null,
-      })
+      .insert(markRow(input, user.id, true))
       .select('id')
       .single();
+
+    /**
+     * `assessed_on` arrives with migration 0034. If that has not been applied
+     * where this is running, Postgres rejects the whole insert for an unknown
+     * column — and a supervisor standing in a workshop would be told their
+     * assessment failed, over a date.
+     *
+     * So the column is dropped and the insert retried once. The assessment
+     * lands either way; only the date is lost, and the report falls back to
+     * the submission date exactly as it did before this feature. Once the
+     * migration is applied this retry stops happening on its own, with no
+     * deployment. See lib/assessment-date.ts and migration 0034.
+     */
+    if (insertError && isUnknownColumn(insertError, 'assessed_on')) {
+      const retry = await supabase
+        .from('assessment_marks')
+        .insert(markRow(input, user.id, false))
+        .select('id')
+        .single();
+      inserted = retry.data;
+      insertError = retry.error;
+    }
+
     if (insertError || !inserted) {
       return {
         ok: false,
@@ -180,4 +207,36 @@ export async function submitAssessment(
   revalidatePath(`/trainee/${input.traineeId}`);
   revalidatePath('/home');
   return { ok: true };
+}
+
+/**
+ * The `assessment_marks` row, with or without the date column.
+ *
+ * `general_comment` and `assessed_on` are both only settable here —
+ * `assessment_marks` has no UPDATE grant for any role, so everything the
+ * supervisor asserts about this assessment is append-only along with the
+ * scores.
+ */
+function markRow(input: SubmitAssessmentInput, supervisorId: string, withDate: boolean) {
+  const row: Record<string, unknown> = {
+    trainee_id: input.traineeId,
+    instrument_id: input.instrumentId,
+    supervisor_id: supervisorId,
+    slot: input.slot,
+    general_comment: input.generalComment.trim() || null,
+  };
+  if (withDate) row.assessed_on = input.assessedOn;
+  return row;
+}
+
+/**
+ * Postgres 42703 is "column does not exist"; PostgREST reports the same thing
+ * as PGRST204 when its schema cache has no such column. The column name is
+ * checked too, so an unrelated missing column is never silently swallowed —
+ * that would turn a real schema fault into a submission that quietly dropped
+ * data.
+ */
+function isUnknownColumn(error: { code?: string; message?: string }, column: string): boolean {
+  const known = error.code === '42703' || error.code === 'PGRST204';
+  return known && (error.message ?? '').includes(column);
 }
