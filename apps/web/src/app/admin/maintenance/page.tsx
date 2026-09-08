@@ -48,8 +48,45 @@ export default async function AdminMaintenancePage() {
     <>
       <PageHeader
         title="Backup and maintenance"
-        subtitle="Take the College's own copy of the reports, and clear test rows out of the live register."
+        subtitle="Take the College's own copy of the assessment — the data and the reports — and clear test rows out of the live register."
       />
+
+      <Card
+        tone="warning"
+        title="Download the assessment data"
+        description="Every mark, every result and the audit trail, as CSV files that open in Excel. This is the copy that matters: the reports below are documents, this is the assessment itself."
+      >
+        <div className="flex flex-wrap items-center gap-3 p-4">
+          <a
+            href="/api/admin/data-export"
+            download
+            className="focus:outline-accent inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-[#0d4a43] bg-[#0d4a43] px-4 text-[13px] font-bold text-white focus:outline focus:outline-[3px] focus:outline-offset-2"
+          >
+            Download everything
+          </a>
+          <span className="text-[12.5px] text-[#5b6b78]">
+            {trainees.length} trainees · {marks.length} marks · 17 files
+          </span>
+        </div>
+
+        <div className="space-y-2 border-t border-[#f0e2c8] px-4 py-3 text-[12.5px] leading-relaxed text-[#5a4212]">
+          <p>
+            <strong>Nothing else backs this data up.</strong> This Supabase project is on the free
+            plan, which takes no automatic backups and offers no point-in-time recovery. Until that
+            changes, a copy exists only when somebody presses this button.
+          </p>
+          <p>
+            <strong>It is not a restore.</strong> CSV files carry no constraints, policies or
+            database functions, so rebuilding a working system from them would be careful manual
+            work rather than a button — but the assessment survives, readable, without this
+            application or Supabase.
+          </p>
+          <p>
+            It holds every trainee&rsquo;s contact details and every mark awarded. Keep it as the
+            College keeps its paper records, and not on the same computer as everything else.
+          </p>
+        </div>
+      </Card>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatTile label="Reports on file" value={reports.length} hint="all time" />
@@ -92,9 +129,10 @@ export default async function AdminMaintenancePage() {
           </p>
           <p>
             <strong>This is not a database backup.</strong> Marks, results and the audit trail are
-            not in it: only the finished PDFs. A nightly encrypted dump of the database itself is
-            still to be built, and until it exists this archive is the only copy of the reports that
-            lives outside Supabase. Keep it somewhere other than the computer that downloaded it.
+            not in it: only the finished PDFs. Those live in the data export above, and the two
+            archives are complements — this one is the documents the College issued, that one is the
+            assessment behind them. Take both, and keep them somewhere other than the computer that
+            downloaded them.
           </p>
           <p>
             Each file&rsquo;s hash can be checked years later against <Code>manifest.csv</Code> —{' '}

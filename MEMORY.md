@@ -42,6 +42,73 @@ The test, query or manual check that proves it works.
 ---
 
 
+## 2026-09-08 · feature · The assessment data can leave the building
+
+**Kind:** feature
+**Phase:** 3
+**Commit / PR:** this branch (`feat/data-export`)
+
+**What changed**
+`/api/admin/data-export` streams every table as one ZIP of CSVs — the
+register, both assessors' marks, every criterion score behind them, the
+results, and the audit trail — with a manifest carrying a row count and
+SHA-256 per file, and a README that says what it is not. A card on
+`/admin/maintenance` takes it.
+
+**Why this way**
+The Supabase project is on the **Free plan, which takes no automatic backups
+and offers no point-in-time recovery**. The report backup that already existed
+covers PDFs and says so in its own README. So until today the marks — the
+thing the College cannot reconstruct from anything — had no copy anywhere
+outside one Supabase project. HANDOFF has been saying "a bad afternoon loses
+the College's assessment records" since 6 September, and it was literally true.
+
+CSV rather than `pg_dump` because `pg_dump` cannot run here: no binary in a
+Vercel function, a 60-second ceiling, and it wants a direct connection with
+credentials the deployed app must not hold. The user chose this over paying for
+the Pro plan or running `pg_dump` from GitHub Actions — the repo is public and
+that route wants the database password in CI secrets. **This does not replace
+a real backup**; the README and the card both say so in those words.
+Point-in-time recovery still needs the paid plan, and that recommendation
+stands.
+
+Read through the administrator's own session, so RLS decides what lands in the
+archive, exactly as on every console screen. Super Administrator only —
+deliberately stricter than the report backup beside it, which a Coordinator may
+take. Not because a coordinator could read anything new (`is_coordinator()`
+already grants select on all of it) but because this one action collects every
+trainee's contact details and every mark into a single file on a laptop, and
+oversight does not require that.
+
+**Watch out for**
+The bug this nearly shipped with, and the test that now prevents it:
+`assessment_mark_items` and `assessment_mark_section_comments` were listed with
+`orderBy: 'mark_id'`. The column is `assessment_mark_id`. A wrong column name
+here does not fail loudly — the export cannot order the table, drops it into
+`MISSING-TABLES.txt`, and hands over an archive that looks complete. Every
+criterion score ever awarded would have been quietly absent from the College's
+only backup.
+
+`data-export.schema.test.ts` reads `packages/db/src/schema.ts` off disk and
+checks all three things: every table exists, every sort column exists, and
+**every table in the schema is exported**. That last one fails when a future
+migration adds a table, which is the point — a table left out of the backup
+should be a decision, never an oversight. It is an odd test (`apps/web` does
+not depend on `@tathmini/db`) and it was mutation-tested: reintroducing
+`mark_id` fails it, naming both tables.
+
+**Verified by**
+507 tests in `apps/web` — 20 on the export, including the schema guard — plus
+116 in `packages/db` and 37 in `packages/shared`; typecheck, lint and a
+production build clean.
+
+Not verified: no archive has been downloaded from production. The paging, the
+60-second ceiling against `assessment_mark_items` at full cohort, and whether
+Excel opens the result are all unproven until somebody presses the button.
+
+---
+
+
 ## 2026-09-08 · feature · The Coordinator account, and the first-run redirect that made it unusable
 
 **Kind:** feature
