@@ -1,7 +1,7 @@
 'use server';
 
 import { redirect } from 'next/navigation';
-import { INVALID_CREDENTIALS_MESSAGE, usernameToEmail } from '@/lib/auth';
+import { INVALID_CREDENTIALS_MESSAGE, landingPathForRole, usernameToEmail } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 
 export interface SignInState {
@@ -43,6 +43,5 @@ export async function signIn(_prevState: SignInState, formData: FormData): Promi
   }
 
   if (profile?.must_change_password ?? true) redirect('/change-password');
-  if (profile?.role === 'coordinator') redirect('/coordinator');
-  redirect(profile?.role === 'supervisor' ? '/home' : '/admin');
+  redirect(landingPathForRole(profile?.role));
 }

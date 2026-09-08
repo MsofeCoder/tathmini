@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { COORDINATOR_ACCOUNTS } from '../data/coordinator-accounts';
 import { DEV_ACCOUNTS } from '../data/dev-accounts';
 import { IPT_ACCOUNTS } from '../data/ipt-accounts';
 import { TP_ACCOUNTS } from '../data/tp-accounts';
@@ -53,10 +54,43 @@ describe('TP_ACCOUNTS', () => {
   });
 });
 
+describe('COORDINATOR_ACCOUNTS', () => {
+  it('is the one account holding the coordinator role', () => {
+    expect(COORDINATOR_ACCOUNTS).toHaveLength(1);
+    expect(COORDINATOR_ACCOUNTS[0]?.role).toBe('coordinator');
+  });
+
+  /**
+   * These two strings are the live account, created in Supabase on
+   * 2026-09-08. They must keep matching migration 0033 and the row in
+   * production — a seed that drifts from the database it describes is worse
+   * than no seed, because a restore would rebuild the wrong account.
+   */
+  it('is the account that actually exists in production', () => {
+    expect(COORDINATOR_ACCOUNTS[0]).toEqual({
+      username: 'hoe.lymo',
+      name: 'Lymo',
+      role: 'coordinator',
+      email: 'hoe.lymo@tathmini.internal',
+    });
+  });
+
+  it('derives its email as username@tathmini.internal, never a real inbox', () => {
+    for (const a of COORDINATOR_ACCOUNTS) {
+      expect(a.email).toBe(`${a.username}@tathmini.internal`);
+    }
+  });
+
+  it('is the only role holder — no other seed claims coordinator', () => {
+    const others = [...IPT_ACCOUNTS, ...TP_ACCOUNTS, ...DEV_ACCOUNTS];
+    expect(others.filter((a) => a.role === 'coordinator')).toEqual([]);
+  });
+});
+
 describe('ALL_ACCOUNTS', () => {
-  it('combines IPT_ACCOUNTS, TP_ACCOUNTS, and DEV_ACCOUNTS with no username collisions between them', () => {
+  it('combines the IPT, TP, coordinator and dev seeds with no username collisions between them', () => {
     expect(ALL_ACCOUNTS).toHaveLength(
-      IPT_ACCOUNTS.length + TP_ACCOUNTS.length + DEV_ACCOUNTS.length,
+      IPT_ACCOUNTS.length + TP_ACCOUNTS.length + COORDINATOR_ACCOUNTS.length + DEV_ACCOUNTS.length,
     );
     const usernames = ALL_ACCOUNTS.map((a) => a.username);
     expect(new Set(usernames).size).toBe(usernames.length);

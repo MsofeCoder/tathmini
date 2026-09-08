@@ -211,6 +211,13 @@
       "when": 1788591241380,
       "tag": "0032_correction_reason_optional",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1788591301380,
+      "tag": "0033_link_coordinator_account",
+      "breakpoints": true
     }
   ]
 }

@@ -27,11 +27,17 @@ import { randomBytes } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { createClient } from '@supabase/supabase-js';
 import { MISSING_ENV_MESSAGE, resolveEnv } from './admin-client';
+import { COORDINATOR_ACCOUNTS } from '../data/coordinator-accounts';
 import { DEV_ACCOUNTS } from '../data/dev-accounts';
 import { IPT_ACCOUNTS, type AccountSeed } from '../data/ipt-accounts';
 import { TP_ACCOUNTS } from '../data/tp-accounts';
 
-export const ALL_ACCOUNTS: AccountSeed[] = [...IPT_ACCOUNTS, ...TP_ACCOUNTS, ...DEV_ACCOUNTS];
+export const ALL_ACCOUNTS: AccountSeed[] = [
+  ...IPT_ACCOUNTS,
+  ...TP_ACCOUNTS,
+  ...COORDINATOR_ACCOUNTS,
+  ...DEV_ACCOUNTS,
+];
 
 export function generatePassword(): string {
   // 16 chars, base64url alphabet — no ambiguous-character concerns since
