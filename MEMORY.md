@@ -42,6 +42,88 @@ The test, query or manual check that proves it works.
 ---
 
 
+## 2026-09-08 · feature · The report carries the day the assessment happened
+
+**Kind:** feature
+**Phase:** 1-2
+**Commit / PR:** this branch (`feat/assessment-date`)
+
+**What changed**
+A supervisor sets the date of assessment before submitting, and that is what
+prints beside their signature on the report. Migration `0034` adds
+`assessment_marks.assessed_on` (a `date`, nullable); the field appears on both
+marking screens, is held in the draft, and rides in with the insert.
+
+**Why this way**
+Asked for by supervisors, and the reason is the field rather than the software.
+A lesson is observed on Monday in a workshop with no signal; the marks reach
+the College on Wednesday. The report was printing Wednesday —
+`submitted_at`, the moment the row landed — where the paper VETA form has
+always carried the day the assessment happened. On a document that becomes
+part of a trainee's certificate record that is the wrong fact, and it is wrong
+by however long the supervisor was out of signal.
+
+**Set at INSERT, and only there.** `assessment_marks` has no UPDATE grant for
+any role, so this rides in beside `general_comment` and is append-only with the
+scores. Neither the supervisor nor an administrator can edit it afterwards,
+which is the same guarantee the marks carry — and this date is part of the same
+assertion.
+
+**A `date`, not a `timestamptz`.** Nobody is recording the hour a lesson was
+observed. A timestamp would drag time zones into a field whose whole job is to
+say "Monday" and would eventually print the wrong day for somebody.
+`submitted_at` stays a timestamptz because it records an instant that really
+did happen at an instant.
+
+**One per instrument, not per trainee.** TP Theory and TP Practical are two
+observations that genuinely happen on different days, they are two
+`assessment_marks` rows, and the report gives each its own page with its own
+DATE line. A single per-trainee date would print one of them wrongly.
+
+**Watch out for**
+Two deployment-order traps, both closed deliberately because supervisors are
+marking against production right now:
+
+* The **insert** asks for `assessed_on` and, if Postgres says no such column,
+  retries once without it. Without that, deploying before applying `0034`
+  would fail every submission in the field — over a date. The assessment lands
+  either way; only the date is lost.
+* The **report read** does the same: `loadMarks()` in `reports/data.ts` selects
+  `assessed_on` and falls back to a select without it. A report generated
+  between deploy and migration would otherwise 500, on the one action a
+  supervisor cannot work around, having already submitted.
+
+Both retries stop happening on their own once `0034` is applied — no
+deployment, no restart.
+
+`formatAssessmentDate` deliberately does NOT go through `Date`:
+`new Date('2026-09-08')` is midnight UTC and rendering it west of Greenwich
+prints the 7th. The report is a record OF a date and must print the date it was
+given.
+
+`todayInEat` shifts by +3h and reads the UTC calendar date, which is exact for
+Tanzania (no daylight saving). It matters in the evening: at 22:00 in Morogoro
+the UTC date is still yesterday, and a supervisor filing the day's work would
+have been offered the wrong default and told today was in the future.
+
+The past window is 365 days inclusive. A year mistyped on the exact anniversary
+passes — noted in the test rather than fixed, because tightening the window
+refuses supervisors filing genuinely old work, and a wrong date is visible on
+the report whereas a refused submission blocks marks.
+
+**Verified by**
+522 tests in `apps/web`, 15 of them on the date rules — including the one that
+is the whole feature: observed on the 1st, submitted on the 3rd, report says
+the 1st. Plus 116 in `packages/db` (the journal guard caught `0034` being added
+without registration) and 37 in `packages/shared`; typecheck, lint and a
+production build clean.
+
+Not verified: nothing has been submitted with a date against production. The
+migration is not applied.
+
+---
+
+
 ## 2026-09-08 · feature · The assessment data can leave the building
 
 **Kind:** feature

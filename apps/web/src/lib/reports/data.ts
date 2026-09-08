@@ -4,6 +4,13 @@ import type { CriterionRow } from '@/lib/marking';
 export interface AssessorMarks {
   supervisorName: string;
   submittedAt: string | null;
+  /**
+   * The day the assessment was carried out, `YYYY-MM-DD`, as the supervisor
+   * set it before submitting. Null for every mark submitted before migration
+   * 0034, and for any supervisor who left the field blank — the report then
+   * prints `submittedAt`, as it always did. See lib/assessment-date.ts.
+   */
+  assessedOn: string | null;
   total: number | null;
   itemsByCriterionId: Map<string, { score: number; comment: string | null }>;
   /**
@@ -127,13 +134,7 @@ export async function getReportData(
         'id, instrument_id, section_code, section_label, section_max, item_code, item_label, item_max, order_index',
       )
       .order('order_index'),
-    supabase
-      .from('assessment_marks')
-      .select(
-        'id, instrument_id, slot, total, submitted_at, general_comment, supervisor:users(name)',
-      )
-      .eq('trainee_id', traineeId)
-      .not('submitted_at', 'is', null),
+    loadMarks(supabase, traineeId),
   ]);
 
   const instrumentIds = new Set((instrumentsRes.data ?? []).map((i) => i.id));
@@ -195,6 +196,7 @@ export async function getReportData(
       bySlot[slot] = {
         supervisorName,
         submittedAt: mark.submitted_at,
+        assessedOn: (mark as { assessed_on?: string | null }).assessed_on ?? null,
         total: mark.total === null ? null : Number(mark.total),
         itemsByCriterionId: itemsByMarkId.get(mark.id) ?? new Map(),
         commentsBySectionCode: sectionCommentsByMarkId.get(mark.id) ?? new Map(),
@@ -253,4 +255,33 @@ export async function getReportData(
     },
     instruments,
   };
+}
+
+const MARK_COLUMNS = 'id, instrument_id, slot, total, submitted_at, general_comment';
+
+/**
+ * The submitted marks for one trainee.
+ *
+ * Asks for `assessed_on` and, if the column is not there, asks again without
+ * it. Migration 0034 adds that column; a report generated between deploying
+ * this code and applying the migration would otherwise fail outright — and it
+ * would fail on the one action a supervisor cannot work around, having already
+ * submitted the marks. Falling back costs the date and nothing else. Once the
+ * migration is applied the second attempt never runs again.
+ */
+async function loadMarks(supabase: SupabaseClient, traineeId: string) {
+  const withDate = await supabase
+    .from('assessment_marks')
+    .select(`${MARK_COLUMNS}, assessed_on, supervisor:users(name)`)
+    .eq('trainee_id', traineeId)
+    .not('submitted_at', 'is', null);
+
+  const code = withDate.error?.code;
+  if (code !== '42703' && code !== 'PGRST200' && code !== 'PGRST204') return withDate;
+
+  return supabase
+    .from('assessment_marks')
+    .select(`${MARK_COLUMNS}, supervisor:users(name)`)
+    .eq('trainee_id', traineeId)
+    .not('submitted_at', 'is', null);
 }

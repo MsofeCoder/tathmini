@@ -1,5 +1,7 @@
 'use client';
 
+import { AssessmentDateField } from './assessment-date-field';
+import { todayInEat } from '@/lib/assessment-date';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { adviceFor } from '@tathmini/shared';
 import {
@@ -61,6 +63,9 @@ export function MarkingForm({
   // rendered on IPT and nothing is ever written for it.
   const [sectionComments, setSectionComments] = useState<Record<string, string>>({});
   const [generalComment, setGeneralComment] = useState('');
+  // Defaults to today: a supervisor who assesses and submits the same day
+  // does nothing at all, which is most of them.
+  const [assessedOn, setAssessedOn] = useState<string | null>(() => todayInEat());
   // Suggestions the supervisor has waved away, by criterion id. Local to the
   // session and never persisted: dismissing is "not this one, not now", not a
   // judgement worth carrying into the next assessment.
@@ -93,6 +98,9 @@ export function MarkingForm({
         setMarks(restored.marks);
         setSectionComments(restored.sectionComments);
         setGeneralComment(restored.generalComment);
+        // Only if the draft carries one — a draft written before this field
+        // existed must not wipe today's sensible default.
+        if (restored.assessedOn) setAssessedOn(restored.assessedOn);
       }
       if (!cancelled) setDraftLoaded(true);
     });
@@ -105,14 +113,14 @@ export function MarkingForm({
     if (!draftLoaded) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      saveDraft(key, { marks, sectionComments, generalComment }).then(() =>
+      saveDraft(key, { marks, sectionComments, generalComment, assessedOn }).then(() =>
         setSavedLabel('Draft saved'),
       );
     }, 400);
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
-  }, [marks, sectionComments, generalComment, key, draftLoaded]);
+  }, [marks, sectionComments, generalComment, assessedOn, key, draftLoaded]);
 
   const total = scoredCount(criteria, marks);
   const progressPct = criteria.length === 0 ? 0 : Math.round((total / criteria.length) * 100);
@@ -176,7 +184,7 @@ export function MarkingForm({
   async function handleSaveDraft() {
     setSubmitting(true);
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    await saveDraft(key, { marks, sectionComments, generalComment });
+    await saveDraft(key, { marks, sectionComments, generalComment, assessedOn });
     // See the note in handleSubmit. Saving a draft is not a submit, so this
     // one pushes: Back to the form just saved is a reasonable thing to want.
     navigateTo(backHref);
@@ -211,6 +219,7 @@ export function MarkingForm({
           }))
         : [],
       generalComment,
+      assessedOn,
     };
 
     // Ask whether the server is actually reachable before trying to reach it.
@@ -450,6 +459,16 @@ export function MarkingForm({
               }}
               placeholder="Overall advice for the trainee"
               className="focus:outline-accent mt-2 min-h-[120px] w-full rounded-[10px] border border-[#ccd7d4] p-3 text-[14px] leading-relaxed focus:outline focus:outline-[3px] focus:outline-offset-1"
+            />
+
+            <AssessmentDateField
+              id="assessed-on"
+              value={assessedOn}
+              today={todayInEat()}
+              onChange={(value) => {
+                setAssessedOn(value);
+                setSavedLabel('');
+              }}
             />
           </div>
         </section>

@@ -41,6 +41,14 @@ export interface DraftRecord {
    */
   sectionComments?: Record<string, string>;
   generalComment?: string;
+  /**
+   * The day the assessment was carried out, `YYYY-MM-DD`. Optional for the
+   * same reason as the two above: drafts written before the field existed do
+   * not carry it, and no Dexie version bump is needed because `drafts` is
+   * indexed on `key` alone — a new field on the stored object needs no schema
+   * change.
+   */
+  assessedOn?: string | null;
   updatedAt: number;
 }
 

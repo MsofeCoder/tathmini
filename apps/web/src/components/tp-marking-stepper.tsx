@@ -1,5 +1,7 @@
 'use client';
 
+import { AssessmentDateField } from './assessment-date-field';
+import { todayInEat } from '@/lib/assessment-date';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { adviceFor } from '@tathmini/shared';
 import {
@@ -87,12 +89,18 @@ interface PhaseState {
   marks: MarksByCriterion;
   sectionComments: Record<string, string>;
   generalComment: string;
+  /** The day this lesson was observed, `YYYY-MM-DD`. Per phase: Theory and
+   * Practical are two observations, often on different days. */
+  assessedOn: string | null;
 }
 
 const emptyPhaseState = (): PhaseState => ({
   marks: {},
   sectionComments: {},
   generalComment: '',
+  // Defaults to today, which is right far more often than not and means a
+  // supervisor assessing and submitting the same day does nothing at all.
+  assessedOn: todayInEat(),
 });
 
 export function TpMarkingStepper({
@@ -248,6 +256,9 @@ export function TpMarkingStepper({
   // would read as unfinished work on a lesson they have finished.
   const phaseDone = scoredCount(phase.criteria, marks);
   const phasePct = percentComplete(phaseDone, phase.criteria.length);
+  // Read once per render and shared by every phase's date field, so two
+  // phases can never disagree about what "today" is.
+  const today = todayInEat();
 
   function updatePhase(patch: Partial<PhaseState>) {
     setState((prev) => ({
@@ -651,6 +662,13 @@ export function TpMarkingStepper({
                   className="focus:outline-accent mt-2 min-h-[120px] w-full rounded-[10px] border border-[#ccd7d4] p-3 text-[14px] leading-relaxed focus:outline focus:outline-[3px] focus:outline-offset-1"
                 />
               </div>
+
+              <AssessmentDateField
+                id={`assessed-on-${phase.code}`}
+                value={phaseState.assessedOn}
+                today={today}
+                onChange={(value) => updatePhase({ assessedOn: value })}
+              />
 
               <p className="mt-2 text-[12px] leading-relaxed text-[#5f6f7c]">
                 {readyToSubmit && online

@@ -1,0 +1,91 @@
+-- The date an assessment was actually carried out, as opposed to the moment
+-- its marks reached the College.
+--
+-- NOT APPLIED. Review, then apply in the SQL editor. Until it is applied the
+-- date field does not appear on the submit screen, and the report prints the
+-- submission date exactly as it does today — see WHAT HAPPENS BEFORE IT IS
+-- APPLIED below.
+--
+-- WHY THIS EXISTS
+--
+-- Asked for by supervisors, and the reason is the field rather than the
+-- software. A lesson is observed on Monday in a workshop with no signal; the
+-- marks reach the College on Wednesday when the supervisor next has a
+-- connection. The report was printing Wednesday — `submitted_at`, the moment
+-- the row landed — beside the assessor's signature, where the paper VETA form
+-- has always carried the day the assessment happened. On a document that
+-- becomes part of a trainee's certificate record, that is the wrong fact, and
+-- it is wrong by however long the supervisor was out of signal.
+--
+-- WHY A `date` AND NOT A `timestamptz`
+--
+-- Nobody is recording the hour a lesson was observed. A timestamp would drag
+-- time zones into a field whose entire job is to say "Monday", and would
+-- eventually print the wrong day for somebody. `submitted_at` stays a
+-- timestamptz because it records an instant that really did happen at an
+-- instant; this records a day.
+--
+-- WHY NULLABLE
+--
+-- Every mark already submitted has no such date and never will — marks are
+-- append-only and there is no UPDATE grant to backfill one, which is correct:
+-- inventing an assessment date for a mark submitted last week would be
+-- fabricating a record. Null means "not recorded", and the report falls back
+-- to the submission date for those rows, exactly as it does now.
+--
+-- HOW IT IS SET
+--
+-- At INSERT, alongside `general_comment`, and only there. `assessment_marks`
+-- has no UPDATE grant for any role (0001), so this column is append-only with
+-- the rest of the row: a supervisor chooses the date before submitting and it
+-- can never be edited afterwards, by them or by an administrator. That is the
+-- same guarantee the marks themselves carry, and this date is part of the same
+-- assertion.
+--
+-- The finalise trigger (`validate_and_finalize_mark`, 0012) writes `total` and
+-- `submitted_at` and does not touch this column, so nothing there changes.
+--
+-- WHAT IT DOES TO EXISTING ROWS
+--
+-- Nothing. One nullable column; every existing row reads null. No policy, no
+-- grant and no trigger changes — a new column on a table whose INSERT policy
+-- names no columns is covered by the policy that is already there.
+--
+-- WHAT HAPPENS BEFORE IT IS APPLIED
+--
+-- Deploying the application before applying this migration is safe, and that
+-- is deliberate rather than lucky: supervisors are marking against production
+-- right now, and a deployment that made every submission fail until a
+-- migration was run would lose a day's work in the field.
+--
+-- So the submit action inserts the date, and if Postgres says the column does
+-- not exist it retries the insert once without it. The assessment is submitted
+-- either way; only the date is lost, and the report falls back to the
+-- submission date. Once this migration is applied the retry stops happening,
+-- with no deployment and no restart.
+--
+-- The reverse order is equally safe: this migration on its own changes nothing
+-- until an application that writes the column is deployed.
+
+alter table assessment_marks
+  add column if not exists assessed_on date;
+
+comment on column assessment_marks.assessed_on is
+  'The day the assessment was carried out, as set by the supervisor before submitting. '
+  'Null for marks submitted before this column existed; the report falls back to submitted_at. '
+  'Append-only with the rest of the row - assessment_marks has no UPDATE grant.';
+
+-- ══════════════════════════════════════════════════════════════════════
+-- Prove it worked
+-- ══════════════════════════════════════════════════════════════════════
+--
+--   select column_name, data_type, is_nullable
+--   from information_schema.columns
+--   where table_name = 'assessment_marks' and column_name = 'assessed_on';
+--   -- expect one row: assessed_on | date | YES
+--
+--   select count(*) from assessment_marks where assessed_on is not null;
+--   -- expect 0 immediately after applying
+--
+--   select has_table_privilege('authenticated', 'assessment_marks', 'update');
+--   -- expect false, unchanged: this column is append-only like the rest

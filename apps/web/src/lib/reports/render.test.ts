@@ -74,6 +74,7 @@ function tpData(overrides: Partial<ReportData> = {}): ReportData {
             itemsByCriterionId: marksMap({ c1: { score: 1 } }),
             commentsBySectionCode: new Map(),
             generalComment: null,
+            assessedOn: null,
           },
           a2: {
             supervisorName: 'Assessor Two',
@@ -82,6 +83,7 @@ function tpData(overrides: Partial<ReportData> = {}): ReportData {
             itemsByCriterionId: marksMap({ c1: { score: 1 } }),
             commentsBySectionCode: new Map(),
             generalComment: null,
+            assessedOn: null,
           },
         },
       },

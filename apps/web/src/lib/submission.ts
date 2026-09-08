@@ -31,6 +31,14 @@ export interface SubmitAssessmentInput {
   sectionComments: SubmitSectionCommentInput[];
   /** SUPERVISOR'S GENERAL COMMENTS. Optional on both tracks. */
   generalComment: string;
+  /**
+   * The day the assessment was carried out, `YYYY-MM-DD`, or null when the
+   * supervisor left it blank. Printed on the report instead of the submission
+   * date — see lib/assessment-date.ts. Set here because it can only be set
+   * here: assessment_marks has no UPDATE grant, so this rides in with the
+   * insert or not at all.
+   */
+  assessedOn: string | null;
 }
 
 /**
