@@ -20,7 +20,17 @@ const TABS = [
   { href: '/coordinator', label: 'Overview (Coordinator view)' },
 ];
 
-export function AdminNav() {
+/**
+ * `pendingRequests` is counted in the layout and passed down, because a badge
+ * on a tab is the only thing that makes a request queue an inbox. Without it
+ * a supervisor's correction sits behind a tab that looks exactly like it does
+ * when there is nothing there — and the request that goes unread is the one
+ * saying a trainee's result is about to reach the wrong person.
+ *
+ * Zero renders nothing at all. A badge showing "0" trains an administrator to
+ * ignore the badge.
+ */
+export function AdminNav({ pendingRequests = 0 }: { pendingRequests?: number }) {
   const pathname = usePathname();
 
   return (
@@ -29,6 +39,7 @@ export function AdminNav() {
         {TABS.map((tab) => {
           const active =
             tab.href === '/admin' ? pathname === '/admin' : pathname.startsWith(tab.href);
+          const badge = tab.href === '/admin/requests' ? pendingRequests : 0;
           return (
             <li key={tab.href}>
               <Link
@@ -41,6 +52,16 @@ export function AdminNav() {
                 }`}
               >
                 {tab.label}
+                {badge > 0 ? (
+                  <span
+                    // Counted, not decorative: read it out rather than leaving a
+                    // screen-reader user with a bare number beside a tab name.
+                    aria-label={`${badge} waiting for a decision`}
+                    className="ml-1.5 inline-flex min-w-[20px] items-center justify-center rounded-full bg-[#e6eefc] px-1.5 py-0.5 text-[11px] font-bold text-[#243f7a]"
+                  >
+                    {badge}
+                  </span>
+                ) : null}
               </Link>
             </li>
           );

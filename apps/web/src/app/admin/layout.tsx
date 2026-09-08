@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { signOut } from '@/app/home/actions';
 import { roleLabel } from '@/lib/admin/access';
+import { countPendingChangeRequests } from '@/lib/admin/queries';
 import { requireAdmin } from '@/lib/admin/session';
 import { AdminNav } from './nav';
 
@@ -20,6 +21,11 @@ import { AdminNav } from './nav';
  */
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const session = await requireAdmin();
+  // One head-only count, on every console page, so the Requests tab can carry
+  // its own number. Returns 0 rather than throwing while migration 0030 is
+  // unapplied — the console must open whether or not the feature is switched
+  // on. See countPendingChangeRequests().
+  const pendingRequests = await countPendingChangeRequests(session.supabase);
 
   return (
     <div className="min-h-dvh bg-[#eceff0]">
@@ -52,7 +58,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             </form>
           </div>
         </div>
-        <AdminNav />
+        <AdminNav pendingRequests={pendingRequests} />
       </header>
 
       <main className="mx-auto max-w-6xl space-y-5 px-4 py-5">{children}</main>

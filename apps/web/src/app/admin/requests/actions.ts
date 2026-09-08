@@ -148,10 +148,15 @@ export async function declineChangeRequest(
   };
 }
 
-/** Migration 0030 has not been applied — said in words an administrator can act on. */
+/**
+ * The migrations have not been applied — said in words an administrator can
+ * act on. Both are named: 0030 alone leaves `reason` NOT NULL against a
+ * supervisor form that no longer sends one, so the feature would appear
+ * switched on and refuse every request from the field.
+ */
 function notEnabled(error: { code?: string; message: string }): string | null {
   if (error.code === '42P01' || error.message.includes('trainee_change_requests')) {
-    return 'Correction requests are not enabled yet: migration 0030 has not been applied to the database.';
+    return 'Correction requests are not enabled yet: migrations 0030 and 0032 have not been applied to the database.';
   }
   return null;
 }

@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { dataHealthChecks, failingChecks, severityStyle } from '@/lib/admin/health';
 import { countOf, percentOf } from '@/lib/admin/format';
 import {
+  countPendingChangeRequests,
   groupDuplicates,
   loadAssignments,
   loadRoutes,
@@ -27,15 +28,17 @@ export const dynamic = 'force-dynamic';
 export default async function AdminOverviewPage() {
   const { supabase } = await requireAdmin();
 
-  const [users, routes, trainees, assignments, marks, resultsRes, reportsRes] = await Promise.all([
-    loadUsers(supabase),
-    loadRoutes(supabase),
-    loadTrainees(supabase),
-    loadAssignments(supabase),
-    loadSubmittedMarks(supabase),
-    supabase.from('results').select('trainee_id, locked_at'),
-    supabase.from('reports').select('id', { count: 'exact', head: true }),
-  ]);
+  const [users, routes, trainees, assignments, marks, resultsRes, reportsRes, pendingCorrections] =
+    await Promise.all([
+      loadUsers(supabase),
+      loadRoutes(supabase),
+      loadTrainees(supabase),
+      loadAssignments(supabase),
+      loadSubmittedMarks(supabase),
+      supabase.from('results').select('trainee_id, locked_at'),
+      supabase.from('reports').select('id', { count: 'exact', head: true }),
+      countPendingChangeRequests(supabase),
+    ]);
 
   const routeCodeById = new Map(routes.map((r) => [r.id, r.code]));
   const assignedTraineeIds = new Set(assignments.map((a) => a.trainee_id));
@@ -65,6 +68,7 @@ export default async function AdminOverviewPage() {
       .length,
     traineesWithoutAssignment: trainees.filter((t) => !assignedTraineeIds.has(t.id)).length,
     duplicateTraineeNames: groupDuplicates(trainees, (t) => `${t.track}|${t.name}`).length,
+    pendingCorrections,
   });
   const failing = failingChecks(checks);
 

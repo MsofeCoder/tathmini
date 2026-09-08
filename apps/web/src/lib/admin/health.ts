@@ -29,6 +29,8 @@ export interface HealthInput {
   routesMissingSupervisor: number;
   traineesWithoutAssignment: number;
   duplicateTraineeNames: number;
+  /** Correction requests raised by supervisors and not yet decided. */
+  pendingCorrections: number;
 }
 
 export function dataHealthChecks(input: HealthInput): HealthCheck[] {
@@ -50,6 +52,22 @@ export function dataHealthChecks(input: HealthInput): HealthCheck[] {
       severity: 'urgent',
       count: input.duplicateTraineeEmails,
       href: '/admin/trainees',
+    },
+    {
+      /**
+       * The only check here that is not a defect in the data — it is work
+       * waiting for a person. It sits with the others because it fails the
+       * same way they do: silently, by nobody looking. A supervisor who
+       * reports a wrong e-mail address has done the hard part, and the
+       * request then sits on a tab nobody opens.
+       */
+      id: 'pending-corrections',
+      label: 'Corrections waiting for your decision',
+      detail:
+        'A supervisor has reported something wrong in the register. Until you apply or decline it the register keeps the value they say is wrong — and a wrong e-mail address sends a trainee’s result to somebody else.',
+      severity: 'urgent',
+      count: input.pendingCorrections,
+      href: '/admin/requests',
     },
     {
       id: 'routes-missing-supervisor',

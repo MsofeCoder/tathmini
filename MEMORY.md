@@ -42,6 +42,66 @@ The test, query or manual check that proves it works.
 ---
 
 
+## 2026-09-08 · feature · Correction requests become an inbox, and the migration trap that would have broken them
+
+**Kind:** feature
+**Phase:** 3
+**Commit / PR:** this branch (`feat/correction-requests-inbox`)
+
+**What changed**
+Nothing about deciding a correction request — that was complete and tested
+(PR #39). What was missing is that a request arriving was invisible. The
+Requests tab looked identical whether nothing had been reported or six things
+had. Now:
+
+* the Requests tab carries a count badge, fed from the console layout;
+* `/admin`'s register-health panel gains a `pending-corrections` check at
+  `urgent`, linking to the tab;
+* the "not switched on yet" card names **both** migrations, in order.
+
+**Why this way**
+A correction request is almost always a wrong e-mail address, and result
+e-mail is live: HANDOFF calls a trainee receiving another trainee's marks the
+one defect that reaches a real person. The supervisor standing in front of the
+trainee does the hard part by reporting it. Everything after that was a tab
+nobody had a reason to open, so the queue could only be found by remembering
+it existed. The badge is what turns a page into an inbox, and the health check
+puts it on the one screen an administrator does open.
+
+`pending-corrections` sits among the data-defect checks even though it is not
+a data defect — it is work waiting for a person. It belongs there because it
+fails the same way they do: silently, by nobody looking.
+
+**The trap this uncovered.** Migration `0030` declares `reason text not null`
+with a non-empty CHECK. Commit `e383466` later removed the reason field from
+the supervisor's form, and `correction-actions.ts` now inserts `reason: null`.
+So **applying 0030 alone switches the feature on broken** — the tab lights up,
+supervisors report corrections, and Postgres refuses every one. `0032` drops
+that NOT NULL and is not optional; the two must be applied in the same sitting,
+0030 first. The console said "this needs migration 0030" and would have led
+an administrator straight into it. It now says both, and says why.
+
+**Watch out for**
+`countPendingChangeRequests()` returns 0 on ANY error, including a missing
+table. That is deliberate and it runs in the console LAYOUT: if it threw while
+0030 is unapplied it would take down every administration page — Trainees,
+Accounts, Backup — for a feature that is switched off. The cost is that a real
+outage shows an absent badge rather than an error, which is the right trade for
+a number on a tab. It is not a pattern to copy anywhere a wrong count would
+mislead.
+
+**Verified by**
+493 tests in `apps/web` (three new on the count's failure paths, three on the
+new health check), 116 in `packages/db`, 37 in `packages/shared`; typecheck,
+lint, format and a production build all clean, exit codes checked directly
+rather than through a pipe.
+
+Not verified: the feature itself remains switched OFF in production. Nothing
+here can be exercised end to end until 0030 and 0032 are applied, and the
+first real correction request will be the first time this path carries a real
+row.
+
+
 ## 2026-09-08 · feature · The Coordinator account, and the first-run redirect that made it unusable
 
 **Kind:** feature

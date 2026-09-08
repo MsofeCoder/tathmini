@@ -84,9 +84,20 @@ export default async function AdminRequestsPage() {
           <div className="space-y-2 p-4 text-[13px] leading-relaxed text-[#5a4212]">
             <p className="font-bold">Not switched on yet.</p>
             <p>
-              This needs migration <Code>0030_trainee_change_requests.sql</Code>, which has not been
-              applied to the database. Until it is, the supervisors&rsquo; &ldquo;Report a
-              correction&rdquo; button tells them to speak to you directly, and nothing is lost.
+              This needs two migrations, applied in this order and in the same sitting:{' '}
+              <Code>0030_trainee_change_requests.sql</Code>, then{' '}
+              <Code>0032_correction_reason_optional.sql</Code>.
+            </p>
+            <p>
+              <strong>0030 on its own would switch this on broken.</strong> It declares{' '}
+              <Code>reason text not null</Code>, and the supervisors&rsquo; form no longer asks for
+              a reason — it sends nothing there. Every correction reported from the field would be
+              refused by the database. 0032 is what removes that column&rsquo;s NOT NULL, and it is
+              not optional.
+            </p>
+            <p>
+              Until both are applied the supervisors&rsquo; &ldquo;Report a correction&rdquo; button
+              tells them to speak to you directly, and nothing is lost.
             </p>
           </div>
         </Card>

@@ -124,6 +124,33 @@ export function loadSubmittedMarks(supabase: SupabaseClient): Promise<AdminMarkR
 }
 
 /**
+ * How many correction requests are waiting for a decision.
+ *
+ * Its own tiny query rather than a slice of a list read: this runs in the
+ * console LAYOUT, on every admin page, purely to put a number on a navigation
+ * tab. A `head: true` count fetches no rows at all.
+ *
+ * **Returns 0 when the table does not exist yet.** `trainee_change_requests`
+ * arrives with migration 0030, which is not applied. Every console page would
+ * otherwise fail on a missing table — the whole administration console taken
+ * down by a feature that is switched off. A count of zero is also honest:
+ * where there is no table there are no requests waiting.
+ *
+ * Anything else — a network failure, a policy refusal — returns 0 too, and
+ * that is the right trade for a badge. A tab silently missing its count is a
+ * far smaller harm than a console that will not open.
+ */
+export async function countPendingChangeRequests(supabase: SupabaseClient): Promise<number> {
+  const { count, error } = await supabase
+    .from('trainee_change_requests')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'pending');
+
+  if (error) return 0;
+  return count ?? 0;
+}
+
+/**
  * Rows sharing a value, ignoring case and surrounding space but never
  * rewriting the value itself. Used for the two register defects that keep
  * recurring: two trainees on one e-mail address (each would receive the
