@@ -2,6 +2,7 @@
 
 import { signOut } from '@/app/home/actions';
 import { useDeviceRows } from '@/lib/local/use-device';
+import { useReachability } from '@/lib/local/use-reachable';
 import { clearReplicas } from '@/lib/sync/apply';
 import { initials } from '@/lib/trainees';
 
@@ -19,6 +20,19 @@ async function signOutAndClearDevice() {
   await clearReplicas();
   await signOut();
 }
+
+/**
+ * The College's feedback form, hosted on Google Forms.
+ *
+ * Hard-coded rather than an environment variable, unlike
+ * RESULT_COORDINATOR_EMAIL: that one is configuration because the person
+ * holding the role changes and a redeploy should not be needed. A form URL is
+ * stable for the life of the form, and a missing env var would leave a dead
+ * button on a screen nobody checks.
+ *
+ * Anonymous, bilingual, and it opens outside the app — see the link below.
+ */
+const FEEDBACK_URL = 'https://forms.gle/qW29pWr6oqEry7oY8';
 
 const ROLE_LABELS: Record<string, string> = {
   supervisor: 'Supervisor',
@@ -44,6 +58,10 @@ const ROLE_LABELS: Record<string, string> = {
 export function AccountScreen() {
   const rows = useDeviceRows();
   const session = rows?.session ?? null;
+  // The form is on Google's servers, so it is useless with no signal. Rather
+  // than open a browser tab that fails, the link says so and stops being a
+  // link — the same treatment Submit gets on the marking screen.
+  const online = useReachability() === 'online';
 
   return (
     <main className="min-h-dvh bg-[#eceff0]">
@@ -63,6 +81,38 @@ export function AccountScreen() {
             </p>
           </div>
         </div>
+
+        <section className="mt-4 rounded-2xl border border-[#e1e9e6] bg-white p-4">
+          <h2 className="text-[15px] font-bold text-[#14232e]">Tell us how this is working</h2>
+          {/*
+            One line, not a paragraph. #48 stripped the explanatory notes off
+            the field screens, and that decision stands — but these two facts
+            are not explanation, they are the reason somebody answers honestly
+            or not at all.
+          */}
+          <p className="mt-1 text-[13px] leading-relaxed text-[#5b6b78]">
+            No name needed. Kiswahili is fine.
+          </p>
+
+          {online ? (
+            <a
+              href={FEEDBACK_URL}
+              // Opens outside the app. `noopener` because the form is on
+              // another origin and must never get a handle back to this
+              // window; `_blank` so a supervisor part-way through the app
+              // does not lose where they were.
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-teal-deep focus:outline-accent mt-3 flex min-h-[52px] w-full items-center justify-center rounded-xl border border-[#bcd4cf] bg-[#eef5f3] text-[15px] font-bold focus:outline focus:outline-[3px] focus:outline-offset-2"
+            >
+              Send feedback
+            </a>
+          ) : (
+            <p className="mt-3 flex min-h-[52px] w-full items-center justify-center rounded-xl bg-[#fff2d8] px-3 text-center text-[13px] font-semibold leading-snug text-[#6b4400]">
+              The feedback form needs a connection. Open this screen again when you have signal.
+            </p>
+          )}
+        </section>
 
         <form action={signOutAndClearDevice} className="mt-4">
           <button

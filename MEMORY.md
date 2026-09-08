@@ -42,6 +42,55 @@ The test, query or manual check that proves it works.
 ---
 
 
+## 2026-09-08 · feature · Send feedback, from inside the app
+
+**Kind:** feature
+**Phase:** 3
+**Commit / PR:** this branch (`feat/in-app-feedback-link`)
+
+**What changed**
+A **Send feedback** link on the Account screen, opening the College's
+anonymous Google Form (`forms.gle/qW29pWr6oqEry7oY8`) in the browser. Hidden
+and replaced by a plain note when the device is offline.
+
+**Why this way**
+The form was announced to supervisors on WhatsApp. A message is read once and
+scrolled past; the annoyance happens later, in a workshop, with the app open.
+Putting the link where they already are costs one tap at the moment somebody
+actually has something to say — which is the difference between feedback and
+no feedback.
+
+Hard-coded rather than an environment variable, unlike
+`RESULT_COORDINATOR_EMAIL`. That one is configuration because the person
+holding the role changes and a redeploy should not be needed; a form URL is
+stable for the life of the form, and an unset env var would leave a dead
+button on a screen nobody checks.
+
+Gated on `useReachability()`, the same signal the marking screen's Submit uses.
+The form is on Google's servers, so with no signal the link would open a
+browser tab that fails — worse than not offering it. Offline it becomes a note
+saying to come back with signal.
+
+**Watch out for**
+This puts prose back on a screen #48 deliberately cleared: that PR removed
+both Account notes along with the other explanatory text on the field screens.
+The line here is one sentence — "No name needed. Kiswahili is fine." — and it
+stays because those two facts are not explanation, they are what decides
+whether somebody answers honestly. If Account grows a third note, re-read #48
+before adding it.
+
+`rel="noopener"` is not decorative: the form is another origin and must never
+hold a handle back to this window. `target="_blank"` so a supervisor part-way
+through the app does not lose their place.
+
+**Verified by**
+526 tests in `apps/web`, 116 in `packages/db`, 37 in `packages/shared`;
+typecheck, lint and a production build clean. Not verified: nobody has tapped
+it on a real phone, and the offline branch has not been seen in airplane mode.
+
+---
+
+
 ## 2026-09-08 · feature · Two corrections from the first real use of the date field
 
 **Kind:** feature
