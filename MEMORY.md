@@ -42,6 +42,64 @@ The test, query or manual check that proves it works.
 ---
 
 
+## 2026-09-08 · feature · Two corrections from the first real use of the date field
+
+**Kind:** feature
+**Phase:** 1-2
+**Commit / PR:** this branch (`fix/report-generated-date`)
+
+**What changed**
+Both from the user's end-to-end test of `assessed_on` (see the entry below),
+within an hour of it going live.
+
+1. **The report footer no longer prints a clock time.** It read
+   "Generated 8 Sept 2026, 07:41"; it now reads "Generated 8 Sept 2026".
+2. **A future date is allowed** in the Date of assessment field. It was
+   refused; the College asked for the refusal to go.
+
+**Why this way**
+The time was never meaningful. The footer records the day a report was issued,
+and an assessment record that says 07:41 invites a reader to think the minute
+means something on a document that will be read years later.
+
+Removing it made the time zone matter for the first time: the date is now the
+only thing on that line, so a report generated at 01:00 in Morogoro — 22:00 UTC
+the day before — would have printed yesterday. It is formatted in
+`Africa/Dar_es_Salaam` explicitly rather than in whatever zone the server runs
+in.
+
+**On allowing future dates**, the original refusal reasoned that an assessment
+which has not happened cannot be dated, and that a report carrying tomorrow is
+a defect any reader would spot. That was too narrow a reading of the field: the
+College dates some reports to an official day — the end of the assessment
+period — which is often still ahead when the marks are filed. That is a
+decision about the College's own records. The concern was put to the user and
+they confirmed; this is their call and it is correctly theirs.
+
+The guard that survives is ±365 days. With both directions open, a mistyped
+year is the only mistake left that can be caught automatically, and it is the
+one this field actually attracts.
+
+**Watch out for**
+A year mistyped onto the exact anniversary is 365 days out and still passes,
+in either direction. Deliberate: tightening the window would refuse a
+supervisor filing genuinely old work, and a wrong date is visible on the report
+whereas a refused submission blocks marks.
+
+Also corrected here: `renderReportHtml`'s doc comment still described the
+assessor-page DATE as `submitted_at`. The functional change landed in the
+previous branch but that paragraph did not — a `String.replace` with no
+assertion silently matched nothing. Every other edit in that branch was
+asserted; this one was not, which is exactly why it slipped.
+
+**Verified by**
+526 tests in `apps/web` — 17 on the date rules and 22 on the renderer,
+including one asserting the footer carries no `HH:MM` and one that a 22:30 UTC
+render prints the following day. Typecheck, lint and a production build clean.
+
+---
+
+
 ## 2026-09-08 · feature · The report carries the day the assessment happened
 
 **Kind:** feature

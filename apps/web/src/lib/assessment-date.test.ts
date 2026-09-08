@@ -44,10 +44,25 @@ describe('validateAssessmentDate', () => {
     expect(validateAssessmentDate('   ', today)).toEqual({ ok: true, value: null });
   });
 
-  it('refuses a date in the future — an assessment that has not happened', () => {
-    const result = validateAssessmentDate('2026-09-09', today);
+  /**
+   * Future dates were refused at first and the College asked for that to go:
+   * some reports are dated to an official day — the end of the assessment
+   * period — which is still ahead when the marks are filed.
+   */
+  it('accepts a date in the future, at the College’s request', () => {
+    expect(validateAssessmentDate('2026-09-09', today)).toEqual({ ok: true, value: '2026-09-09' });
+    expect(validateAssessmentDate('2026-12-01', today).ok).toBe(true);
+  });
+
+  it('still refuses a year mistyped forwards', () => {
+    const result = validateAssessmentDate('2027-12-01', today);
     expect(result.ok).toBe(false);
-    expect(result.ok === false && result.error).toContain('cannot be dated in the future');
+    expect(result.ok === false && result.error).toContain('more than a year ahead');
+  });
+
+  it('accepts exactly 365 days ahead, and refuses 366', () => {
+    expect(validateAssessmentDate('2027-09-08', today).ok).toBe(true);
+    expect(validateAssessmentDate('2027-09-09', today).ok).toBe(false);
   });
 
   it('refuses a year slip, the mistake this field will actually attract', () => {
@@ -57,11 +72,11 @@ describe('validateAssessmentDate', () => {
   });
 
   /**
-   * The boundary is 365 days inclusive. Note what this does NOT catch: a year
-   * mistyped on the exact anniversary is 365 days back and passes. Tightening
-   * the window would catch it, at the cost of refusing a supervisor filing
-   * genuinely old work — and a wrong date is visible on the report, whereas a
-   * refused submission blocks marks. The looser rule is the safer one.
+   * The boundary is 365 days inclusive, each way. Note what this does NOT
+   * catch: a year mistyped on the exact anniversary is 365 days out and
+   * passes. Tightening the window would catch it, at the cost of refusing a
+   * supervisor filing genuinely old work — and a wrong date is visible on the
+   * report, whereas a refused submission blocks marks.
    */
   it('accepts exactly 365 days back, and refuses 366', () => {
     expect(validateAssessmentDate('2025-09-08', today).ok).toBe(true);

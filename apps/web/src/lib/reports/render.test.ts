@@ -307,6 +307,30 @@ describe('renderReportHtml — the date the report carries', () => {
     expect(html).toContain('01/01/2026');
   });
 
+  /**
+   * Asked for after the first end-to-end test: the footer read
+   * "Generated 8 Sept 2026, 07:41". It is a record of a day, and a clock time
+   * on an assessment record invites the reader to think the time means
+   * something.
+   */
+  it('prints the generated date with no clock time', () => {
+    const html = renderReportHtml(tpData(), 'TM-TEST', new Date('2026-09-08T07:41:00Z'));
+    expect(html).toContain('8 Sept 2026');
+    expect(html).not.toContain('07:41');
+    expect(html).not.toMatch(/8 Sept 2026,\s*\d{2}:\d{2}/);
+  });
+
+  /**
+   * The date is now the only thing on that line, so the zone it is read in
+   * matters. 22:30 UTC is 01:30 the next morning in Morogoro; a server running
+   * in UTC would print the day before the one the College is living in.
+   */
+  it('reads the generated date in East Africa Time, not the server zone', () => {
+    const html = renderReportHtml(tpData(), 'TM-TEST', new Date('2026-09-08T22:30:00Z'));
+    expect(html).toContain('9 Sept 2026');
+    expect(html).not.toContain('8 Sept 2026');
+  });
+
   it('still dates itself now when no submission moment is given', () => {
     const before = Date.now();
     const html = renderReportHtml(tpData(), 'TM-TEST');
