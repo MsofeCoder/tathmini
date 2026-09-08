@@ -8,6 +8,7 @@ const clear = {
   routesMissingSupervisor: 0,
   traineesWithoutAssignment: 0,
   duplicateTraineeNames: 0,
+  pendingCorrections: 0,
 };
 
 describe('dataHealthChecks', () => {
@@ -60,5 +61,31 @@ describe('severityStyle', () => {
   it('has a distinct treatment per severity', () => {
     const styles = (['urgent', 'warn', 'info'] as const).map(severityStyle);
     expect(new Set(styles.map((s) => s.bg)).size).toBe(3);
+  });
+});
+
+describe('pending corrections', () => {
+  it('is clear when nothing is waiting, so a quiet queue adds no noise', () => {
+    expect(failingChecks(dataHealthChecks(clear)).map((c) => c.id)).not.toContain(
+      'pending-corrections',
+    );
+  });
+
+  /**
+   * Urgent on purpose. A correction request is usually a wrong e-mail address,
+   * and result e-mail is live — every day it waits is a day a trainee's marks
+   * can reach the wrong person.
+   */
+  it('is urgent, and links to the tab that decides it', () => {
+    const check = dataHealthChecks({ ...clear, pendingCorrections: 3 }).find(
+      (c) => c.id === 'pending-corrections',
+    );
+    expect(check?.count).toBe(3);
+    expect(check?.severity).toBe('urgent');
+    expect(check?.href).toBe('/admin/requests');
+  });
+
+  it('raises the page to urgent on its own', () => {
+    expect(worstSeverity(dataHealthChecks({ ...clear, pendingCorrections: 1 }))).toBe('urgent');
   });
 });
