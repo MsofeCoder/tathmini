@@ -42,6 +42,53 @@ The test, query or manual check that proves it works.
 ---
 
 
+## 2026-09-21 · ops · Vercel had silently lost access to the repository
+
+**Kind:** ops
+**Phase:** 3
+**Commit / PR:** this commit (trigger); #58 (the feature that did not deploy)
+
+**What changed**
+Nothing in the application. The GitHub connection on the `tathmini-web`
+Vercel project was reconnected by hand, and this entry is the push that
+proves auto-deploy works again.
+
+**What had happened**
+PR #58 merged to `main` at 11:39 UTC and **no deployment was created** — not
+a failed one, none at all. Production was still serving `48bc03f` from
+8 September, thirteen days and four merged PRs later. The branch push got no
+preview deployment either, while every branch up to 8 September had one.
+
+The cause was on the Vercel side: `GET /v1/integrations/search-repo` returned
+a linked GitHub account (`namespaceId` 155933230) with `repos: []` — the
+account was connected, the repository was not reachable through it. So the
+webhook had nothing to fire on. The account's integration-configuration list
+was empty too.
+
+**Why this matters more than it looks**
+This failed *silently and in the safe-looking direction*. The dashboard
+showed five green READY deployments and no errors anywhere; the only symptom
+was an absence. Anyone glancing at Vercel would have concluded the last
+merge was live. Between 8 and 21 September the College was running a
+production build that did not include whatever had been merged since.
+
+**Watch out for**
+- **"Ready" on the newest row does not mean the newest commit is deployed.**
+  Check the commit SHA on the production deployment against `origin/main`,
+  not the status badge. `48bc03f` sat at the top looking perfectly healthy.
+- A disconnected Git integration produces no error, no e-mail and no failed
+  build — only missing rows. Worth a look whenever a merge seems not to have
+  taken effect in the field.
+- The project, the database and the hosting all sit under one Gmail account
+  (`msofecoder@gmail.com`). A reconnection like this needs that account.
+
+**Verified by**
+`search-repo` now returns `MsofeCoder/tathmini` against the same linked
+account, and this commit is the push that confirms a merge to `main` reaches
+production again. If a deployment for this SHA exists, the hook is fixed.
+
+---
+
 ## 2026-09-21 · feature · Supervisors download their own route results as Excel
 
 **Kind:** feature
