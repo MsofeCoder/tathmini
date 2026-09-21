@@ -67,7 +67,6 @@ interface ResultRow {
   pct: string | number | null;
   grade: string | null;
   competent: boolean | null;
-  locked_at: string | null;
 }
 
 function num(value: string | number | null | undefined): number | null {
@@ -138,7 +137,6 @@ export function pivotRows(
       pct: num(result?.pct),
       grade: result?.grade ?? null,
       competent: result?.competent ?? null,
-      lockedAt: result?.locked_at ?? null,
     };
   });
 }
@@ -197,9 +195,7 @@ export async function loadSupervisorRouteSheets(
     fetchAll<ResultRow>((from, to) =>
       supabase
         .from('results')
-        .select(
-          'trainee_id, theory_total, practical_total, total, pct, grade, competent, locked_at',
-        )
+        .select('trainee_id, theory_total, practical_total, total, pct, grade, competent')
         .in('trainee_id', traineeIds)
         .range(from, to),
     ),

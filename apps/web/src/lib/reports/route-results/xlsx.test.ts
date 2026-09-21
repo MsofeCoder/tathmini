@@ -41,7 +41,6 @@ const TP_ROW: RouteResultRow = {
   pct: 66.3,
   grade: 'B',
   competent: true,
-  lockedAt: '2026-09-16T07:47:19Z',
 };
 
 const IPT_ROW: RouteResultRow = {
@@ -59,7 +58,6 @@ const IPT_ROW: RouteResultRow = {
   pct: 80.71,
   grade: 'A',
   competent: true,
-  lockedAt: '2026-09-16T07:47:19Z',
 };
 
 const TP = routeSheet({

@@ -67,38 +67,25 @@ export interface RouteResultRow {
   pct: number | null;
   grade: string | null;
   competent: boolean | null;
-  /**
-   * Set once every instrument has both slots submitted. Null means the stored
-   * result is provisional — `recompute_result()` averaged over whichever
-   * marks exist so far, so with one assessor in, `total` IS that assessor's
-   * mark rather than half of it. See official().
-   */
-  lockedAt: string | null;
 }
 
 /**
  * The AVERAGE block: what the sheet prints as the official result.
  *
- * Two cases, and the difference is the College's decision of 21 September.
+ * Every figure is the stored one, exactly as Postgres computed it (AGENTS.md
+ * rule 3). Nothing is recomputed here, and that is the College's decision of
+ * 21 September after two passes over it.
  *
- * **Locked** — both assessors have submitted. Every figure is the stored one,
- * exactly as Postgres computed it (AGENTS.md rule 3). `avg()` over two marks
- * is already the sum over two, so nothing here would change the number; using
- * the stored value keeps the spreadsheet, the PDF report and the database
- * saying the same thing about a finished result, down to the rounding.
+ * `recompute_result()` uses `avg()`, which divides by the number of marks
+ * PRESENT — two assessors give a true half-and-half average, one assessor
+ * gives that assessor's mark unchanged. Dividing a lone mark by two was tried
+ * and rejected: a result is the average of the reports received, not of the
+ * reports expected, so a single report of 59 averages to 59.
  *
- * **Not locked** — one assessor is still out. Postgres divides by the number
- * of marks present, so a single mark of 59 is stored as a total of 59. On a
- * summary sheet that reads as a finished score; the College wants it divided
- * by two, because a trainee with one assessment has half an assessment.
- *
- * Grade and verdict are deliberately WITHHELD while provisional. They are the
- * one thing that must not be derived here: a halved total puts a trainee at
- * 42% and would print NOT COMPETENT against someone whose only fault is that
- * their second assessor has not visited yet. The stored grade cannot be
- * printed either, because it belongs to the un-halved figure and would
- * contradict the column beside it. So the row says PROVISIONAL and the
- * College reads the two assessor blocks to see why.
+ * The lone-assessor case is therefore not disguised, it is shown: the sheet
+ * prints 59.00 beside an empty ASSESSOR 1 block, and a reader can see at a
+ * glance that only one assessor has reported. That readability is the whole
+ * reason both assessors' marks were made visible (migration 0035).
  */
 export interface OfficialResult {
   theory: number | null;
@@ -109,47 +96,15 @@ export interface OfficialResult {
   verdict: string;
 }
 
-export function official(row: RouteResultRow, track: Track): OfficialResult {
-  const a1 = assessorTotal(row.a1);
-  const a2 = assessorTotal(row.a2);
-
-  if (row.lockedAt) {
-    return {
-      theory: row.theoryTotal,
-      practical: row.practicalTotal,
-      total: row.total,
-      pct: row.pct,
-      grade: row.grade,
-      verdict: row.competent ? 'COMPETENT' : 'NOT COMPETENT',
-    };
-  }
-
-  // Nothing submitted at all is not "half of nothing" — it is not assessed.
-  if (a1 === null && a2 === null) {
-    return {
-      theory: null,
-      practical: null,
-      total: null,
-      pct: null,
-      grade: null,
-      verdict: 'NOT YET ASSESSED',
-    };
-  }
-
-  const halve = (x: number | null, y: number | null) =>
-    x === null && y === null ? null : round2(((x ?? 0) + (y ?? 0)) / 2);
-
-  const theory = track === 'TP' ? halve(row.a1.theory, row.a2.theory) : null;
-  const practical = track === 'TP' ? halve(row.a1.practical, row.a2.practical) : null;
-  const total = track === 'TP' ? round2((theory ?? 0) + (practical ?? 0)) : halve(a1, a2);
-
+export function official(row: RouteResultRow): OfficialResult {
   return {
-    theory,
-    practical,
-    total,
-    pct: total === null ? null : round2((total / TRACK_MAX[track]) * 100),
-    grade: null,
-    verdict: 'PROVISIONAL',
+    theory: row.theoryTotal,
+    practical: row.practicalTotal,
+    total: row.total,
+    pct: row.pct,
+    grade: row.grade,
+    verdict:
+      row.competent === null ? 'NOT YET ASSESSED' : row.competent ? 'COMPETENT' : 'NOT COMPETENT',
   };
 }
 
@@ -259,7 +214,7 @@ function identityColumns(track: Track): ColumnSpec[] {
   ];
 }
 
-function verdictColumn(track: Track): ColumnSpec {
+function verdictColumn(): ColumnSpec {
   return {
     header: 'VERDICT',
     width: 17,
@@ -267,11 +222,11 @@ function verdictColumn(track: Track): ColumnSpec {
     format: 'text',
     align: 'centre',
     strong: true,
-    value: (row) => official(row, track).verdict,
+    value: (row) => official(row).verdict,
   };
 }
 
-function gradeColumn(track: Track): ColumnSpec {
+function gradeColumn(): ColumnSpec {
   return {
     header: 'GRADE',
     width: 7,
@@ -279,9 +234,7 @@ function gradeColumn(track: Track): ColumnSpec {
     format: 'text',
     align: 'centre',
     strong: true,
-    // Blank while provisional: see official(). A grade derived from a halved
-    // total would read NOT COMPETENT for a trainee simply awaiting a visit.
-    value: (row) => official(row, track).grade ?? DASH,
+    value: (row) => official(row).grade ?? DASH,
   };
 }
 
@@ -332,7 +285,7 @@ function tpColumns(): ColumnSpec[] {
       band: 'avg',
       format: 'mark',
       align: 'centre',
-      value: (row) => official(row, 'TP').theory,
+      value: (row) => official(row).theory,
     },
     {
       header: 'Practical /50',
@@ -340,7 +293,7 @@ function tpColumns(): ColumnSpec[] {
       band: 'avg',
       format: 'mark',
       align: 'centre',
-      value: (row) => official(row, 'TP').practical,
+      value: (row) => official(row).practical,
     },
     {
       header: 'TOTAL/100 %',
@@ -349,10 +302,10 @@ function tpColumns(): ColumnSpec[] {
       format: 'percent',
       align: 'centre',
       strong: true,
-      value: (row) => official(row, 'TP').total,
+      value: (row) => official(row).total,
     },
-    gradeColumn('TP'),
-    verdictColumn('TP'),
+    gradeColumn(),
+    verdictColumn(),
   ];
 }
 
@@ -396,7 +349,7 @@ function iptColumns(): ColumnSpec[] {
       format: 'mark',
       align: 'centre',
       strong: true,
-      value: (row) => official(row, 'IPT').total,
+      value: (row) => official(row).total,
     },
     {
       header: '%',
@@ -405,10 +358,10 @@ function iptColumns(): ColumnSpec[] {
       format: 'percent',
       align: 'centre',
       strong: true,
-      value: (row) => official(row, 'IPT').pct,
+      value: (row) => official(row).pct,
     },
-    gradeColumn('IPT'),
-    verdictColumn('IPT'),
+    gradeColumn(),
+    verdictColumn(),
   ];
 }
 
@@ -527,7 +480,7 @@ export function routeSheet({
     // Amber marks a trainee nobody has assessed yet. A provisional row is a
     // different state — it has marks — and says so in its VERDICT column.
     pendingRows: new Set(
-      ordered.flatMap((row, i) => (official(row, track).verdict === 'NOT YET ASSESSED' ? [i] : [])),
+      ordered.flatMap((row, i) => (official(row).verdict === 'NOT YET ASSESSED' ? [i] : [])),
     ),
   };
 }

@@ -42,6 +42,59 @@ The test, query or manual check that proves it works.
 ---
 
 
+## 2026-09-21 · decision · The average divides by the reports received, not by two
+
+**Kind:** decision
+**Phase:** 3
+**Commit / PR:** this commit
+
+**Corrects the entry below it**, "The export shows both assessors, halves a
+lone mark, and dates every row". The halving described there shipped and has
+now been removed. Both assessors' visibility and the date fallback stand
+unchanged; only the AVERAGE arithmetic is reverted.
+
+**What changed**
+`official()` no longer computes anything. Every figure in the AVERAGE block
+is the stored one again, so a trainee with a single report of 59 reads 59.00,
+not 29.50, and the grade and verdict come back from `results` rather than
+being withheld.
+
+**Why this way**
+The College reconsidered and settled it: **a result is the average of the
+reports received, not of the reports expected.** One report divided by one is
+59. That is exactly what `recompute_result()` already does — `avg()` divides
+by the marks PRESENT — so the correct implementation turned out to be no
+implementation, and `official()` collapsed to a passthrough. The change
+removed about a hundred lines.
+
+The earlier halving was defensible and still wrong for this document: it made
+the spreadsheet disagree with the trainee's own PDF and with the database
+about the same number, and it forced grade and verdict to be withheld to
+avoid printing NOT COMPETENT at 42% against somebody merely awaiting a visit.
+Suppressing two columns to protect a figure nobody had asked for is a sign
+the figure was the problem.
+
+What made it safe to drop is migration 0035. A lone 59 beside a filled
+AVERAGE used to be unreadable, because the assessor columns were blank —
+which is what prompted the question in the first place. Now both assessor
+blocks are visible, so 59.00 next to an empty ASSESSOR 1 explains itself, and
+the reader can see that one report is in.
+
+**Watch out for**
+- The VERDICT of an unlocked row is the database's own provisional verdict:
+  a trainee with one report can read COMPETENT. That matches their PDF and
+  the console. There is no PROVISIONAL state in the sheet any more.
+- `results.locked_at` is no longer read by the export at all. If a future
+  change needs to distinguish final from provisional, it must select it again
+  — it was removed rather than left dangling.
+
+**Verified by**
+`pnpm format:check && pnpm lint && pnpm test && pnpm typecheck` clean — 726
+tests. `pnpm --filter web build` leaves `/[[...slug]]` at **179 kB,
+unchanged**. Net −100 lines.
+
+---
+
 ## 2026-09-21 · feature · The export shows both assessors, halves a lone mark, and dates every row
 
 **Kind:** feature

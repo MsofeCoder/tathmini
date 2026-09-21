@@ -151,7 +151,6 @@ describe('pivotRows', () => {
             pct: '66.30',
             grade: 'B',
             competent: true,
-            locked_at: '2026-09-16T07:47:19Z',
           },
         ],
       ),
@@ -161,7 +160,6 @@ describe('pivotRows', () => {
     expect(row.total).toBe(66.3);
     expect(row.grade).toBe('B');
     expect(row.competent).toBe(true);
-    expect(row.lockedAt).toBe('2026-09-16T07:47:19Z');
   });
 
   it('carries a null locked_at through, because that is what makes a row provisional', () => {
@@ -178,14 +176,12 @@ describe('pivotRows', () => {
             pct: '84.29',
             grade: 'A',
             competent: true,
-            locked_at: null,
           },
         ],
       ),
     );
 
     expect(row.total).toBe(59);
-    expect(row.lockedAt).toBeNull();
   });
 
   it('leaves a trainee with no result row wholly unassessed', () => {
@@ -194,7 +190,6 @@ describe('pivotRows', () => {
     expect(row.total).toBeNull();
     expect(row.grade).toBeNull();
     expect(row.competent).toBeNull();
-    expect(row.lockedAt).toBeNull();
     expect(row.a1.theory).toBeNull();
   });
 

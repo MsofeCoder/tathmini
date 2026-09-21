@@ -26,7 +26,6 @@ function tpRow(overrides: Partial<RouteResultRow> = {}): RouteResultRow {
     pct: 66.3,
     grade: 'B',
     competent: true,
-    lockedAt: '2026-09-16T07:47:19Z',
     ...overrides,
   };
 }
@@ -53,7 +52,6 @@ function iptRow(overrides: Partial<RouteResultRow> = {}): RouteResultRow {
     pct: 80.71,
     grade: 'A',
     competent: true,
-    lockedAt: '2026-09-16T07:47:19Z',
     ...overrides,
   };
 }
@@ -208,7 +206,6 @@ describe('routeSheet', () => {
       pct: null,
       grade: null,
       competent: null,
-      lockedAt: null,
     });
 
     const model = routeSheet({
@@ -267,11 +264,8 @@ describe('routeSheet', () => {
 });
 
 describe('official — the AVERAGE block', () => {
-  it('prints the stored figures verbatim once both assessors are in', () => {
-    // avg() over two marks already IS the sum over two, so nothing is
-    // recomputed here: the sheet, the PDF and the database agree, rounding
-    // included.
-    const result = official(tpRow(), 'TP');
+  it('prints the stored figures verbatim when both assessors are in', () => {
+    const result = official(tpRow());
 
     expect(result.theory).toBe(32.75);
     expect(result.practical).toBe(33.5);
@@ -280,9 +274,11 @@ describe('official — the AVERAGE block', () => {
     expect(result.verdict).toBe('COMPETENT');
   });
 
-  it('halves a single IPT assessor rather than printing their mark as the result', () => {
-    // Postgres stores 59.00 — avg() over one mark. The College wants the
-    // summary to divide by two, because one assessment is half an assessment.
+  it('divides by the reports received, so one report of 59 averages to 59', () => {
+    // Not 29.5. `recompute_result()` uses avg(), which divides by the marks
+    // PRESENT, and the College settled on that: a result is the average of
+    // the reports received, not of the reports expected. Halving was tried
+    // and rejected.
     const result = official(
       iptRow({
         a1: NO_MARKS,
@@ -291,49 +287,15 @@ describe('official — the AVERAGE block', () => {
         pct: 84.29,
         grade: 'A',
         competent: true,
-        lockedAt: null,
       }),
-      'IPT',
     );
 
-    expect(result.total).toBe(29.5);
-    expect(result.pct).toBe(42.14);
+    expect(result.total).toBe(59);
+    expect(result.pct).toBe(84.29);
+    expect(result.grade).toBe('A');
   });
 
-  it('withholds grade and verdict while provisional, rather than failing a trainee', () => {
-    // 29.5/70 is 42%, which would grade D and read NOT COMPETENT against
-    // somebody whose second assessor simply has not visited yet.
-    const result = official(
-      iptRow({
-        a1: NO_MARKS,
-        a2: { theory: null, practical: null, single: 59, assessedOn: null, name: null },
-        grade: 'A',
-        competent: true,
-        lockedAt: null,
-      }),
-      'IPT',
-    );
-
-    expect(result.grade).toBeNull();
-    expect(result.verdict).toBe('PROVISIONAL');
-  });
-
-  it('halves each TP instrument separately when one assessor is missing', () => {
-    const result = official(
-      tpRow({
-        a2: NO_MARKS,
-        lockedAt: null,
-      }),
-      'TP',
-    );
-
-    expect(result.theory).toBe(15.5); // 31 / 2
-    expect(result.practical).toBe(15.75); // 31.5 / 2
-    expect(result.total).toBe(31.25);
-    expect(result.verdict).toBe('PROVISIONAL');
-  });
-
-  it('calls a trainee with nothing submitted unassessed, not half of nothing', () => {
+  it('says NOT YET ASSESSED only when there is no result at all', () => {
     const result = official(
       tpRow({
         a1: NO_MARKS,
@@ -344,22 +306,20 @@ describe('official — the AVERAGE block', () => {
         pct: null,
         grade: null,
         competent: null,
-        lockedAt: null,
       }),
-      'TP',
     );
 
     expect(result.total).toBeNull();
     expect(result.verdict).toBe('NOT YET ASSESSED');
   });
 
-  it('shades only the unassessed amber — a provisional row has marks', () => {
+  it('shades amber only the trainee nobody has marked', () => {
     const model = routeSheet({
       routeCode: 'IPT ROUTE 5',
       routeLabel: null,
       track: 'IPT',
       rows: [
-        iptRow({ name: 'A PROVISIONAL', a1: NO_MARKS, lockedAt: null }),
+        iptRow({ name: 'A ONE REPORT', a1: NO_MARKS }),
         iptRow({
           name: 'B UNASSESSED',
           a1: NO_MARKS,
@@ -368,14 +328,12 @@ describe('official — the AVERAGE block', () => {
           pct: null,
           grade: null,
           competent: null,
-          lockedAt: null,
         }),
       ],
     });
 
     expect(model.pendingRows.has(0)).toBe(false);
     expect(model.pendingRows.has(1)).toBe(true);
-    expect(printed(model, 0).at(-1)).toBe('PROVISIONAL');
     expect(printed(model, 1).at(-1)).toBe('NOT YET ASSESSED');
   });
 });
@@ -386,7 +344,7 @@ describe('naming both assessors (migration 0035)', () => {
       routeCode: 'IPT ROUTE 5',
       routeLabel: null,
       track: 'IPT',
-      rows: [iptRow({ a2: NO_MARKS, lockedAt: null })],
+      rows: [iptRow({ a2: NO_MARKS })],
       a1Name: 'Coletha Ndelwa',
       a2Name: 'Fausta Makweta',
     });
