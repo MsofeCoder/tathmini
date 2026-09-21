@@ -24,6 +24,9 @@ export interface RouteSheetData {
   routeLabel: string | null;
   track: Track;
   rows: RouteResultRow[];
+  /** The assessors the route assigns — see loadAssessorNames(). */
+  a1Name: string | null;
+  a2Name: string | null;
 }
 
 interface TraineeRow {
@@ -41,10 +44,19 @@ interface TraineeRow {
 interface MarkRow {
   trainee_id: string;
   slot: 'a1' | 'a2';
-  instrument_id: string;
+  instrument_code: string;
   total: string | number | null;
   assessed_on: string | null;
-  supervisor: { name: string } | { name: string }[] | null;
+  /**
+   * The day the mark reached the College. Printed when `assessed_on` is null,
+   * which is 326 of 1 539 marks: 165 were submitted before migration 0034
+   * added the column and can never have one, and 161 were submitted after it
+   * with the field left blank. The submission date is what the report printed
+   * before 0034 existed, so this is the same fallback, not a new invention —
+   * and unlike a fixed date it is true of each row individually.
+   */
+  submitted_on: string | null;
+  supervisor_name: string | null;
 }
 
 interface ResultRow {
@@ -55,11 +67,7 @@ interface ResultRow {
   pct: string | number | null;
   grade: string | null;
   competent: boolean | null;
-}
-
-interface InstrumentRow {
-  id: string;
-  code: string;
+  locked_at: string | null;
 }
 
 function num(value: string | number | null | undefined): number | null {
@@ -69,28 +77,15 @@ function num(value: string | number | null | undefined): number | null {
 }
 
 /**
- * The embedded `users(name)` comes back as an object or a one-element array
- * depending on how PostgREST reads the relationship, and as null whenever
- * `users_select` refuses the row — which is every colleague, for a
- * supervisor. All three are the same answer here: a name, or nothing.
- */
-function supervisorName(supervisor: MarkRow['supervisor']): string | null {
-  if (!supervisor) return null;
-  const one = Array.isArray(supervisor) ? supervisor[0] : supervisor;
-  return one?.name ?? null;
-}
-
-/**
  * Marks, results and trainees into one row per trainee.
  *
- * `instrumentCodes` maps an instrument id to its code so a TP mark can be
- * put in the right column; IPT has one instrument and needs no such care.
+ * Marks arrive from `route_results_marks()` already carrying their instrument
+ * code and their assessor's name, so there is nothing to resolve here.
  */
 export function pivotRows(
   trainees: TraineeRow[],
   marks: MarkRow[],
   results: ResultRow[],
-  instrumentCodes: Map<string, string>,
 ): RouteResultRow[] {
   const resultByTrainee = new Map(results.map((r) => [r.trainee_id, r]));
 
@@ -109,8 +104,7 @@ export function pivotRows(
       const first = rows[0];
       if (!first) return NO_MARKS;
 
-      const byCode = (code: string) =>
-        num(rows.find((m) => instrumentCodes.get(m.instrument_id) === code)?.total);
+      const byCode = (code: string) => num(rows.find((m) => m.instrument_code === code)?.total);
 
       return {
         theory: trainee.track === 'TP' ? byCode('tp_theory') : null,
@@ -120,10 +114,10 @@ export function pivotRows(
         // the earliest is the one the form means when the two differ.
         assessedOn:
           rows
-            .map((m) => m.assessed_on)
+            .map((m) => m.assessed_on ?? m.submitted_on)
             .filter((d): d is string => Boolean(d))
             .sort()[0] ?? null,
-        name: rows.map((m) => supervisorName(m.supervisor)).find(Boolean) ?? null,
+        name: rows.map((m) => m.supervisor_name).find(Boolean) ?? null,
       };
     };
 
@@ -144,6 +138,7 @@ export function pivotRows(
       pct: num(result?.pct),
       grade: result?.grade ?? null,
       competent: result?.competent ?? null,
+      lockedAt: result?.locked_at ?? null,
     };
   });
 }
@@ -187,7 +182,7 @@ export async function loadSupervisorRouteSheets(
   const traineeIds = [...new Set(assignments.map((a) => a.trainee_id))];
   if (traineeIds.length === 0) return [];
 
-  const [trainees, marks, results, instruments] = await Promise.all([
+  const [trainees, marks, results, assessorNames] = await Promise.all([
     fetchAll<TraineeRow>((from, to) =>
       supabase
         .from('trainees')
@@ -198,17 +193,17 @@ export async function loadSupervisorRouteSheets(
         .order('name')
         .range(from, to),
     ),
-    loadMarks(supabase, traineeIds),
+    loadMarks(supabase),
     fetchAll<ResultRow>((from, to) =>
       supabase
         .from('results')
-        .select('trainee_id, theory_total, practical_total, total, pct, grade, competent')
+        .select(
+          'trainee_id, theory_total, practical_total, total, pct, grade, competent, locked_at',
+        )
         .in('trainee_id', traineeIds)
         .range(from, to),
     ),
-    fetchAll<InstrumentRow>((from, to) =>
-      supabase.from('instruments').select('id, code').range(from, to),
-    ),
+    loadAssessorNames(supabase),
   ]);
 
   const routeIds = [...new Set(trainees.map((t) => t.route_id))];
@@ -216,7 +211,6 @@ export async function loadSupervisorRouteSheets(
     supabase.from('routes').select('id, code, label').in('id', routeIds).range(from, to),
   );
 
-  const instrumentCodes = new Map(instruments.map((i) => [i.id, i.code]));
   const routeById = new Map(routes.map((r) => [r.id, r]));
 
   const sheets: RouteSheetData[] = [];
@@ -227,15 +221,17 @@ export async function loadSupervisorRouteSheets(
     if (!route || !firstOfRoute) continue;
 
     const traineeIdSet = new Set(ofRoute.map((t) => t.id));
+    const assessors = assessorNames.get(routeId);
     sheets.push({
       routeCode: route.code,
       routeLabel: route.label,
       track: firstOfRoute.track,
+      a1Name: assessors?.a1_name ?? null,
+      a2Name: assessors?.a2_name ?? null,
       rows: pivotRows(
         ofRoute,
         marks.filter((m) => traineeIdSet.has(m.trainee_id)),
         results.filter((r) => traineeIdSet.has(r.trainee_id)),
-        instrumentCodes,
       ),
     });
   }
@@ -244,33 +240,46 @@ export async function loadSupervisorRouteSheets(
 }
 
 /**
- * Submitted marks only — a draft is not a result and must never reach a
- * College spreadsheet.
+ * Submitted marks for the caller's own routes, through migration 0035's
+ * `route_results_marks()`.
  *
- * `assessed_on` arrived with migration 0034; the fallback repeats the read
- * without it so this keeps working against a database where that migration
- * has not been applied, exactly as lib/reports/data.ts does.
+ * Not a table read. `assessment_marks_select` withholds the other assessor's
+ * marks until both slots are submitted, and `users_select` gives a supervisor
+ * only their own row — so read directly, this export prints blank columns and
+ * an unnamed ASSESSOR 2. The College decided on 21 September that the summary
+ * shows both assessors, and 0035 is that decision: one SECURITY DEFINER
+ * function, scoped to routes the caller is on, returning marks and names and
+ * nothing else. The table policies are untouched, so the marking screen still
+ * cannot see the other slot.
+ *
+ * The function scopes itself by `assignments`, so no trainee filter is needed
+ * or wanted here — passing one would only narrow what it already narrowed.
  */
-async function loadMarks(supabase: SupabaseClient, traineeIds: string[]): Promise<MarkRow[]> {
-  const columns = 'trainee_id, slot, instrument_id, total, supervisor:users(name)';
-
-  const withDate = await fetchAll<MarkRow>((from, to) =>
-    supabase
-      .from('assessment_marks')
-      .select(`${columns}, assessed_on`)
-      .in('trainee_id', traineeIds)
-      .not('submitted_at', 'is', null)
-      .range(from, to),
+/**
+ * The two assessors each of the caller's routes assigns, through 0035's
+ * `route_assessor_names()`.
+ *
+ * `routes` is readable by its own two supervisors, but it carries uuids, and
+ * resolving those to names needs `users`, which a supervisor may read only
+ * for themselves. This is the whole reason the banner could not name a
+ * colleague. Only needed when an assessor has marked nobody yet — otherwise
+ * their own marks carry the name — so an empty answer is not a failure.
+ */
+async function loadAssessorNames(
+  supabase: SupabaseClient,
+): Promise<Map<string, { a1_name: string | null; a2_name: string | null }>> {
+  const { data, error } = await supabase.rpc('route_assessor_names');
+  if (error || !data) return new Map();
+  return new Map(
+    (data as { route_id: string; a1_name: string | null; a2_name: string | null }[]).map((row) => [
+      row.route_id,
+      { a1_name: row.a1_name, a2_name: row.a2_name },
+    ]),
   );
-  if (withDate.length > 0) return withDate;
+}
 
-  const withoutDate = await fetchAll<Omit<MarkRow, 'assessed_on'>>((from, to) =>
-    supabase
-      .from('assessment_marks')
-      .select(columns)
-      .in('trainee_id', traineeIds)
-      .not('submitted_at', 'is', null)
-      .range(from, to),
-  );
-  return withoutDate.map((row) => ({ ...row, assessed_on: null }));
+async function loadMarks(supabase: SupabaseClient): Promise<MarkRow[]> {
+  const { data, error } = await supabase.rpc('route_results_marks');
+  if (error || !data) return [];
+  return data as MarkRow[];
 }

@@ -15,12 +15,6 @@ function at(rows: RouteResultRow[], index: number): RouteResultRow {
   return row;
 }
 
-const INSTRUMENTS = new Map([
-  ['i-theory', 'tp_theory'],
-  ['i-practical', 'tp_practical'],
-  ['i-ipt', 'ipt'],
-]);
-
 const TP_TRAINEE = {
   id: 't1',
   name: 'ABAS JAMAL MGOVANO',
@@ -45,31 +39,34 @@ const IPT_TRAINEE = {
   route_id: 'r2',
 };
 
+/** A row as `route_results_marks()` returns it. */
+function mark(over: Partial<Parameters<typeof pivotRows>[1][number]> = {}) {
+  return {
+    trainee_id: 't1',
+    slot: 'a1' as const,
+    instrument_code: 'tp_theory',
+    total: 31 as string | number | null,
+    assessed_on: null as string | null,
+    submitted_on: null as string | null,
+    supervisor_name: null as string | null,
+    ...over,
+  };
+}
+
 describe('pivotRows', () => {
   it('puts each TP instrument in its own slot', () => {
     const row = only(
       pivotRows(
         [TP_TRAINEE],
         [
-          {
-            trainee_id: 't1',
-            slot: 'a1',
-            instrument_id: 'i-theory',
-            total: '31.00',
-            assessed_on: null,
-            supervisor: { name: 'Nehemia David' },
-          },
-          {
-            trainee_id: 't1',
-            slot: 'a1',
-            instrument_id: 'i-practical',
+          mark({ instrument_code: 'tp_theory', total: '31.00', supervisor_name: 'Nehemia David' }),
+          mark({
+            instrument_code: 'tp_practical',
             total: '31.50',
-            assessed_on: null,
-            supervisor: { name: 'Nehemia David' },
-          },
+            supervisor_name: 'Nehemia David',
+          }),
         ],
         [],
-        INSTRUMENTS,
       ),
     );
 
@@ -84,17 +81,15 @@ describe('pivotRows', () => {
       pivotRows(
         [IPT_TRAINEE],
         [
-          {
+          mark({
             trainee_id: 't2',
             slot: 'a2',
-            instrument_id: 'i-ipt',
+            instrument_code: 'ipt',
             total: 55,
             assessed_on: '2026-09-08',
-            supervisor: null,
-          },
+          }),
         ],
         [],
-        INSTRUMENTS,
       ),
     );
 
@@ -104,28 +99,42 @@ describe('pivotRows', () => {
     expect(row.a2.assessedOn).toBe('2026-09-08');
   });
 
-  it('leaves a slot empty when RLS withheld it, rather than borrowing the other', () => {
+  it('names the other assessor, which 0035 is what makes possible', () => {
     const row = only(
       pivotRows(
         [TP_TRAINEE],
         [
-          {
-            trainee_id: 't1',
-            slot: 'a1',
-            instrument_id: 'i-theory',
-            total: 31,
-            assessed_on: null,
-            supervisor: { name: 'Nehemia David' },
-          },
+          mark({ supervisor_name: 'Nehemia David' }),
+          mark({ slot: 'a2', supervisor_name: 'Laurent Mwaisanila' }),
         ],
         [],
-        INSTRUMENTS,
       ),
     );
 
-    expect(row.a1.theory).toBe(31);
-    expect(row.a2.theory).toBeNull();
-    expect(row.a2.name).toBeNull();
+    expect(row.a1.name).toBe('Nehemia David');
+    expect(row.a2.name).toBe('Laurent Mwaisanila');
+  });
+
+  it('falls back to the submission date when the assessment date was never filled in', () => {
+    const row = only(
+      pivotRows([TP_TRAINEE], [mark({ assessed_on: null, submitted_on: '2026-09-07' })], []),
+    );
+
+    expect(row.a1.assessedOn).toBe('2026-09-07');
+  });
+
+  it('prefers the assessment date over the submission date when both exist', () => {
+    // The whole point of migration 0034: marked in a workshop on Monday,
+    // submitted on Wednesday when the supervisor next had signal.
+    const row = only(
+      pivotRows(
+        [TP_TRAINEE],
+        [mark({ assessed_on: '2026-09-14', submitted_on: '2026-09-16' })],
+        [],
+      ),
+    );
+
+    expect(row.a1.assessedOn).toBe('2026-09-14');
   });
 
   it('takes the stored result verbatim, numerics parsed but never recomputed', () => {
@@ -142,9 +151,9 @@ describe('pivotRows', () => {
             pct: '66.30',
             grade: 'B',
             competent: true,
+            locked_at: '2026-09-16T07:47:19Z',
           },
         ],
-        INSTRUMENTS,
       ),
     );
 
@@ -152,37 +161,41 @@ describe('pivotRows', () => {
     expect(row.total).toBe(66.3);
     expect(row.grade).toBe('B');
     expect(row.competent).toBe(true);
+    expect(row.lockedAt).toBe('2026-09-16T07:47:19Z');
+  });
+
+  it('carries a null locked_at through, because that is what makes a row provisional', () => {
+    const row = only(
+      pivotRows(
+        [IPT_TRAINEE],
+        [],
+        [
+          {
+            trainee_id: 't2',
+            theory_total: null,
+            practical_total: null,
+            total: '59.00',
+            pct: '84.29',
+            grade: 'A',
+            competent: true,
+            locked_at: null,
+          },
+        ],
+      ),
+    );
+
+    expect(row.total).toBe(59);
+    expect(row.lockedAt).toBeNull();
   });
 
   it('leaves a trainee with no result row wholly unassessed', () => {
-    const row = only(pivotRows([TP_TRAINEE], [], [], INSTRUMENTS));
+    const row = only(pivotRows([TP_TRAINEE], [], []));
 
     expect(row.total).toBeNull();
     expect(row.grade).toBeNull();
     expect(row.competent).toBeNull();
+    expect(row.lockedAt).toBeNull();
     expect(row.a1.theory).toBeNull();
-  });
-
-  it('accepts the embedded supervisor as an array, which PostgREST may return', () => {
-    const row = only(
-      pivotRows(
-        [TP_TRAINEE],
-        [
-          {
-            trainee_id: 't1',
-            slot: 'a1',
-            instrument_id: 'i-theory',
-            total: 31,
-            assessed_on: null,
-            supervisor: [{ name: 'Nehemia David' }],
-          },
-        ],
-        [],
-        INSTRUMENTS,
-      ),
-    );
-
-    expect(row.a1.name).toBe('Nehemia David');
   });
 
   it('takes the earliest date when an assessor dated their two instruments differently', () => {
@@ -190,25 +203,10 @@ describe('pivotRows', () => {
       pivotRows(
         [TP_TRAINEE],
         [
-          {
-            trainee_id: 't1',
-            slot: 'a1',
-            instrument_id: 'i-theory',
-            total: 31,
-            assessed_on: '2026-09-16',
-            supervisor: null,
-          },
-          {
-            trainee_id: 't1',
-            slot: 'a1',
-            instrument_id: 'i-practical',
-            total: 31.5,
-            assessed_on: '2026-09-15',
-            supervisor: null,
-          },
+          mark({ instrument_code: 'tp_theory', assessed_on: '2026-09-16' }),
+          mark({ instrument_code: 'tp_practical', assessed_on: '2026-09-15' }),
         ],
         [],
-        INSTRUMENTS,
       ),
     );
 
@@ -218,18 +216,8 @@ describe('pivotRows', () => {
   it('keeps one trainee’s marks off another', () => {
     const rows = pivotRows(
       [TP_TRAINEE, { ...TP_TRAINEE, id: 't9', name: 'SOMEBODY ELSE' }],
-      [
-        {
-          trainee_id: 't1',
-          slot: 'a1',
-          instrument_id: 'i-theory',
-          total: 31,
-          assessed_on: null,
-          supervisor: null,
-        },
-      ],
+      [mark()],
       [],
-      INSTRUMENTS,
     );
 
     expect(at(rows, 0).a1.theory).toBe(31);

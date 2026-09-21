@@ -4,6 +4,7 @@ import {
   assessorTotal,
   COLUMNS,
   NO_MARKS,
+  official,
   routeSheet,
   TRACK_MAX,
   type RouteResultRow,
@@ -25,6 +26,7 @@ function tpRow(overrides: Partial<RouteResultRow> = {}): RouteResultRow {
     pct: 66.3,
     grade: 'B',
     competent: true,
+    lockedAt: '2026-09-16T07:47:19Z',
     ...overrides,
   };
 }
@@ -51,6 +53,7 @@ function iptRow(overrides: Partial<RouteResultRow> = {}): RouteResultRow {
     pct: 80.71,
     grade: 'A',
     competent: true,
+    lockedAt: '2026-09-16T07:47:19Z',
     ...overrides,
   };
 }
@@ -205,6 +208,7 @@ describe('routeSheet', () => {
       pct: null,
       grade: null,
       competent: null,
+      lockedAt: null,
     });
 
     const model = routeSheet({
@@ -259,5 +263,167 @@ describe('routeSheet', () => {
 
     expect(model.rows.map((r) => r[0])).toEqual([1, 2]);
     expect(model.rows.map((r) => r[1])).toEqual(['A TRAINEE', 'B TRAINEE']);
+  });
+});
+
+describe('official — the AVERAGE block', () => {
+  it('prints the stored figures verbatim once both assessors are in', () => {
+    // avg() over two marks already IS the sum over two, so nothing is
+    // recomputed here: the sheet, the PDF and the database agree, rounding
+    // included.
+    const result = official(tpRow(), 'TP');
+
+    expect(result.theory).toBe(32.75);
+    expect(result.practical).toBe(33.5);
+    expect(result.total).toBe(66.3);
+    expect(result.grade).toBe('B');
+    expect(result.verdict).toBe('COMPETENT');
+  });
+
+  it('halves a single IPT assessor rather than printing their mark as the result', () => {
+    // Postgres stores 59.00 — avg() over one mark. The College wants the
+    // summary to divide by two, because one assessment is half an assessment.
+    const result = official(
+      iptRow({
+        a1: NO_MARKS,
+        a2: { theory: null, practical: null, single: 59, assessedOn: null, name: null },
+        total: 59,
+        pct: 84.29,
+        grade: 'A',
+        competent: true,
+        lockedAt: null,
+      }),
+      'IPT',
+    );
+
+    expect(result.total).toBe(29.5);
+    expect(result.pct).toBe(42.14);
+  });
+
+  it('withholds grade and verdict while provisional, rather than failing a trainee', () => {
+    // 29.5/70 is 42%, which would grade D and read NOT COMPETENT against
+    // somebody whose second assessor simply has not visited yet.
+    const result = official(
+      iptRow({
+        a1: NO_MARKS,
+        a2: { theory: null, practical: null, single: 59, assessedOn: null, name: null },
+        grade: 'A',
+        competent: true,
+        lockedAt: null,
+      }),
+      'IPT',
+    );
+
+    expect(result.grade).toBeNull();
+    expect(result.verdict).toBe('PROVISIONAL');
+  });
+
+  it('halves each TP instrument separately when one assessor is missing', () => {
+    const result = official(
+      tpRow({
+        a2: NO_MARKS,
+        lockedAt: null,
+      }),
+      'TP',
+    );
+
+    expect(result.theory).toBe(15.5); // 31 / 2
+    expect(result.practical).toBe(15.75); // 31.5 / 2
+    expect(result.total).toBe(31.25);
+    expect(result.verdict).toBe('PROVISIONAL');
+  });
+
+  it('calls a trainee with nothing submitted unassessed, not half of nothing', () => {
+    const result = official(
+      tpRow({
+        a1: NO_MARKS,
+        a2: NO_MARKS,
+        theoryTotal: null,
+        practicalTotal: null,
+        total: null,
+        pct: null,
+        grade: null,
+        competent: null,
+        lockedAt: null,
+      }),
+      'TP',
+    );
+
+    expect(result.total).toBeNull();
+    expect(result.verdict).toBe('NOT YET ASSESSED');
+  });
+
+  it('shades only the unassessed amber — a provisional row has marks', () => {
+    const model = routeSheet({
+      routeCode: 'IPT ROUTE 5',
+      routeLabel: null,
+      track: 'IPT',
+      rows: [
+        iptRow({ name: 'A PROVISIONAL', a1: NO_MARKS, lockedAt: null }),
+        iptRow({
+          name: 'B UNASSESSED',
+          a1: NO_MARKS,
+          a2: NO_MARKS,
+          total: null,
+          pct: null,
+          grade: null,
+          competent: null,
+          lockedAt: null,
+        }),
+      ],
+    });
+
+    expect(model.pendingRows.has(0)).toBe(false);
+    expect(model.pendingRows.has(1)).toBe(true);
+    expect(printed(model, 0).at(-1)).toBe('PROVISIONAL');
+    expect(printed(model, 1).at(-1)).toBe('NOT YET ASSESSED');
+  });
+});
+
+describe('naming both assessors (migration 0035)', () => {
+  it('names an assessor who has not marked anybody yet, from the route assignment', () => {
+    const model = routeSheet({
+      routeCode: 'IPT ROUTE 5',
+      routeLabel: null,
+      track: 'IPT',
+      rows: [iptRow({ a2: NO_MARKS, lockedAt: null })],
+      a1Name: 'Coletha Ndelwa',
+      a2Name: 'Fausta Makweta',
+    });
+
+    expect(model.bands.find((b) => b.band === 'a1')?.label).toBe('ASSESSOR 1 - Coletha Ndelwa');
+    expect(model.bands.find((b) => b.band === 'a2')?.label).toBe('ASSESSOR 2 - Fausta Makweta');
+  });
+
+  it('falls back to the name on a mark when the route names nobody', () => {
+    const model = routeSheet({
+      routeCode: 'TP ROUTE 5',
+      routeLabel: null,
+      track: 'TP',
+      rows: [
+        tpRow({
+          a2: {
+            theory: 34.5,
+            practical: 35.5,
+            single: null,
+            assessedOn: null,
+            name: 'Laurent Mwaisanila',
+          },
+        }),
+      ],
+    });
+
+    expect(model.bands.find((b) => b.band === 'a2')?.label).toBe('ASSESSOR 2 - Laurent Mwaisanila');
+  });
+
+  it('still refuses to invent a name when neither source has one', () => {
+    const model = routeSheet({
+      routeCode: 'TP ROUTE 5',
+      routeLabel: null,
+      track: 'TP',
+      rows: [tpRow({ a2: NO_MARKS })],
+    });
+
+    expect(model.bands.find((b) => b.band === 'a2')?.label).toBe('ASSESSOR 2');
   });
 });

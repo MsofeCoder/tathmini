@@ -67,6 +67,90 @@ export interface RouteResultRow {
   pct: number | null;
   grade: string | null;
   competent: boolean | null;
+  /**
+   * Set once every instrument has both slots submitted. Null means the stored
+   * result is provisional — `recompute_result()` averaged over whichever
+   * marks exist so far, so with one assessor in, `total` IS that assessor's
+   * mark rather than half of it. See official().
+   */
+  lockedAt: string | null;
+}
+
+/**
+ * The AVERAGE block: what the sheet prints as the official result.
+ *
+ * Two cases, and the difference is the College's decision of 21 September.
+ *
+ * **Locked** — both assessors have submitted. Every figure is the stored one,
+ * exactly as Postgres computed it (AGENTS.md rule 3). `avg()` over two marks
+ * is already the sum over two, so nothing here would change the number; using
+ * the stored value keeps the spreadsheet, the PDF report and the database
+ * saying the same thing about a finished result, down to the rounding.
+ *
+ * **Not locked** — one assessor is still out. Postgres divides by the number
+ * of marks present, so a single mark of 59 is stored as a total of 59. On a
+ * summary sheet that reads as a finished score; the College wants it divided
+ * by two, because a trainee with one assessment has half an assessment.
+ *
+ * Grade and verdict are deliberately WITHHELD while provisional. They are the
+ * one thing that must not be derived here: a halved total puts a trainee at
+ * 42% and would print NOT COMPETENT against someone whose only fault is that
+ * their second assessor has not visited yet. The stored grade cannot be
+ * printed either, because it belongs to the un-halved figure and would
+ * contradict the column beside it. So the row says PROVISIONAL and the
+ * College reads the two assessor blocks to see why.
+ */
+export interface OfficialResult {
+  theory: number | null;
+  practical: number | null;
+  total: number | null;
+  pct: number | null;
+  grade: string | null;
+  verdict: string;
+}
+
+export function official(row: RouteResultRow, track: Track): OfficialResult {
+  const a1 = assessorTotal(row.a1);
+  const a2 = assessorTotal(row.a2);
+
+  if (row.lockedAt) {
+    return {
+      theory: row.theoryTotal,
+      practical: row.practicalTotal,
+      total: row.total,
+      pct: row.pct,
+      grade: row.grade,
+      verdict: row.competent ? 'COMPETENT' : 'NOT COMPETENT',
+    };
+  }
+
+  // Nothing submitted at all is not "half of nothing" — it is not assessed.
+  if (a1 === null && a2 === null) {
+    return {
+      theory: null,
+      practical: null,
+      total: null,
+      pct: null,
+      grade: null,
+      verdict: 'NOT YET ASSESSED',
+    };
+  }
+
+  const halve = (x: number | null, y: number | null) =>
+    x === null && y === null ? null : round2(((x ?? 0) + (y ?? 0)) / 2);
+
+  const theory = track === 'TP' ? halve(row.a1.theory, row.a2.theory) : null;
+  const practical = track === 'TP' ? halve(row.a1.practical, row.a2.practical) : null;
+  const total = track === 'TP' ? round2((theory ?? 0) + (practical ?? 0)) : halve(a1, a2);
+
+  return {
+    theory,
+    practical,
+    total,
+    pct: total === null ? null : round2((total / TRACK_MAX[track]) * 100),
+    grade: null,
+    verdict: 'PROVISIONAL',
+  };
 }
 
 /**
@@ -175,7 +259,7 @@ function identityColumns(track: Track): ColumnSpec[] {
   ];
 }
 
-function verdictColumn(): ColumnSpec {
+function verdictColumn(track: Track): ColumnSpec {
   return {
     header: 'VERDICT',
     width: 17,
@@ -183,12 +267,11 @@ function verdictColumn(): ColumnSpec {
     format: 'text',
     align: 'centre',
     strong: true,
-    value: (row) =>
-      row.competent === null ? 'NOT YET ASSESSED' : row.competent ? 'COMPETENT' : 'NOT COMPETENT',
+    value: (row) => official(row, track).verdict,
   };
 }
 
-function gradeColumn(): ColumnSpec {
+function gradeColumn(track: Track): ColumnSpec {
   return {
     header: 'GRADE',
     width: 7,
@@ -196,7 +279,9 @@ function gradeColumn(): ColumnSpec {
     format: 'text',
     align: 'centre',
     strong: true,
-    value: (row) => row.grade ?? DASH,
+    // Blank while provisional: see official(). A grade derived from a halved
+    // total would read NOT COMPETENT for a trainee simply awaiting a visit.
+    value: (row) => official(row, track).grade ?? DASH,
   };
 }
 
@@ -247,7 +332,7 @@ function tpColumns(): ColumnSpec[] {
       band: 'avg',
       format: 'mark',
       align: 'centre',
-      value: (row) => row.theoryTotal,
+      value: (row) => official(row, 'TP').theory,
     },
     {
       header: 'Practical /50',
@@ -255,7 +340,7 @@ function tpColumns(): ColumnSpec[] {
       band: 'avg',
       format: 'mark',
       align: 'centre',
-      value: (row) => row.practicalTotal,
+      value: (row) => official(row, 'TP').practical,
     },
     {
       header: 'TOTAL/100 %',
@@ -264,10 +349,10 @@ function tpColumns(): ColumnSpec[] {
       format: 'percent',
       align: 'centre',
       strong: true,
-      value: (row) => row.total,
+      value: (row) => official(row, 'TP').total,
     },
-    gradeColumn(),
-    verdictColumn(),
+    gradeColumn('TP'),
+    verdictColumn('TP'),
   ];
 }
 
@@ -311,7 +396,7 @@ function iptColumns(): ColumnSpec[] {
       format: 'mark',
       align: 'centre',
       strong: true,
-      value: (row) => row.total,
+      value: (row) => official(row, 'IPT').total,
     },
     {
       header: '%',
@@ -320,10 +405,10 @@ function iptColumns(): ColumnSpec[] {
       format: 'percent',
       align: 'centre',
       strong: true,
-      value: (row) => row.pct,
+      value: (row) => official(row, 'IPT').pct,
     },
-    gradeColumn(),
-    verdictColumn(),
+    gradeColumn('IPT'),
+    verdictColumn('IPT'),
   ];
 }
 
@@ -360,26 +445,48 @@ export interface RouteSheetInput {
   routeLabel: string | null;
   track: Track;
   rows: RouteResultRow[];
+  /**
+   * The assessors the route assigns, from `route_assessor_names()`. Needed
+   * only when one of them has not marked anybody yet: with no marks of theirs
+   * in the export there is no row to carry the name.
+   */
+  a1Name?: string | null;
+  a2Name?: string | null;
 }
 
 /**
- * An assessor's banner. The name is shown when it could be read and omitted
- * when it could not.
+ * An assessor's banner.
  *
- * `users_select` lets a supervisor read their own row and no one else's, so a
- * supervisor downloading this gets their own name and nothing for their
- * colleague. That is the policy working, not a defect, and it is not worth
- * relaxing RLS over a banner (AGENTS.md rule 1) — so the banner degrades to
- * "ASSESSOR 2" and the sheet is otherwise identical.
+ * Read through the plain table policies this could only ever name the person
+ * downloading: `users_select` allows `id = auth.uid()` and nothing else, so a
+ * colleague's row is invisible and the banner read a bare "ASSESSOR 2".
+ * Migration 0035 supplies both names through SECURITY DEFINER functions, so
+ * the name now comes either from the route's own assignment or, failing that,
+ * from any mark that assessor submitted.
+ *
+ * It still degrades rather than inventing: an assessor who is neither
+ * assigned on the route row nor present in any mark has no name to print,
+ * and the banner says "ASSESSOR 2" as before.
  */
-function bandLabel(slot: 'a1' | 'a2', rows: RouteResultRow[]): string {
+function bandLabel(
+  slot: 'a1' | 'a2',
+  rows: RouteResultRow[],
+  assigned: string | null | undefined,
+): string {
   const ordinal = slot === 'a1' ? 'ASSESSOR 1' : 'ASSESSOR 2';
-  const named = rows.find((row) => row[slot].name)?.[slot].name;
+  const named = assigned ?? rows.find((row) => row[slot].name)?.[slot].name;
   return named ? `${ordinal} - ${named}` : ordinal;
 }
 
 /** The whole sheet for one route, ready for a renderer to walk. */
-export function routeSheet({ routeCode, routeLabel, track, rows }: RouteSheetInput): SheetModel {
+export function routeSheet({
+  routeCode,
+  routeLabel,
+  track,
+  rows,
+  a1Name,
+  a2Name,
+}: RouteSheetInput): SheetModel {
   const columns = COLUMNS[track];
   const ordered = [...rows].sort((a, b) =>
     a.name.toUpperCase().localeCompare(b.name.toUpperCase()),
@@ -387,8 +494,8 @@ export function routeSheet({ routeCode, routeLabel, track, rows }: RouteSheetInp
 
   const bands: BandSpan[] = [];
   for (const [band, label] of [
-    ['a1', bandLabel('a1', ordered)],
-    ['a2', bandLabel('a2', ordered)],
+    ['a1', bandLabel('a1', ordered, a1Name)],
+    ['a2', bandLabel('a2', ordered, a2Name)],
     ['avg', 'AVERAGE RESULTS'],
   ] as const) {
     const from = columns.findIndex((c) => c.band === band);
@@ -417,6 +524,10 @@ export function routeSheet({ routeCode, routeLabel, track, rows }: RouteSheetInp
     columns,
     bands,
     rows: ordered.map((row, i) => columns.map((column) => column.value(row, i))),
-    pendingRows: new Set(ordered.flatMap((row, i) => (row.total === null ? [i] : []))),
+    // Amber marks a trainee nobody has assessed yet. A provisional row is a
+    // different state — it has marks — and says so in its VERDICT column.
+    pendingRows: new Set(
+      ordered.flatMap((row, i) => (official(row, track).verdict === 'NOT YET ASSESSED' ? [i] : [])),
+    ),
   };
 }

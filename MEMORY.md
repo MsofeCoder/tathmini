@@ -42,6 +42,71 @@ The test, query or manual check that proves it works.
 ---
 
 
+## 2026-09-21 · feature · The export shows both assessors, halves a lone mark, and dates every row
+
+**Kind:** feature
+**Phase:** 3
+**Commit / PR:** this commit (code for migration 0035, applied earlier today)
+
+**What changed**
+Three things the College asked for after reading the first real download.
+
+1. **Both assessors' marks and names appear.** `loadMarks()` now calls
+   `route_results_marks()` instead of reading `assessment_marks` directly, so
+   the ASSESSOR 2 block fills in and the banner carries a name.
+   `route_assessor_names()` covers the case where an assessor has marked
+   nobody yet and so appears in no mark row.
+2. **A lone assessor's mark is halved.** See `official()` in layout.ts.
+3. **Every marked row carries a date.** When `assessed_on` is null the sheet
+   prints that mark's submission date.
+
+**Why the average is computed in the sheet and not read from the database**
+`recompute_result()` uses `avg()`, which divides by the number of marks
+PRESENT. With both assessors in that is the sum over two and the stored value
+is used verbatim — sheet, PDF and database agree, rounding included. With one
+assessor in, Postgres stores their mark unchanged: David Nicollaus reads
+59.00, which on a summary sheet looks like a finished score. The College
+wanted it divided by two, because one assessment is half an assessment.
+
+**Grade and verdict are withheld while provisional, deliberately.** Halving
+puts David at 42%, which grades D and would print NOT COMPETENT against a
+trainee whose only fault is that Coletha Ndelwa has not visited yet — and the
+stored grade cannot be printed beside a halved total either, because it
+belongs to the un-halved figure. So the row reads PROVISIONAL and the two
+assessor blocks show why. Nothing stored changes; 46 trainees are in this
+state.
+
+**Why the date is the submission date and not a fixed 7 September**
+The first proposal was to stamp every undated mark 07/09/2026, the day
+marking began. The register does not support it: of 326 undated marks only
+153 were submitted on the 7th, and the rest fall on 5, 6, 8, 9, 10 and 17
+September. David Nicollaus and Jacob Sheoza resolve to the 11th and the 10th.
+A fixed date would have put a wrong day on 173 assessment records. The
+submission date is true of each row individually, is what the report printed
+before 0034 existed, and requires no write to `assessment_marks` — which has
+no UPDATE grant and must not get one (rule 2).
+
+**Watch out for**
+- **Amber now means "nobody has marked this trainee", not "no result".** A
+  provisional row has marks and is not shaded; it says PROVISIONAL in its
+  VERDICT column.
+- `official()` is the only place the AVERAGE block is decided. A future column
+  added to that band must go through it or it will disagree with its
+  neighbours on provisional rows.
+- The banner still degrades to a bare "ASSESSOR 2" when neither the route
+  assignment nor any mark carries a name. That is honest, not a bug.
+
+**Verified by**
+`pnpm format:check && pnpm lint && pnpm test && pnpm typecheck` clean — 728
+tests, 46 of them over this feature. `pnpm --filter web build` leaves
+`/[[...slug]]` at **179 kB, unchanged**, and the handler at 143 B, so nothing
+reached the client bundle. Simulated Coletha Ndelwa's own session against
+production: Fausta Makweta's name and marks now resolve, ABDALLAH CHIKULA
+(locked) reads the stored 60.00, and David and Jacob read 29.50 and 27.00
+with dates of 11 and 10 September.
+
+---
+
 ## 2026-09-21 · migration · 0035: the results export may read both assessors
 
 **Kind:** migration

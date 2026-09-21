@@ -75,6 +75,8 @@ export async function GET() {
       routeLabel: sheet.routeLabel,
       track: sheet.track,
       rows: sheet.rows,
+      a1Name: sheet.a1Name,
+      a2Name: sheet.a2Name,
     }),
   );
 
