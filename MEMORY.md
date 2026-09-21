@@ -42,6 +42,60 @@ The test, query or manual check that proves it works.
 ---
 
 
+## 2026-09-21 · migration · 0035: the results export may read both assessors
+
+**Kind:** migration
+**Phase:** 3
+**Commit / PR:** this commit — **applied to production 21 September**
+
+**What changed**
+Two SECURITY DEFINER functions, `route_results_marks()` and
+`route_assessor_names()`. No table, column, policy or row was touched, and no
+application code calls them yet — the deployed export still behaves as it did
+before.
+
+**Why**
+The first real download (IPT ROUTE 5, by Coletha Ndelwa) showed two faults.
+The ASSESSOR 2 banner had no name, because `users_select` allows
+`id = auth.uid()` and nothing else. And two trainees showed an AVERAGE with
+both assessor blocks empty: `assessment_marks_select` withholds the other slot
+until both submit, but `results_select` does not, and `recompute_result()`
+writes a provisional average over whatever marks exist — which with one mark
+IS that mark. Fausta Makweta's 59.00 and 54.00 were hidden in one column and
+published in the next.
+
+**This overturns a decision, knowingly.** `CONTEXT.md` § "Decisions already
+made" and `AGENTS.md` rule 4 both say an assessor must not see the other's
+marks before both submit. The Super Administrator decided on 21 September that
+the export shows both, because a blank beside a filled average reads as lost
+marks. A supervisor who downloads before marking will now see their
+colleague's scores. That is the accepted cost.
+
+**Why functions and not a relaxed policy**
+Dropping the `submitted_slot_count(...) >= 2` branch would open the other slot
+to every read in the app, including the marking screen where independence is
+the whole point. These functions open one door — this export, for routes the
+caller is on, returning marks and names and nothing else. Widening
+`users_select` was rejected separately: RLS is row-level, so a colleague's row
+also carries `users.email`, which is their sign-in username.
+
+**Watch out for**
+- **`revoke execute ... from public` does not remove `anon`.** Verified after
+  applying: `has_function_privilege('anon', ...)` was still true. Supabase
+  grants EXECUTE to `anon` and `authenticated` directly, and a direct grant
+  survives a revoke from PUBLIC. A second statement naming `anon` explicitly
+  was applied. Any future SECURITY DEFINER function needs the same treatment —
+  check the privilege, do not assume the revoke worked.
+- Reversing is `drop function route_results_marks(); drop function
+  route_assessor_names();` — nothing else changes.
+
+**Verified by**
+Simulated a supervisor session (`set local role authenticated` with Nehemia
+David's uid): the function returns 52 trainees, 1 route, 208 mark rows and
+both assessor names, and no other route's trainees. As `anon` it now refuses.
+
+---
+
 ## 2026-09-21 · ops · Vercel had silently lost access to the repository
 
 **Kind:** ops
