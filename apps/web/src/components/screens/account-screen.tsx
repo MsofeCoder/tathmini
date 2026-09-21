@@ -82,6 +82,35 @@ export function AccountScreen() {
           </div>
         </div>
 
+        {session?.role === 'supervisor' ? (
+          <section className="mt-4 rounded-2xl border border-[#e1e9e6] bg-white p-4">
+            <h2 className="text-[15px] font-bold text-[#14232e]">My results</h2>
+            <p className="mt-1 text-[13px] leading-relaxed text-[#5b6b78]">
+              Every trainee on your route, with both assessors&rsquo; marks, as an Excel file.
+            </p>
+
+            {online ? (
+              <a
+                // A download, not a navigation: `/api` is not on the shell's
+                // allowlist, so the worker leaves it alone and the browser
+                // saves the file without this screen ever unmounting. A plain
+                // anchor for the same reason every link here is one — never
+                // next/link, which would fetch a route payload.
+                href="/api/reports/route-results"
+                download
+                className="text-teal-deep focus:outline-accent mt-3 flex min-h-[52px] w-full items-center justify-center rounded-xl border border-[#bcd4cf] bg-[#eef5f3] text-[15px] font-bold focus:outline focus:outline-[3px] focus:outline-offset-2"
+              >
+                Download my results
+              </a>
+            ) : (
+              <p className="mt-3 flex min-h-[52px] w-full items-center justify-center rounded-xl bg-[#fff2d8] px-3 text-center text-[13px] font-semibold leading-snug text-[#6b4400]">
+                The results file is built by the College&rsquo;s server, so it needs a connection.
+                Try again when you have signal.
+              </p>
+            )}
+          </section>
+        ) : null}
+
         <section className="mt-4 rounded-2xl border border-[#e1e9e6] bg-white p-4">
           <h2 className="text-[15px] font-bold text-[#14232e]">Tell us how this is working</h2>
           {/*

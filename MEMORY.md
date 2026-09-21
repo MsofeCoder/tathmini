@@ -42,6 +42,84 @@ The test, query or manual check that proves it works.
 ---
 
 
+## 2026-09-21 · feature · Supervisors download their own route results as Excel
+
+**Kind:** feature
+**Phase:** 3
+**Commit / PR:** this commit
+
+**What changed**
+A supervisor taps **Download my results** on the Account screen and gets an
+`.xlsx` of every trainee on their route: Assessor 1 and Assessor 2 side by
+side, then the official average with grade and verdict. New route handler
+`GET /api/reports/route-results`, the pure layout and pivot in
+`lib/reports/route-results/`, and the button above the feedback card. ExcelJS
+added to `apps/web` (server only — the client bundle is unchanged).
+
+One workbook, **one sheet per route**. A supervisor with one route gets a
+one-sheet file through the same code path; nothing branches on the count.
+
+**Why this way**
+The College asked for a button, not a picker, so the route comes from the
+session rather than a dropdown. That nearly broke on a real case: **Enelisa
+Mbwile covers IPT ROUTE 2 and TP ROUTE 3**, two routes on two tracks with two
+different layouts. A sheet per route makes the multi-route case the general
+case instead of an exception, which is why there is no "if more than one" path
+to get wrong.
+
+**A route handler, not a page.** `AGENTS.md` rule 1 forbids a route file for
+anything the field app reaches, and rule 9 wants a long budget under `/api`
+anyway. A download is also not a navigation: `isShellPath()` is an allowlist
+and `/api` is not on it, so the worker never answers this url with the shell
+and the screen the supervisor was on is never unmounted. The button is a plain
+`<a download>`, never `next/link`.
+
+**TP and IPT differ in exactly one place.** TP is out of 100, so a trainee's
+total and percentage are the same number — the College struck the duplicate
+column, and the sheet carries one `TOTAL/100 %`. IPT is out of 70, where 57.5
+is 82.1%, so there the two are separate columns. That difference lives in
+`COLUMNS` in layout.ts and nowhere else: one renderer walks whichever list the
+track names, so the two layouts cannot drift the way two lookalike renderers
+do.
+
+**RLS does the redaction, as it should.** Every read runs on the supervisor's
+own session, so `assessment_marks_select` withholds a colleague's marks until
+both slots are submitted. No filtering of ours, and no service-role read —
+which is also why the assessor banner degrades to "ASSESSOR 2" rather than a
+name: `users_select` lets a supervisor read only their own row, and that is
+not worth relaxing a policy over.
+
+Rejected: generating the file in the browser (a spreadsheet library in the
+client bundle, against the 180 KB budget, to serve a desk task); CSV (loses
+the merged bands and colour the College's own file has); a Server Action
+(rule 9).
+
+**Watch out for**
+- **The streaming writer flushes a row on commit, and a flushed row can no
+  longer be merged** — `mergeCells` then throws "Out of bounds: this row has
+  been committed". Every merge must be declared *before* its row commits. The
+  non-streaming `Workbook` is forgiving about this; `WorkbookWriter` is not.
+  `xlsx.test.ts` caught this and exists to keep catching it.
+- **Do not reuse `adminAccess()` to guard this route.** It answers `'deny'`
+  for a supervisor because it was written for the console — using it here
+  would refuse every real user of the button. The allowlist in the handler is
+  the gate, and widening it to the Coordinator later is that one `Set`.
+- Supervisors only, for now, by the College's decision. Coordinator and Super
+  Admin are deliberately out.
+- The IPT sheet's REGISTRATION NO column is nearly empty — that register
+  captures a phone number instead, and only 1 of 44 IPT ROUTE 2 trainees has a
+  registration number. Left in for now; worth revisiting.
+
+**Verified by**
+`pnpm format:check && pnpm lint && pnpm test && pnpm typecheck` all clean —
+717 tests across the workspace, 34 of them new (`layout.test.ts` for which
+column holds which value, `data.test.ts` for the pivot, `xlsx.test.ts` for a
+real workbook written and read back). `pnpm --filter web build` leaves
+`/[[...slug]]` first-load JS at **179 kB, unchanged** from before this change
+and under the 180 KB budget; the new handler is 143 B, so ExcelJS stayed on
+the server. The two shapes were also checked against production data for TP
+ROUTE 5 (57 trainees, 52 locked) and IPT ROUTE 2 (44 trainees, 42 locked).
+
 ## 2026-09-08 · ops · Three migrations applied live, and what is now proven in production
 
 **Kind:** ops
